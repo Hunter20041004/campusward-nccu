@@ -5,6 +5,7 @@ import { Header } from './components/Header.tsx';
 import { MobileNav, type MobileView } from './components/MobileNav.tsx';
 import { ConditionsPanel } from './components/ConditionsPanel.tsx';
 import { ConfirmDialog } from './components/ConfirmDialog.tsx';
+import { DataPanel } from './components/DataPanel.tsx';
 import { PlanBar } from './components/PlanBar.tsx';
 import { RulesPanel } from './components/RulesPanel.tsx';
 import { SearchPanel } from './components/SearchPanel.tsx';
@@ -15,6 +16,7 @@ import { browserStorage } from './data/browserStorage.ts';
 import { httpCatalogSource, type CatalogSource } from './data/catalog.ts';
 import { useCatalog } from './data/useCatalog.ts';
 import { usePlanner } from './data/usePlanner.ts';
+import { renderWallpaper, wallpaperLayout } from './data/wallpaper.ts';
 
 interface ViewState {
   query: string;
@@ -105,7 +107,7 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
                 conflicts={planner.conflicts}
                 newKeys={planner.newKeys}
                 onStartSearch={startSearch}
-                onImport={() => {}}
+                onImport={() => document.querySelector<HTMLInputElement>('input[aria-label="匯入資料"]')?.click()}
                 onToggleLock={(key) => {
                   const locked = !planner.activePlan.items.find((item) => item.key === key)?.locked;
                   applyChange([{ type: 'setLock', key, locked }], `已${locked ? '鎖定' : '解鎖'}「${titleOf(key)}」`);
@@ -115,6 +117,25 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
                 onRemove={(key) => applyChange([{ type: 'removeFromSchedule', key }], `已移出「${titleOf(key)}」`)}
               />
               {planner.entries.length > 0 && <RulesPanel conflicts={planner.conflicts} reminders={reminders} />}
+              {ready && (
+                <DataPanel
+                  entries={planner.entries}
+                  data={planner.data}
+                  term={data.term}
+                  onReplace={planner.replaceData}
+                  onClear={planner.clearAll}
+                  onWallpaper={() => {
+                    void renderWallpaper(wallpaperLayout(planner.entries, data.label)).then((blob) => {
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = `campusward-${data.term}-課表.png`;
+                      link.click();
+                      URL.revokeObjectURL(url);
+                    });
+                  }}
+                />
+              )}
             </div>
           </div>
           <div className={mobileOnly(view.mobileView !== 'timetable')}>
