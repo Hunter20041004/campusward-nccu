@@ -31,4 +31,6 @@
 - 舊測試移植：用 scratchpad 的轉換腳本做語法轉換（assert→expect），逐檔核對判斷數。已移植：nccu-periods、nccu-course-notes、nccu-url、syllabus-state、nccu-course-adapter（正規化與更正部分）、eligibility-conditions、planner-core（資格部分）。
 - 行為改變（已寫入提交說明）：lmtKind 是通識類別（1151 實測），不再併入修課限制；學生選擇與官方課程分開，attendance 改為 course.delivery.defaultAttendance；查無開課原因與示範條件改由參數提供。
 - 與計畫不同：pickDefaultTerm 只依「已有資料的最新學期」，不用行事曆（較簡單且符合設計）。
-- 下一步：1.5 衝堂／學分／選取／鎖定（需設計 Selection 狀態，承接 course-reconciler 6 個測試與 planner-core 其餘約 40 個測試）。本機提交尚未推送。
+- 1.5 完成：schedule/selection（ScheduleCourse＝課程、PlanItem＝學生選擇：出席方式、狀態 planned/registered/enrolled、鎖定、上次看到的更正）、schedule/catalog（官方→ScheduleCourse、手動課程、候選清單）、schedule/agenda。共 196 個測試。
+- 未移植（提交說明逐條列出）：多選一指導老師／時段與 preset 相關 8 個測試，因新資料來源不會產生這類課，只服務舊示範資料。若日後需要，從舊 planner-core 取回。
+- 下一步：1.7 實習空檔（含 planner-core 實習測試）→ 1.8 搜課篩選。使用者要求暫不推送，本機領先 origin。
