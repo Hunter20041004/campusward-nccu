@@ -24,6 +24,8 @@ export function toScheduleCourse(course: Course): ScheduleCourse {
     eligibility: { title: course.title, eligibilityRules: course.notes.eligibilityRules },
     ...(course.correctionId ? { correctionId: course.correctionId } : {}),
     source: 'official',
+    official: course.official,
+    restrictionText: course.restrictionText,
   };
 }
 

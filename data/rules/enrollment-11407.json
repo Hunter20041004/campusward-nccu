@@ -1,0 +1,25 @@
+{
+  "document": "國立政治大學學生選課須知",
+  "version": "114.07",
+  "url": "https://aca.nccu.edu.tw/download/course/選課須知11407.pdf",
+  "verifiedAt": "2026-10-28",
+  "credits": {
+    "minimum": { "year1to3": 12, "year4plus": 10 },
+    "maximum": { "none": 25, "minor": 28, "double": 31 }
+  },
+  "distributionCaps": { "chinese": 1, "foreign": 1, "generalAndCollege": 3, "college": 1, "pe": 1 },
+  "codePrefixes": { "pe": "002", "chinese": "031", "foreign": "032", "college": "045" },
+  "sources": {
+    "credit-minimum": "8-1 二、(一)1",
+    "credit-maximum": "8-1 二、(一)2；8-2 (四)4",
+    "distribution-cap": "8-2 (四)4",
+    "stage1-professional-only": "8-2 (四)1",
+    "stage1-no-waitlist": "8-2 (四)6",
+    "same-course": "8-3 (五)3；8-5",
+    "restricted": "8-2 (四)2",
+    "graduate-course": "8-1 一、",
+    "fee": "8-1 一、",
+    "full-year": "8-6 被擋修科目",
+    "auto-enrolled": "8-1 二、(三)1"
+  }
+}

@@ -4,6 +4,8 @@
 export interface IdentityProfile {
   level?: 'undergrad' | 'graduate';
   year?: number;
+  /** 加修學系：影響學分上限（選課須知）。 */
+  additionalMajor?: 'none' | 'minor' | 'double';
   programs?: readonly string[];
   prerequisites?: readonly string[];
   conditionIds?: readonly string[];

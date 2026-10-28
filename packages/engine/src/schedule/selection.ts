@@ -2,7 +2,7 @@
 // 課程資料（ScheduleCourse）與學生的選擇（PlanItem）分開存：選擇只記代號與學生決定，其餘一律回頭查課程。
 
 import { evaluateEligibility, type EligibilityTarget, type IdentityProfile } from '../eligibility.ts';
-import type { CourseEvent, Delivery } from '../official/course.ts';
+import type { CourseEvent, Delivery, OfficialFields } from '../official/course.ts';
 import { formatNccuSchedule, type Meeting } from '../periods.ts';
 
 export type Attendance = 'sync' | 'async';
@@ -23,6 +23,9 @@ export interface ScheduleCourse {
   eligibility: EligibilityTarget;
   correctionId?: string;
   source?: 'official' | 'manual';
+  /** 官方欄位與備註（選課規則提醒用；手動課程沒有）。 */
+  official?: OfficialFields;
+  restrictionText?: string;
   /** 給學生看的補充說明，例如手動課程尚未查證。 */
   note?: string;
 }
