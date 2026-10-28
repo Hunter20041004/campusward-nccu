@@ -153,3 +153,28 @@ describe('applyAiChangeSet', () => {
     expect(result).toEqual({ status: 'needsConfirmation', reason: 'autoBackupFull', limit: 0 });
   });
 });
+
+// 程式碼審查修正（2026-10-28）
+describe('review fixes', () => {
+  const seededWith = (keys: string[]): PlannerState => {
+    const result = applyChanges(createPlannerState(), keys.map((key): Change => ({ type: 'addToSchedule', key })), catalog, { autoBackup: false });
+    if (result.status !== 'applied') throw new Error(result.status);
+    return result.state;
+  };
+
+  test('does not blame a change set for a schedule-wide problem that already existed', () => {
+    const state = seededWith(['1151:900001001']);
+    const result = applyAiChangeSet(state, [{ type: 'addToSchedule', key: '1151:900004001' }], catalog, { profile, maximumCredits: 2 });
+    expect(result.status).toBe('applied');
+  });
+
+  test('refuses to remove a candidate that is locked in any plan', () => {
+    const state = seededWith(['1151:900004001']);
+    state.plans[0]!.items[0]!.locked = true;
+    const created = applyChanges(state, [{ type: 'createPlan', name: '備案' }, { type: 'removeFromSchedule', key: '1151:900004001' }], catalog, { autoBackup: false });
+    if (created.status !== 'applied') throw new Error(created.status);
+    created.state.plans[1]!.items = [];
+    const result = applyAiChangeSet(created.state, [{ type: 'removeCandidate', key: '1151:900004001' }], catalog, { profile });
+    expect(result.status === 'rejected' && result.violations.map(({ code }) => code)).toEqual(['locked-course-removed']);
+  });
+});

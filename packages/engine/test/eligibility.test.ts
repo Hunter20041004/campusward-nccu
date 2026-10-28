@@ -240,3 +240,8 @@ test('rejects a custom condition whose normalized name already exists', () => {
     message: '這項條件已經存在。',
   });
 });
+
+// 程式碼審查修正：未填年級時不因年級限制擋下（與舊版行為一致）
+test('does not block a year-limited course before the student sets their year', () => {
+  expect(evaluateEligibility({ minYear: 3 }, { level: 'undergrad' })).toEqual({ status: 'eligible', reasons: [] });
+});

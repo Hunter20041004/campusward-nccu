@@ -390,9 +390,15 @@ function legacyManualCourse(course: Record<string, unknown>, key: string): Sched
   const itemType = course.itemType === 'course' || course.itemType === undefined ? 'course' : course.itemType === 'club' ? 'club' : 'activity';
   const credits = itemType === 'course' ? Number(course.credits ?? 0) : 0;
   if (!Number.isFinite(credits) || credits < 0 || credits > 12) return null;
-  const meetings = schedule && !isAsync
-    ? [{ day: Number(schedule.day), start: Number(schedule.start), end: Number(schedule.end), label: String(schedule.label ?? '').slice(0, 100) }]
-    : [];
+  const meeting = schedule && !isAsync
+    ? { day: Number(schedule.day), start: Number(schedule.start), end: Number(schedule.end), label: String(schedule.label ?? '').slice(0, 100) }
+    : null;
+  const minute = (value: number) => Number.isInteger(value) && value >= 0 && value <= 1440;
+  // 時間壞掉的舊課只略過這一門，不讓整份匯入失敗。
+  if (meeting && !(Number.isInteger(meeting.day) && meeting.day >= 1 && meeting.day <= 7 && minute(meeting.start) && minute(meeting.end) && meeting.start < meeting.end)) {
+    return null;
+  }
+  const meetings = meeting ? [meeting] : [];
   return {
     key,
     title: String(course.title).trim().slice(0, 100),
