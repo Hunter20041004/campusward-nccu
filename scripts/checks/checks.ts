@@ -21,13 +21,15 @@ function scan(file: SourceFile, pattern: RegExp, check: string, detail: (match: 
 }
 
 const PRODUCT_SOURCE = /^(packages\/[^/]+\/src|apps\/[^/]+\/src)\//;
+// 網站測試與元件放在一起；測試檔與測試輔助資料夾可以出現學期代碼。
+const TEST_SOURCE = /(\.test\.tsx?$|\/src\/test\/)/;
 
 // 學期一律由資料或參數提供（設計第 5 節「不寫死 115-1」）。
 const TERM_PATTERN = /(?<![\d-])11\d-?[12](?![\d-])/g;
 
 export function findHardcodedTerms(files: SourceFile[]): Violation[] {
   return files
-    .filter((file) => PRODUCT_SOURCE.test(file.path))
+    .filter((file) => PRODUCT_SOURCE.test(file.path) && !TEST_SOURCE.test(file.path))
     .flatMap((file) => scan(file, TERM_PATTERN, 'hardcoded-term', (term) => `寫死學期 ${term}`));
 }
 

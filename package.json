@@ -13,11 +13,14 @@
   "scripts": {
     "test": "vitest run",
     "lint": "eslint .",
-    "typecheck": "tsc -p packages/engine/tsconfig.json && tsc -p packages/engine/tsconfig.test.json && tsc -p scripts/tsconfig.json",
+    "typecheck": "tsc -p packages/engine/tsconfig.json && tsc -p packages/engine/tsconfig.test.json && tsc -p scripts/tsconfig.json && tsc -p apps/web/tsconfig.json && tsc -p apps/web/tsconfig.node.json",
     "check": "tsx scripts/checks/run-all.ts",
     "verify": "npm run lint && npm run typecheck && npm test && npm run check",
     "prepare": "simple-git-hooks",
-    "bench": "tsx scripts/bench/catalog.ts"
+    "bench": "tsx scripts/bench/catalog.ts",
+    "pipeline": "tsx scripts/pipeline/run.ts",
+    "build": "npm run build -w @campusward/web",
+    "dev": "npm run dev -w @campusward/web"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

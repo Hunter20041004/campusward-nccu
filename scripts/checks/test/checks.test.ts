@@ -29,6 +29,13 @@ describe('findHardcodedTerms', () => {
     ])).toEqual([]);
   });
 
+  test('ignores web tests and test helpers kept next to the source', () => {
+    expect(findHardcodedTerms([
+      file('apps/web/src/App.test.tsx', "'115-1'"),
+      file('apps/web/src/test/fakeCatalog.ts', "'1151'"),
+    ])).toEqual([]);
+  });
+
   test('ignores unrelated numbers', () => {
     expect(findHardcodedTerms([file('packages/engine/src/x.ts', 'const max = 1200; const id = 11512;')])).toEqual([]);
   });
