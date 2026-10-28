@@ -14,6 +14,8 @@ export function toScheduleCourse(course: Course): ScheduleCourse {
   return {
     key: courseKey(course),
     title: course.title,
+    code: course.code,
+    teacher: course.teacher,
     credits: course.credits,
     itemType: 'course',
     meetings: course.meetings,
