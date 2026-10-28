@@ -16,3 +16,5 @@ playwright-report/
 *.webp
 !apps/web/public/**/*.png
 !apps/web/public/**/*.webp
+
+.impeccable/review/

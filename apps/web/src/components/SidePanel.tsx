@@ -11,7 +11,7 @@ const TABS: { id: SideTab; label: string }[] = [
 
 export function SidePanel({ tab, onTab, children, conditions }: { tab: SideTab; onTab: (tab: SideTab) => void; children: React.ReactNode; conditions?: React.ReactNode }) {
   return (
-    <aside aria-label="側欄" className="relief flex min-h-[28rem] flex-col rounded-box">
+    <aside aria-label="側欄" className="relief flex flex-col rounded-box md:min-h-[28rem]">
       <div role="tablist" aria-label="側欄內容" className="flex gap-1 border-b border-base-300 p-2">
         {TABS.map(({ id, label }) => (
           <button

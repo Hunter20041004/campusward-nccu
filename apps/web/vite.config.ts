@@ -4,7 +4,8 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 
-const DATA_DIR = resolve(import.meta.dirname, '../../data');
+// 端到端測試以 CAMPUSWARD_DATA_DIR 指向合成資料。
+const DATA_DIR = process.env.CAMPUSWARD_DATA_DIR ?? resolve(import.meta.dirname, '../../data');
 
 /** 把 data/snapshots 與 data/corrections 提供給網站：開發時直接讀檔，建置時輸出成靜態檔。 */
 function courseData(): Plugin {
