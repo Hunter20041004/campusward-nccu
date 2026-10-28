@@ -23,4 +23,4 @@
 
 - 完成：0.1–0.6。`npm run verify` 全過（lint、typecheck、32 個測試、專案檢查 0 問題）；每道檢查都先用植入違規實測擋下。提交前檢查需本機有 gitleaks（已以 brew 安裝 8.30.1）。
 - 0.7 舊金鑰盤點（gitleaks 掃舊專案全歷史＋目錄，值已遮蔽）：真正的金鑰只在舊專案 `.env`（未進版控），三把：GEMINI_API_KEY、GROQ_API_KEY、TAVILY_API_KEY；其餘命中為課程資料與驗證快照的誤判。Google Sheets 憑證檔路徑已不存在。⛔ 待使用者到各服務後台作廢。
-- 待辦：0.8 建 Hunter20041004/campusward-nccu 公開儲存庫（執行前再確認）；CI 尚未在 GitHub 上實跑。
+- 0.8 完成：使用者確認後建立公開儲存庫 https://github.com/Hunter20041004/campusward-nccu ；推送前全歷史 gitleaks 無洩漏；已開 secret scanning、push protection、Dependabot alerts；workflow 預設權限 read、允許 Actions 建立 PR。CI 祕密掃描改為直接執行雜湊核對過的 gitleaks 8.30.1（官方 action 在含根提交的推送上算錯範圍）。
