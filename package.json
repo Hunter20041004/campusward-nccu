@@ -1,0 +1,38 @@
+{
+  "name": "campusward-nccu",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc -p packages/engine/tsconfig.json && tsc -p packages/engine/tsconfig.test.json && tsc -p scripts/tsconfig.json",
+    "check": "tsx scripts/checks/run-all.ts",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run check",
+    "prepare": "simple-git-hooks"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^26.6.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "fast-check": "^4.10.2",
+    "globals": "^17.13.0",
+    "simple-git-hooks": "^2.14.0",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5",
+    "zod": "^4.6.7"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "sh scripts/pre-commit.sh"
+  }
+}
