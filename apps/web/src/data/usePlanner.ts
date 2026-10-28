@@ -39,6 +39,8 @@ export interface PlannerApi {
   profile: IdentityProfile;
   notice: string | null;
   undoLabel: string | null;
+  /** 最近一次修改加入的課（課表標示「新」）。 */
+  newKeys: ReadonlySet<string>;
   apply: (changes: Change[], label: string, options?: ApplyOptions) => ApplyResult;
   undo: () => void;
   clearUndo: () => void;
@@ -55,6 +57,7 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
     initial.current.error ? '這台裝置上的課表資料讀取失敗，已改用備份或從空白開始。' : null,
   );
   const [undoEntry, setUndoEntry] = useState<{ label: string; planner: PlannerState } | null>(null);
+  const [newKeys, setNewKeys] = useState<ReadonlySet<string>>(new Set());
 
   const workspace = data.terms[term] ?? emptyWorkspace();
   const catalog = useMemo(() => {
@@ -85,6 +88,7 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
     if (result.status === 'applied') {
       savePlanner(result.state);
       setUndoEntry({ label, planner: result.undo });
+      setNewKeys(new Set(result.diff.added));
     }
     return result;
   }, [catalog, planner, savePlanner]);
@@ -93,6 +97,7 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
     if (!undoEntry) return;
     savePlanner(undoEntry.planner);
     setUndoEntry(null);
+    setNewKeys(new Set());
   }, [savePlanner, undoEntry]);
 
   useEffect(() => {
@@ -124,6 +129,7 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
     profile: data.profile,
     notice,
     undoLabel: undoEntry?.label ?? null,
+    newKeys,
     apply,
     undo,
     clearUndo: () => setUndoEntry(null),

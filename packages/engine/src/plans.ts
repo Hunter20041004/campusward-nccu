@@ -1,7 +1,7 @@
 // 主方案與備案：一批變更（Change[]）是一個復原單位；大改動前自動另存備案。
 
 import { DEFAULT_INTERNSHIP_SETTINGS, type InternshipSettings } from './internship.ts';
-import { addCourse, removeCourse, setAttendance, totalCredits, type Attendance, type PlanItem, type ScheduleCourse } from './schedule/selection.ts';
+import { addCourse, removeCourse, setAttendance, setStatus, totalCredits, type Attendance, type PlanItem, type PlanItemStatus, type ScheduleCourse } from './schedule/selection.ts';
 
 /** 偏好類條件：學生與 AI 都可以調整（身分與資格條件不在這裡，只能由學生本人勾選）。 */
 export interface Preferences {
@@ -36,7 +36,10 @@ export type Change =
   | { type: 'setAttendance'; key: string; attendance: Attendance }
   | { type: 'createPlan'; name: string }
   | { type: 'switchPlan'; planId: string }
-  | { type: 'setPreference'; freeDays?: number[]; internship?: InternshipSettings };
+  | { type: 'setPreference'; freeDays?: number[]; internship?: InternshipSettings }
+  // 以下只供畫面使用，AI 動作清單（ai/changeSet）不會產生。
+  | { type: 'setLock'; key: string; locked: boolean }
+  | { type: 'setStatus'; key: string; status: PlanItemStatus };
 
 export interface ChangeDiff {
   added: string[];
@@ -118,6 +121,10 @@ function applyOne(state: PlannerState, change: Change, catalog: ReadonlyMap<stri
     }
     case 'switchPlan':
       return { ...state, activePlanId: change.planId };
+    case 'setLock':
+      return mutateActive(state, (items) => items.map((item) => (item.key === change.key ? { ...item, locked: change.locked } : item)));
+    case 'setStatus':
+      return mutateActive(state, (items) => setStatus(items, change.key, change.status));
     case 'setPreference':
       return {
         ...state,
