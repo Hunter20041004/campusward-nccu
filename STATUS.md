@@ -7,5 +7,5 @@
 - **設計**：docs/specs/2026-10-28-campusward-nccu-design.md（已核可）。
 - **技術**：packages/engine（TypeScript 純邏輯）＋ apps/web（React、Vite、Tailwind、daisyUI）；使用者自帶 Gemini 金鑰＋學生身分驗證；Cloudflare Pages 靜態部署。
 - **計畫**：docs/plans/2026-10-28-campusward-nccu-implementation.md（經三方審查與裁決修訂）。
-- **進度**：Phase 0 本機部分完成（工作區、引擎隔離、四道專案檢查、CI 設定、提交前檢查）；公開儲存庫 Hunter20041004/campusward-nccu 已建立。Phase 1 引擎完成（382 個測試，經程式碼審查修正）。2.5 全人系統匯出檔解析完成（435 個測試）。每日抓課程依使用者決定暫緩。身分驗證依使用者決定暫緩（Open NCCU 已有）。下一步：2.8 搜尋建議規定調查或 Phase 3 畫面。
+- **進度**：Phase 0 本機部分完成（工作區、引擎隔離、四道專案檢查、CI 設定、提交前檢查）；公開儲存庫 Hunter20041004/campusward-nccu 已建立。Phase 1 引擎完成（382 個測試，經程式碼審查修正）。2.5 全人系統匯出檔解析完成（435 個測試）。每日抓課程依使用者決定暫緩。身分驗證依使用者決定暫緩（Open NCCU 已有）。Phase 3 畫面主要功能完成（522 單元＋2 端到端），待 115-1 實際快照、finish review 與 DESIGN.md。
 - **舊來源**：/Users/cengweiting/Developer/創業計畫/campusward（政大排課 nccu-course-scheduler、課途徑、選課工作區），搬完後整個移到垃圾桶。

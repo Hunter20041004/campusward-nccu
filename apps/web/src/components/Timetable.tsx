@@ -132,16 +132,15 @@ export function Timetable(props: TimetableProps) {
   const unscheduled = entries.filter((entry) => occupiedMeetings(entry).length === 0);
   const selectedEntry = entries.find(({ course }) => course.key === selected);
 
-  const blockName = (block: Block) => [
-    block.entry.course.title,
-    `${DAY_LABELS[block.day]} ${block.codes}`,
+  // 名稱由看得到的文字組成（WCAG 2.5.3），星期與衝堂、鎖定等狀態以只給螢幕閱讀器的文字接在後面。
+  const blockExtra = (block: Block) => [
+    DAY_LABELS[block.day],
     conflicted.has(block.entry.course.key) ? '衝堂' : '',
     block.entry.item.locked ? '已鎖定' : '',
-    block.entry.item.status !== 'planned' ? STATUS_LABELS[block.entry.item.status] : '',
   ].filter(Boolean).join('，');
 
   return (
-    <section aria-labelledby="timetable-heading" className="relief flex min-h-[28rem] flex-col rounded-box">
+    <section aria-labelledby="timetable-heading" className="relief flex flex-col rounded-box md:min-h-[28rem]">
       <div className="flex items-center gap-2 border-b border-base-300 px-4 py-2">
         <h2 id="timetable-heading" className="flex-1 py-1 text-base font-semibold">課表</h2>
         {entries.length > 0 && (
@@ -188,7 +187,6 @@ export function Timetable(props: TimetableProps) {
                   <button
                     key={`${course.key}-${block.day}-${block.rowStart}`}
                     type="button"
-                    aria-label={blockName(block)}
                     aria-pressed={isSelected}
                     data-conflict={isConflict ? 'true' : undefined}
                     onClick={() => setSelected(isSelected ? null : course.key)}
@@ -210,6 +208,7 @@ export function Timetable(props: TimetableProps) {
                       {item.status !== 'planned' && <span className="rounded-selector bg-secondary px-1 text-secondary-content">{STATUS_LABELS[item.status]}</span>}
                       {item.locked && <Lock className="size-3" aria-hidden="true" />}
                     </span>
+                    <span className="sr-only">，{blockExtra(block)}</span>
                   </button>
                 );
               })}

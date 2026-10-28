@@ -45,7 +45,9 @@ describe('Timetable grid', () => {
   test('places a course on its day and periods', () => {
     setup();
     const block = within(grid()).getByRole('button', { name: /統計學/ });
-    expect(block).toHaveAccessibleName(expect.stringContaining('週一 234'));
+    expect(block).toHaveAccessibleName(expect.stringContaining('統計學'));
+    expect(block).toHaveAccessibleName(expect.stringContaining('234'));
+    expect(block).toHaveAccessibleName(expect.stringContaining('週一'));
     expect(block.style.gridColumnStart).toBe('2');
     expect(block.style.gridRowStart).toBe('3');
     expect(block.style.gridRowEnd).toBe('span 3');

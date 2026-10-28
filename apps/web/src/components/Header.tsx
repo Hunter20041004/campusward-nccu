@@ -11,7 +11,7 @@ export function Header({ query, onQuery, searchRef, termLabel }: {
   return (
     <header className="sticky top-0 z-20 border-b border-base-300 bg-base-100/95 backdrop-blur-sm">
       <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 md:gap-x-5 md:px-6">
-        <a href="/" className="flex shrink-0 items-center gap-2 rounded-field text-[1.0625rem] font-semibold tracking-tight">
+        <a href="/" className="flex min-h-11 shrink-0 items-center gap-2 rounded-field text-[1.0625rem] font-semibold tracking-tight">
           <OrbMark />
           <span>Campusward</span>
         </a>
