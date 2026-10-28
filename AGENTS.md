@@ -6,4 +6,7 @@
 - 開發一律 TDD：一次一個行為，先看到失敗再實作；Task 收尾跑全套測試。
 - packages/engine 為純 TypeScript，不可依賴 React、瀏覽器專屬 API 或 node:*（儲存與網路經介面注入）。
 - 與 Claude 同時工作時，同一檔案（含鎖檔）同一時間只由一方修改。
-- 測試與建置指令：實作開始後補上。
+- 測試與建置指令（根目錄執行；Node 24，見 .nvmrc）：
+  - `npm install`（會裝提交前檢查；需先 `brew install gitleaks`）
+  - `npm run verify`：lint → typecheck → 單元測試 → 專案檢查（學號、寫死學期、品牌字樣、workflow 釘版）
+  - 個別：`npm test`、`npm run lint`、`npm run typecheck`、`npm run check`

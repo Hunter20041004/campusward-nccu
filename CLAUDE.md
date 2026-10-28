@@ -9,4 +9,7 @@
 - 使用者自帶 Gemini 金鑰：預設只存記憶體，不寫入長期儲存、匯出檔、網址或日誌；修課紀錄與成績不送給 AI。
 - 開發一律 TDD；packages/engine 不得依賴畫面框架或 node:*。
 - 對使用者一律用繁體中文（台灣用語）。
-- 測試與建置指令：實作開始後補上。
+- 測試與建置指令（根目錄執行；Node 24，見 .nvmrc）：
+  - `npm install`（會裝提交前檢查；需先 `brew install gitleaks`）
+  - `npm run verify`：lint → typecheck → 單元測試 → 專案檢查（學號、寫死學期、品牌字樣、workflow 釘版）
+  - 個別：`npm test`、`npm run lint`、`npm run typecheck`、`npm run check`
