@@ -1,58 +1,96 @@
-import { useRef, useState } from 'react';
+import { toScheduleCourse, type Course, type StorageLike } from '@campusward/engine';
+import { useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header.tsx';
 import { MobileNav, type MobileView } from './components/MobileNav.tsx';
 import { PlanBar } from './components/PlanBar.tsx';
+import { SearchPanel } from './components/SearchPanel.tsx';
 import { SidePanel, type SideTab } from './components/SidePanel.tsx';
 import { Timetable } from './components/Timetable.tsx';
+import { UndoToast } from './components/UndoToast.tsx';
+import { browserStorage } from './data/browserStorage.ts';
 import { httpCatalogSource, type CatalogSource } from './data/catalog.ts';
 import { useCatalog } from './data/useCatalog.ts';
+import { usePlanner } from './data/usePlanner.ts';
 
-export function App({ catalog = httpCatalogSource }: { catalog?: CatalogSource }) {
+interface ViewState {
+  query: string;
+  sideTab: SideTab;
+  mobileView: MobileView;
+}
+
+// 手機一次只顯示一個區塊；桌機兩欄同時顯示。
+const mobileOnly = (visible: boolean) => (visible ? '' : 'hidden md:block');
+
+const NO_COURSES: readonly Course[] = [];
+
+export function App({ catalog = httpCatalogSource, storage }: { catalog?: CatalogSource; storage?: StorageLike }) {
   const data = useCatalog(catalog);
-  const [query, setQuery] = useState('');
-  const [sideTab, setSideTab] = useState<SideTab>('search');
-  const [mobileView, setMobileView] = useState<MobileView>('timetable');
+  const storageRef = useRef<StorageLike | null>(storage ?? null);
+  if (!storageRef.current) storageRef.current = browserStorage();
+  const ready = data.status === 'ready';
+  const courses = ready ? data.courses : NO_COURSES;
+  // 載入前以空學期代碼呼叫：不讀寫任何學期，版面只有一份，載入前後不會重建。
+  const planner = usePlanner({ term: ready ? data.term : '', courses, storage: storageRef.current });
+  const [view, setViewState] = useState<ViewState>({ query: '', sideTab: 'search', mobileView: 'timetable' });
+  const setView = (update: Partial<ViewState>) => setViewState((current) => ({ ...current, ...update }));
   const searchRef = useRef<HTMLInputElement>(null);
+  const scheduledKeys = useMemo(() => new Set(planner.activePlan.items.map(({ key }) => key)), [planner.activePlan.items]);
+  const candidateKeys = useMemo(() => new Set(planner.planner.candidates), [planner.planner.candidates]);
+  const keyOf = (course: Course) => toScheduleCourse(course).key;
 
-  const handleQuery = (value: string) => {
-    setQuery(value);
-    setSideTab('search');
-    if (value) setMobileView('search');
-  };
-
+  const handleQuery = (query: string) => setView({ query, sideTab: 'search', ...(query ? { mobileView: 'search' as const } : {}) });
   const startSearch = () => {
-    setSideTab('search');
+    setView({ sideTab: 'search' });
     searchRef.current?.focus();
   };
-
-  const handleView = (view: MobileView) => {
-    setMobileView(view);
-    if (view !== 'timetable') setSideTab(view);
-  };
-
-  // 手機一次只顯示一個區塊；桌機兩欄同時顯示。
-  const mobileOnly = (visible: boolean) => (visible ? '' : 'hidden md:block');
+  const handleView = (mobileView: MobileView) => setView({ mobileView, ...(mobileView !== 'timetable' ? { sideTab: mobileView } : {}) });
 
   return (
-    <div className="min-h-dvh pb-20 md:pb-8">
-      <Header query={query} onQuery={handleQuery} searchRef={searchRef} termLabel={data.status === 'ready' ? data.label : data.status === 'loading' ? '載入中' : '—'} />
-      <main data-mobile-view={mobileView} className="mx-auto max-w-[1440px] px-4 pt-4 md:px-6">
+    <div className="min-h-dvh pb-24 md:pb-10">
+      <Header
+        query={view.query}
+        onQuery={handleQuery}
+        searchRef={searchRef}
+        termLabel={ready ? data.label : data.status === 'loading' ? '載入中' : '—'}
+      />
+      <main data-mobile-view={view.mobileView} className="mx-auto max-w-[1440px] px-4 pt-4 md:px-6">
         {data.status === 'error' && (
           <p role="alert" className="mb-3 rounded-field border border-coral-ink/40 bg-error/10 px-4 py-3 text-sm text-coral-ink">
             課程資料暫時載入不了，請檢查網路後重新整理。已排的課表仍保存在這台裝置。
           </p>
         )}
-        <PlanBar credits={0} />
+        {planner.notice && (
+          <p role="alert" className="mb-3 flex items-start gap-3 rounded-field border border-primary/40 bg-primary/10 px-4 py-3 text-sm">
+            <span className="flex-1">{planner.notice}</span>
+            <button type="button" className="btn btn-ghost btn-sm min-h-11" onClick={planner.dismissNotice}>知道了</button>
+          </p>
+        )}
+        <PlanBar credits={planner.credits} />
         <div className="mt-3 grid gap-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <div className={mobileOnly(mobileView === 'timetable')}>
-            <Timetable onStartSearch={startSearch} onImport={() => {}} />
+          <div className={mobileOnly(view.mobileView === 'timetable')}>
+            <Timetable entries={planner.entries} conflicts={planner.conflicts} onStartSearch={startSearch} onImport={() => {}} />
           </div>
-          <div className={mobileOnly(mobileView !== 'timetable')}>
-            <SidePanel tab={sideTab} onTab={setSideTab} query={query} />
+          <div className={mobileOnly(view.mobileView !== 'timetable')}>
+            <SidePanel tab={view.sideTab} onTab={(sideTab) => setView({ sideTab })}>
+              {ready ? (
+                <SearchPanel
+                  courses={courses}
+                  query={view.query}
+                  scheduledKeys={scheduledKeys}
+                  candidateKeys={candidateKeys}
+                  onAdd={(course) => planner.apply([{ type: 'addToSchedule', key: keyOf(course) }], `已加入「${course.title}」`)}
+                  onRemove={(course) => planner.apply([{ type: 'removeFromSchedule', key: keyOf(course) }], `已移出「${course.title}」`)}
+                  onCandidate={(course) => planner.apply([{ type: 'addCandidate', key: keyOf(course) }], `已放進候選「${course.title}」`)}
+                />
+              ) : (
+                <p className="text-sm text-base-content/80">{data.status === 'loading' ? '正在載入課程資料…' : '課程資料載入失敗。'}</p>
+              )}
+            </SidePanel>
           </div>
         </div>
       </main>
-      <MobileNav view={mobileView} onView={handleView} />
+      <UndoToast label={planner.undoLabel} onUndo={planner.undo} onExpire={planner.clearUndo} />
+      <MobileNav view={view.mobileView} onView={handleView} />
     </div>
   );
 }

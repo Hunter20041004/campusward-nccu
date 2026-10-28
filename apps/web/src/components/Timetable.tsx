@@ -1,6 +1,22 @@
+import type { Conflict, ScheduleEntry } from '@campusward/engine';
 import { FileUp, Search } from 'lucide-react';
 
-export function Timetable({ onStartSearch, onImport }: { onStartSearch: () => void; onImport: () => void }) {
+export function Timetable({ entries, onStartSearch, onImport }: {
+  entries: readonly ScheduleEntry[];
+  conflicts: readonly Conflict[];
+  onStartSearch: () => void;
+  onImport: () => void;
+}) {
+  if (entries.length) {
+    return (
+      <section aria-labelledby="timetable-heading" className="relief flex min-h-[28rem] flex-col rounded-box">
+        <h2 id="timetable-heading" className="border-b border-base-300 px-4 py-3 text-base font-semibold">課表</h2>
+        <ul className="space-y-1 p-4 text-sm">
+          {entries.map(({ course }) => <li key={course.key}>{course.title}</li>)}
+        </ul>
+      </section>
+    );
+  }
   return (
     <section aria-labelledby="timetable-heading" className="relief flex min-h-[28rem] flex-col rounded-box">
       <h2 id="timetable-heading" className="border-b border-base-300 px-4 py-3 text-base font-semibold">課表</h2>
