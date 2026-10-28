@@ -24,3 +24,11 @@
 - 完成：0.1–0.6。`npm run verify` 全過（lint、typecheck、32 個測試、專案檢查 0 問題）；每道檢查都先用植入違規實測擋下。提交前檢查需本機有 gitleaks（已以 brew 安裝 8.30.1）。
 - 0.7 舊金鑰盤點（gitleaks 掃舊專案全歷史＋目錄，值已遮蔽）：真正的金鑰只在舊專案 `.env`（未進版控），三把：GEMINI_API_KEY、GROQ_API_KEY、TAVILY_API_KEY；其餘命中為課程資料與驗證快照的誤判。Google Sheets 憑證檔路徑已不存在。⛔ 待使用者到各服務後台作廢。
 - 0.8 完成：使用者確認後建立公開儲存庫 https://github.com/Hunter20041004/campusward-nccu ；推送前全歷史 gitleaks 無洩漏；已開 secret scanning、push protection、Dependabot alerts；workflow 預設權限 read、允許 Actions 建立 PR。CI 祕密掃描改為直接執行雜湊核對過的 gitleaks 8.30.1（官方 action 在含根提交的推送上算錯範圍）。
+
+## 2026-10-28 Phase 1 進行中（1.1–1.4、1.6 完成）
+
+- 完成：periods（節次＋來回轉換 property 測試）、term（學期解析與預設學期）、official（官方列→Course：保留設計 8.2 欄位、連結白名單、控制字元與長度限制、備註分類）、corrections（data/corrections/1151.json，鍵＝學期:課號）、eligibility（資格判斷與條件定義）。`npm run verify` 146 個測試全過。
+- 舊測試移植：用 scratchpad 的轉換腳本做語法轉換（assert→expect），逐檔核對判斷數。已移植：nccu-periods、nccu-course-notes、nccu-url、syllabus-state、nccu-course-adapter（正規化與更正部分）、eligibility-conditions、planner-core（資格部分）。
+- 行為改變（已寫入提交說明）：lmtKind 是通識類別（1151 實測），不再併入修課限制；學生選擇與官方課程分開，attendance 改為 course.delivery.defaultAttendance；查無開課原因與示範條件改由參數提供。
+- 與計畫不同：pickDefaultTerm 只依「已有資料的最新學期」，不用行事曆（較簡單且符合設計）。
+- 下一步：1.5 衝堂／學分／選取／鎖定（需設計 Selection 狀態，承接 course-reconciler 6 個測試與 planner-core 其餘約 40 個測試）。本機提交尚未推送。
