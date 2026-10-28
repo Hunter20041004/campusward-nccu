@@ -1,5 +1,7 @@
 import {
+  BACKUP_KEY,
   applyChanges,
+  createEmptyData,
   createPlannerState,
   findConflicts,
   loadStoredData,
@@ -46,6 +48,10 @@ export interface PlannerApi {
   clearUndo: () => void;
   dismissNotice: () => void;
   setProfile: (profile: IdentityProfile) => void;
+  /** 匯入：先把目前資料存成備份，再取代。 */
+  replaceData: (next: StoredData) => void;
+  /** 清除本機資料（主資料與備份）。 */
+  clearAll: () => void;
 }
 
 /** 某學期的排課狀態：透過引擎套用變更、存到本機、提供復原。 */
@@ -135,5 +141,17 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
     clearUndo: () => setUndoEntry(null),
     dismissNotice: () => setNotice(null),
     setProfile: (profile) => save({ ...data, profile }),
+    replaceData: (next) => {
+      saveStoredData(storage, data, BACKUP_KEY);
+      save(next);
+      setUndoEntry(null);
+    },
+    clearAll: () => {
+      const empty = createEmptyData();
+      saveStoredData(storage, empty, BACKUP_KEY);
+      save(empty);
+      setUndoEntry(null);
+      setNewKeys(new Set());
+    },
   };
 }
