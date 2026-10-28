@@ -43,9 +43,14 @@ function requiredRule(courseCode: string, rationale: string, conditionLabel: str
   };
 }
 
+/** 擋修先修條件 id：課名全形括號轉半形、去空白。修課紀錄（studentExport）用同一個函式產生，確保對得上。 */
+export function prerequisiteConditionId(courseTitle: string): string {
+  return `prerequisite-course:${courseTitle.replaceAll('（', '(').replaceAll('）', ')').replaceAll(/\s+/g, '')}`;
+}
+
 function blockedPrerequisiteRule(courseTitle: string): EligibilityRule {
   return {
-    conditionId: `prerequisite-course:${courseTitle}`,
+    conditionId: prerequisiteConditionId(courseTitle),
     conditionLabel: `我修過${courseTitle}`,
     conditionDescription: `政大官方擋修：沒修過${courseTitle}的話，選課系統會擋下這門課。`,
     enforcement: 'required',

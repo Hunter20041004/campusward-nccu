@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { profileConditionIds, type ConditionDefinition, type IdentityProfile } from './eligibility.ts';
 import { DEFAULT_INTERNSHIP_SETTINGS, validateInternshipSettings, type InternshipSettings } from './internship.ts';
 import { createPlannerState, type Plan, type PlannerState } from './plans.ts';
+import { parseUntrustedJson } from './safeJson.ts';
 import type { PlanItem, ScheduleCourse } from './schedule/selection.ts';
 
 export const STORAGE_KEY = 'campusward:v1';
@@ -213,19 +214,10 @@ function pickData(data: StoredData): StoredData {
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; code: StorageErrorCode };
 
-class PrototypeKeyError extends Error {}
-
 function parseJson(raw: string): Parsed<unknown> {
-  if (raw.length > MAX_RAW_LENGTH) return { ok: false, code: 'TOO_LARGE' };
-  try {
-    // 原型污染防護：出現 __proto__ 鍵就整份拒絕（驗證程式庫會默默略過它，這裡明確擋下）。
-    return { ok: true, value: JSON.parse(raw, (key, value: unknown) => {
-      if (key === '__proto__') throw new PrototypeKeyError();
-      return value;
-    }) as unknown };
-  } catch (error) {
-    return { ok: false, code: error instanceof PrototypeKeyError ? 'INVALID_STATE' : 'INVALID_JSON' };
-  }
+  const result = parseUntrustedJson(raw, MAX_RAW_LENGTH);
+  if (result.ok) return result;
+  return { ok: false, code: result.code === 'PROTOTYPE_KEY' ? 'INVALID_STATE' : result.code };
 }
 
 function validateData(value: unknown): Parsed<StoredData> {
