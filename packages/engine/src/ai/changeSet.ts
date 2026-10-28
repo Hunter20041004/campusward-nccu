@@ -78,9 +78,8 @@ function editDistance(first: string, second: string): number {
 }
 
 /** 課程參照：完整 key、官方課號，或差 1–2 字且「最接近者唯一」的課號（AI 打錯字）。其餘一律視為未知課程。 */
-function resolveCourse(reference: string, catalog: ReadonlyMap<string, ScheduleCourse>): string {
+function resolveCourse(reference: string, catalog: ReadonlyMap<string, ScheduleCourse>, byCode: ReadonlyMap<string, string>): string {
   if (catalog.has(reference)) return reference;
-  const byCode = new Map([...catalog.values()].filter((course) => course.code).map((course) => [course.code!, course.key]));
   const exact = byCode.get(reference);
   if (exact) return exact;
   let best = 3;
@@ -111,16 +110,18 @@ export function parseAiActions(content: string, catalog: ReadonlyMap<string, Sch
   if (changeCount > MAX_CHANGE_ACTIONS) throw new AiContractError(`一次最多 ${MAX_CHANGE_ACTIONS} 個變更。`);
   const changes: Change[] = [];
   const requests: AiRequest[] = [];
+  const byCode = new Map([...catalog.values()].filter((course) => course.code).map((course) => [course.code!, course.key]));
+  const resolve = (reference: string) => resolveCourse(reference, catalog, byCode);
   actions.forEach((action) => {
     switch (action.type) {
       case 'addCandidate':
       case 'removeCandidate':
       case 'addToSchedule':
       case 'removeFromSchedule':
-        changes.push({ type: action.type, key: resolveCourse(action.course, catalog) });
+        changes.push({ type: action.type, key: resolve(action.course) });
         break;
       case 'setAttendance':
-        changes.push({ type: 'setAttendance', key: resolveCourse(action.course, catalog), attendance: action.attendance });
+        changes.push({ type: 'setAttendance', key: resolve(action.course), attendance: action.attendance });
         break;
       case 'createPlan':
       case 'switchPlan':
@@ -134,7 +135,7 @@ export function parseAiActions(content: string, catalog: ReadonlyMap<string, Sch
         });
         break;
       case 'openCourse':
-        requests.push({ type: 'openCourse', course: resolveCourse(action.course, catalog) });
+        requests.push({ type: 'openCourse', course: resolve(action.course) });
         break;
       default:
         requests.push(action);
@@ -157,7 +158,11 @@ export type AiApplyResult =
   | Extract<ApplyResult, { status: 'needsConfirmation' }>
   | { status: 'rejected'; violations: Violation[] };
 
-const violationSignature = (violation: Violation) => `${violation.code}|${[...violation.courseKeys].sort().join(',')}`;
+// 整份課表層級的問題（學分、實習天數）會列出所有課，只比對種類；其餘依涉及的課比對。
+const SCHEDULE_WIDE = new Set<Violation['code']>(['minimum-credits', 'maximum-credits', 'minimum-internship-days']);
+const violationSignature = (violation: Violation) => (
+  SCHEDULE_WIDE.has(violation.code) ? violation.code : `${violation.code}|${[...violation.courseKeys].sort().join(',')}`
+);
 
 function validateActive(state: PlannerState, catalog: ReadonlyMap<string, ScheduleCourse>, context: AiApplyContext) {
   const plan = state.plans.find(({ id }) => id === state.activePlanId);
@@ -181,9 +186,13 @@ export function applyAiChangeSet(
   context: AiApplyContext,
 ): AiApplyResult {
   const violations: Violation[] = [];
-  const lockedKeys = new Set(state.plans.find(({ id }) => id === state.activePlanId)?.items.filter(({ locked }) => locked).map(({ key }) => key));
+  const lockedIn = (plans: PlannerState['plans']) => new Set(plans.flatMap(({ items }) => items.filter(({ locked }) => locked).map(({ key }) => key)));
+  const lockedInActive = lockedIn(state.plans.filter(({ id }) => id === state.activePlanId));
+  // 移出候選清單會從所有方案移除，所以任一方案鎖定都不能移。
+  const lockedAnywhere = lockedIn(state.plans);
   changes.forEach((change) => {
-    if ((change.type === 'removeFromSchedule' || change.type === 'removeCandidate') && lockedKeys.has(change.key)) {
+    const locked = change.type === 'removeFromSchedule' ? lockedInActive : change.type === 'removeCandidate' ? lockedAnywhere : null;
+    if (locked && 'key' in change && locked.has(change.key)) {
       violations.push({ code: 'locked-course-removed', message: `${catalog.get(change.key)?.title ?? change.key} 已鎖定，不能移除。`, courseKeys: [change.key] });
     }
     if (change.type === 'setPreference' && change.internship) {

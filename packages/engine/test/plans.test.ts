@@ -181,3 +181,62 @@ describe('undo property', () => {
     }));
   });
 });
+
+// 程式碼審查修正（2026-10-28）
+describe('review fixes', () => {
+  test('undo keeps planner preferences', () => {
+    const undo = createUndo<PlannerState>({ now: () => 0 });
+    const state = createPlannerState();
+    state.preferences.freeDays = [5];
+    undo.capture(state, '改動');
+    expect(undo.restore()?.preferences.freeDays).toEqual([5]);
+  });
+
+  test('never deletes the active plan when replacing the oldest automatic backup', () => {
+    let state = withSchedule('a', 'b', 'c', 'd', 'e');
+    for (const key of ['a', 'b', 'c', 'd', 'e']) {
+      const result = applyChanges(state, [{ type: 'removeFromSchedule', key }], catalog, { autoBackupLimit: 5 });
+      if (result.status !== 'applied') throw new Error(result.status);
+      state = result.state;
+    }
+    const oldest = state.plans.find(({ auto }) => auto)!;
+    const switched = { ...state, activePlanId: oldest.id };
+    const result = applyChanges(switched, [{ type: 'removeFromSchedule', key: 'a' }], catalog, { autoBackupLimit: 5, replaceOldestAutoBackup: true });
+    if (result.status !== 'applied') throw new Error(result.status);
+    expect(result.state.plans.some(({ id }) => id === result.state.activePlanId)).toBe(true);
+    expect(keys(result.state)).not.toContain('a');
+  });
+
+  test('reports and backs up changes made after switching plans in the same batch', () => {
+    const created = applyChanges(withSchedule('a', 'b'), [{ type: 'createPlan', name: '備案' }], catalog);
+    if (created.status !== 'applied') throw new Error(created.status);
+    const result = applyChanges(created.state, [{ type: 'switchPlan', planId: 'plan-1' }, { type: 'removeFromSchedule', key: 'a' }], catalog);
+    if (result.status !== 'applied') throw new Error(result.status);
+    expect(result.diff).toEqual({ added: [], removed: ['a'] });
+    expect(result.autoBackupPlanId).toBeTruthy();
+  });
+
+  test('reports courses added to a newly created plan', () => {
+    const result = applyChanges(withSchedule('a'), [{ type: 'createPlan', name: '備案' }, { type: 'addToSchedule', key: 'b' }], catalog);
+    expect(result.status === 'applied' && result.diff).toEqual({ added: ['b'], removed: [] });
+    expect(result.status === 'applied' && result.autoBackupPlanId).toBeUndefined();
+  });
+
+  test('can remove a course that is no longer in the catalog', () => {
+    const state = withSchedule('a');
+    const result = applyChanges(state, [{ type: 'removeFromSchedule', key: 'a' }, { type: 'removeCandidate', key: 'a' }], new Map(), { autoBackup: false });
+    expect(result.status === 'applied' && keys(result.state)).toEqual([]);
+  });
+
+  test('gives each automatic backup a distinct name after reaching the limit', () => {
+    let state = withSchedule('a', 'b', 'c', 'd', 'e');
+    for (const key of ['a', 'b', 'c', 'd', 'e']) {
+      const result = applyChanges(state, [{ type: 'removeFromSchedule', key }], catalog, { autoBackupLimit: 3, replaceOldestAutoBackup: true });
+      if (result.status !== 'applied') throw new Error(result.status);
+      state = result.state;
+    }
+    const names = state.plans.filter(({ auto }) => auto).map(({ name }) => name);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toEqual(['自動備案 3（改動前）', '自動備案 4（改動前）', '自動備案 5（改動前）']);
+  });
+});

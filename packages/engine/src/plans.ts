@@ -84,7 +84,9 @@ function validate(state: PlannerState, changes: readonly Change[], catalog: Read
   const errors: string[] = [];
   const planIds = new Set(state.plans.map(({ id }) => id));
   changes.forEach((change) => {
-    if ('key' in change && !catalog.has(change.key)) errors.push(`找不到課程 ${change.key}`);
+    // 移除不需查目錄：課程從快照消失後，學生仍要能把它移出。
+    const needsCourse = change.type === 'addCandidate' || change.type === 'addToSchedule' || change.type === 'setAttendance';
+    if (needsCourse && !catalog.has(change.key)) errors.push(`找不到課程 ${change.key}`);
     if (change.type === 'createPlan') planIds.add(nextPlanId([...planIds].map((id) => ({ id }) as Plan)));
     if (change.type === 'switchPlan' && !planIds.has(change.planId)) errors.push(`找不到方案 ${change.planId}`);
   });
@@ -146,25 +148,32 @@ export function applyChanges(
   if (errors.length) return { status: 'rejected', errors };
 
   const applied = changes.reduce((current, change) => applyOne(current, change, catalog), state);
-  const before = activeItems(state);
-  const diff = diffItems(before, applied.activePlanId === state.activePlanId ? activeItems(applied) : before);
-  const isBig = diff.removed.length > 0 || diff.added.length + diff.removed.length >= BIG_CHANGE_COURSES;
+  // 比較的是「最後所在方案」改動前後；新建的方案以複製來源（原本的方案）為基準。
+  const existing = state.plans.find(({ id }) => id === applied.activePlanId);
+  const before = existing?.items ?? activeItems(state);
+  const diff = diffItems(before, activeItems(applied));
+  // 只有改到原本就存在的方案才需要備份；新建的方案本身就是備案。
+  const isBig = Boolean(existing) && (diff.removed.length > 0 || diff.added.length + diff.removed.length >= BIG_CHANGE_COURSES);
   if (!(options.autoBackup ?? true) || !isBig) {
     return { status: 'applied', state: applied, undo: state, diff };
   }
 
   const limit = options.autoBackupLimit ?? DEFAULT_AUTO_BACKUP_LIMIT;
-  const autoPlans = state.plans.filter(({ auto }) => auto);
+  const autoPlans = applied.plans.filter(({ auto }) => auto);
   let plans = applied.plans;
   if (autoPlans.length >= limit) {
     if (!options.replaceOldestAutoBackup) return { status: 'needsConfirmation', reason: 'autoBackupFull', limit };
-    const oldest = autoPlans[0]?.id;
+    // 最舊的一份若正是學生正在看的方案，就跳過它，改刪下一份。
+    const oldest = autoPlans.find(({ id }) => id !== applied.activePlanId)?.id;
     plans = plans.filter(({ id }) => id !== oldest);
   }
   const backupId = nextPlanId(applied.plans);
+  const lastNumber = applied.plans.reduce((highest, { auto, name }) => (
+    auto ? Math.max(highest, Number(/^自動備案 (\d+)/.exec(name)?.[1] ?? 0)) : highest
+  ), 0);
   const backup: Plan = {
     id: backupId,
-    name: `自動備案 ${autoPlans.length + 1}（改動前）`,
+    name: `自動備案 ${lastNumber + 1}（改動前）`,
     auto: true,
     items: before.map((item) => ({ ...item })),
   };

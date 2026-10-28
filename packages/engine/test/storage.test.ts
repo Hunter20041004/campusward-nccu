@@ -253,3 +253,18 @@ describe('two tabs', () => {
     expect(readExternalChange({ key: STORAGE_KEY, newValue: null })).toBeNull();
   });
 });
+
+// 程式碼審查修正：舊資料裡單一壞掉的手動課程只略過該課，不讓整份匯入失敗
+test('skips a malformed legacy manual course instead of failing the whole import', () => {
+  const raw = JSON.stringify({ format: 'sunbreak-planner', version: 1, state: {
+    selectedIds: ['manual-1', 'manual-2'],
+    addedCourses: [
+      { id: 'manual-1', title: '壞課', source: 'manual', schedule: { day: '週二', start: 'x', end: 0 } },
+      { id: 'manual-2', title: '好課', source: 'manual', schedule: { day: 2, start: 550, end: 720, label: '週二 234' } },
+    ],
+  } });
+  const result = previewImport(raw, createEmptyData(), { legacyTerm: '1151' });
+  if (!result.valid) throw new Error(result.error.code);
+  expect(result.data.terms['1151']?.manualCourses.map(({ key }) => key)).toEqual(['manual-2']);
+  expect(result.summary.skippedCourses).toBe(2);
+});

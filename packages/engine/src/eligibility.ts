@@ -86,7 +86,8 @@ export function evaluateEligibility(
     return { status: 'review', reasons: ['碩士班課程，課綱開放大三以上，需確認學分認列'] };
   }
   if (section.level === 'graduate' && profile.level === 'undergrad') reasons.push('僅限碩、博士班');
-  if (section.minYear && year < section.minYear) reasons.push(`限大${section.minYear}以上`);
+  // 學生還沒填年級時不以年級擋下（舊版 undefined < n 為 false，行為一致）。
+  if (section.minYear && profile.year !== undefined && year < section.minYear) reasons.push(`限大${section.minYear}以上`);
   if (
     section.programs?.length
     && !section.programs.some((program) => (

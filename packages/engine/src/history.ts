@@ -1,6 +1,7 @@
 // 一鍵復原：保留最近一次快照，時限內可還原。移植自舊 planner-undo（含剔除私人欄位）。
 
-const PRIVATE_KEYS = new Set(['apiKey', 'profileText', 'futureDirection', 'semesterGoals', 'preferences', 'screenshot', 'image']);
+// 舊版的 preferences 是給 AI 的自由文字；新版 PlannerState.preferences 是排課偏好，必須保留，所以不在清單中。
+const PRIVATE_KEYS = new Set(['apiKey', 'profileText', 'futureDirection', 'semesterGoals', 'screenshot', 'image']);
 
 function safeClone<T>(value: T): T {
   if (Array.isArray(value)) return value.map(safeClone) as T;
