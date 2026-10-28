@@ -26,7 +26,7 @@ describe('toScheduleCourse', () => {
   test('keys an official course by term and code and keeps its official rules', () => {
     const { course } = rowToCourse(officialRow({ note: '＠備註:僅限合成系學生修讀' }), TERM);
     const scheduled = toScheduleCourse(course!);
-    expect(scheduled).toMatchObject({ key: '1151:900123001', title: '合成課程概論', credits: 3, itemType: 'course', source: 'official' });
+    expect(scheduled).toMatchObject({ key: '1151:900123001', title: '合成課程概論', code: '900123001', teacher: '王合成', credits: 3, itemType: 'course', source: 'official' });
     expect(scheduled.meetings).toEqual([{ day: 4, start: 790, end: 960, label: '四D56' }]);
     expect(scheduled.eligibility.eligibilityRules?.[0]?.conditionId).toBe('official-restriction:900123001');
   });

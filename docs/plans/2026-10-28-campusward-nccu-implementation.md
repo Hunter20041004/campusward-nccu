@@ -341,6 +341,7 @@ LICENSE                     MIT（已存在）
 
 ## 11. 實測紀錄（隨執行補上）
 
+- 2026-10-28 任務 1.8：`npm run bench`（本機 Node 24）5,000 筆合成課程關鍵字搜尋中位數 2.25 ms（p95 2.36）、星期＋節次篩選中位數 1.42 ms（p95 1.51），門檻 50 ms。Vitest 5 已無 `bench` 匯出，改用 tsx 計時腳本。
 - 2026-10-28 Phase 0：TypeScript 6 預設 `types` 已是空陣列（拿掉設定仍不載入 Node 型別；明設 `types: ["node"]` 時型別測試抓到 fetch、process、Buffer、localStorage 外洩）；eslint-plugin-react 7.37 不支援 ESLint 10，固定 ESLint 9；CI action 釘 SHA：checkout v7.0.1、setup-node v7.1.0、gitleaks-action v3.0.0（皆發布逾兩週）；提交前檢查實測擋下假 Google 金鑰與植入的學號／學期／品牌違規。
 - 2026-10-28：舊專案 `npm test` 全過（單元 252、畫面 112）。es.nccu 回傳 31 個欄位，含設計 8.2 指定欄位；Node 24 fetch 可直接連線；查「0」「3」各 500 筆、約 0.5 秒（設計 8.2「寬查詢約 16–18 秒」可能指其他查詢型態，2.3 實測時一併確認）。
 

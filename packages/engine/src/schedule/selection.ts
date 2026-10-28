@@ -12,6 +12,9 @@ export interface ScheduleCourse {
   /** 官方課程為「學期:課號」，手動課程為 manual-N。 */
   key: string;
   title: string;
+  /** 官方課號（手動課程沒有）。 */
+  code?: string;
+  teacher?: string;
   credits: number;
   itemType: 'course' | 'club' | 'activity';
   meetings: Meeting[];
