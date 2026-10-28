@@ -33,4 +33,5 @@
 - 與計畫不同：pickDefaultTerm 只依「已有資料的最新學期」，不用行事曆（較簡單且符合設計）。
 - 1.5 完成：schedule/selection（ScheduleCourse＝課程、PlanItem＝學生選擇：出席方式、狀態 planned/registered/enrolled、鎖定、上次看到的更正）、schedule/catalog（官方→ScheduleCourse、手動課程、候選清單）、schedule/agenda。共 196 個測試。
 - 未移植（提交說明逐條列出）：多選一指導老師／時段與 preset 相關 8 個測試，因新資料來源不會產生這類課，只服務舊示範資料。若日後需要，從舊 planner-core 取回。
-- 下一步：1.7 實習空檔（含 planner-core 實習測試）→ 1.8 搜課篩選。使用者要求暫不推送，本機領先 origin。
+- 1.7 完成：internship（自動找空檔／固定時段、待確認天數）。舊 planner-core 的 calculateInternshipAvailability 舊畫面未使用，不移植，情境由 internship 第一個測試涵蓋。共 202 個測試。
+- 下一步：1.8 搜課篩選。使用者要求暫不推送，本機領先 origin。
