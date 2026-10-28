@@ -7,7 +7,7 @@ test('engine package loads', () => {
 
 test('exposes every module through the package entry point', async () => {
   const engine = await import('../src/index.ts');
-  for (const name of ['parseMeetings', 'parseTerm', 'rowToCourse', 'applyCorrections', 'evaluateEligibility', 'findConflicts', 'calculateInternshipPlan', 'searchCourses', 'checkEnrollmentRules', 'applyChanges', 'applyAiChangeSet', 'matchRecognizedCourses', 'maximumCreditSelection', 'loadStoredData']) {
+  for (const name of ['parseMeetings', 'parseTerm', 'rowToCourse', 'applyCorrections', 'evaluateEligibility', 'findConflicts', 'calculateInternshipPlan', 'searchCourses', 'checkEnrollmentRules', 'applyChanges', 'applyAiChangeSet', 'matchRecognizedCourses', 'maximumCreditSelection', 'loadStoredData', 'parseStudentExport']) {
     expect(typeof (engine as Record<string, unknown>)[name]).toBe('function');
   }
 });
