@@ -1,14 +1,15 @@
 import { Sparkles } from 'lucide-react';
 import { OrbMark } from './OrbMark.tsx';
 
-export type SideTab = 'search' | 'ai';
+export type SideTab = 'search' | 'conditions' | 'ai';
 
 const TABS: { id: SideTab; label: string }[] = [
   { id: 'search', label: '搜課' },
+  { id: 'conditions', label: '條件' },
   { id: 'ai', label: 'AI' },
 ];
 
-export function SidePanel({ tab, onTab, children }: { tab: SideTab; onTab: (tab: SideTab) => void; children: React.ReactNode }) {
+export function SidePanel({ tab, onTab, children, conditions }: { tab: SideTab; onTab: (tab: SideTab) => void; children: React.ReactNode; conditions?: React.ReactNode }) {
   return (
     <aside aria-label="側欄" className="relief flex min-h-[28rem] flex-col rounded-box">
       <div role="tablist" aria-label="側欄內容" className="flex gap-1 border-b border-base-300 p-2">
@@ -30,7 +31,7 @@ export function SidePanel({ tab, onTab, children }: { tab: SideTab; onTab: (tab:
         ))}
       </div>
       <div role="tabpanel" id={`side-panel-${tab}`} aria-labelledby={`side-tab-${tab}`} className="flex min-h-0 flex-1 flex-col p-4">
-        {tab === 'search' ? children : (
+        {tab === 'search' ? children : tab === 'conditions' ? conditions : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <OrbMark size={56} />
             <p className="font-medium">AI 光球</p>

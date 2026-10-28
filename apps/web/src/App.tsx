@@ -1,8 +1,10 @@
-import { checkEnrollmentRules, parseEnrollmentRules, toScheduleCourse, type Course, type StorageLike } from '@campusward/engine';
+import { checkEnrollmentRules, parseEnrollmentRules, toScheduleCourse, type Change, type Course, type StorageLike } from '@campusward/engine';
 import enrollmentRules from '../../../data/rules/enrollment-11407.json' with { type: 'json' };
 import { useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header.tsx';
 import { MobileNav, type MobileView } from './components/MobileNav.tsx';
+import { ConditionsPanel } from './components/ConditionsPanel.tsx';
+import { ConfirmDialog } from './components/ConfirmDialog.tsx';
 import { PlanBar } from './components/PlanBar.tsx';
 import { RulesPanel } from './components/RulesPanel.tsx';
 import { SearchPanel } from './components/SearchPanel.tsx';
@@ -42,6 +44,20 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
   const keyOf = (course: Course) => toScheduleCourse(course).key;
   const reminders = useMemo(() => checkEnrollmentRules(planner.entries, planner.profile, RULES), [planner.entries, planner.profile]);
   const titleOf = (key: string) => planner.catalog.get(key)?.title ?? '課程';
+  const [pendingBackup, setPendingBackup] = useState<{ changes: Change[]; label: string } | null>(null);
+  // 大改動前會自動備份；備份滿了先問，不悄悄蓋掉最舊的一份（設計 6.1）。
+  const applyChange = (changes: Change[], label: string) => {
+    const result = planner.apply(changes, label);
+    if (result.status === 'needsConfirmation') setPendingBackup({ changes, label });
+    return result;
+  };
+  const conditionCourses = useMemo(() => {
+    const keys = new Set([...planner.planner.candidates, ...planner.activePlan.items.map(({ key }) => key)]);
+    return [...keys].flatMap((key) => {
+      const course = planner.catalog.get(key);
+      return course ? [course] : [];
+    });
+  }, [planner.activePlan.items, planner.catalog, planner.planner.candidates]);
 
   const handleQuery = (query: string) => setView({ query, sideTab: 'search', ...(query ? { mobileView: 'search' as const } : {}) });
   const startSearch = () => {
@@ -70,7 +86,17 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
             <button type="button" className="btn btn-ghost btn-sm min-h-11" onClick={planner.dismissNotice}>知道了</button>
           </p>
         )}
-        <PlanBar credits={planner.credits} />
+        <PlanBar
+          plans={planner.planner.plans}
+          activePlanId={planner.planner.activePlanId}
+          credits={planner.credits}
+          catalog={planner.catalog}
+          onSwitch={(planId) => applyChange([{ type: 'switchPlan', planId }], `已切換到「${planner.planner.plans.find(({ id }) => id === planId)?.name ?? '方案'}」`)}
+          onCreate={() => {
+            const name = `備案 ${planner.planner.plans.filter(({ auto }) => !auto).length}`;
+            applyChange([{ type: 'createPlan', name }], `已另存「${name}」`);
+          }}
+        />
         <div className="mt-3 grid gap-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div className={mobileOnly(view.mobileView === 'timetable')}>
             <div className="space-y-3">
@@ -82,26 +108,39 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
                 onImport={() => {}}
                 onToggleLock={(key) => {
                   const locked = !planner.activePlan.items.find((item) => item.key === key)?.locked;
-                  planner.apply([{ type: 'setLock', key, locked }], `已${locked ? '鎖定' : '解鎖'}「${titleOf(key)}」`);
+                  applyChange([{ type: 'setLock', key, locked }], `已${locked ? '鎖定' : '解鎖'}「${titleOf(key)}」`);
                 }}
-                onStatus={(key, status) => planner.apply([{ type: 'setStatus', key, status }], `已將「${titleOf(key)}」標為${{ planned: '排入', registered: '已灌檔', enrolled: '已選上' }[status]}`)}
-                onAttendance={(key, attendance) => planner.apply([{ type: 'setAttendance', key, attendance }], `「${titleOf(key)}」改為${attendance === 'async' ? '非同步' : '同步'}上課`)}
-                onRemove={(key) => planner.apply([{ type: 'removeFromSchedule', key }], `已移出「${titleOf(key)}」`)}
+                onStatus={(key, status) => applyChange([{ type: 'setStatus', key, status }], `已將「${titleOf(key)}」標為${{ planned: '排入', registered: '已灌檔', enrolled: '已選上' }[status]}`)}
+                onAttendance={(key, attendance) => applyChange([{ type: 'setAttendance', key, attendance }], `「${titleOf(key)}」改為${attendance === 'async' ? '非同步' : '同步'}上課`)}
+                onRemove={(key) => applyChange([{ type: 'removeFromSchedule', key }], `已移出「${titleOf(key)}」`)}
               />
               {planner.entries.length > 0 && <RulesPanel conflicts={planner.conflicts} reminders={reminders} />}
             </div>
           </div>
           <div className={mobileOnly(view.mobileView !== 'timetable')}>
-            <SidePanel tab={view.sideTab} onTab={(sideTab) => setView({ sideTab })}>
+            <SidePanel
+              tab={view.sideTab}
+              onTab={(sideTab) => setView({ sideTab })}
+              conditions={(
+                <ConditionsPanel
+                  profile={planner.profile}
+                  courses={conditionCourses}
+                  entries={planner.entries}
+                  preferences={planner.planner.preferences}
+                  onProfile={planner.setProfile}
+                  onPreferences={(change) => applyChange([{ type: 'setPreference', ...change }], '已更新偏好')}
+                />
+              )}
+            >
               {ready ? (
                 <SearchPanel
                   courses={courses}
                   query={view.query}
                   scheduledKeys={scheduledKeys}
                   candidateKeys={candidateKeys}
-                  onAdd={(course) => planner.apply([{ type: 'addToSchedule', key: keyOf(course) }], `已加入「${course.title}」`)}
-                  onRemove={(course) => planner.apply([{ type: 'removeFromSchedule', key: keyOf(course) }], `已移出「${course.title}」`)}
-                  onCandidate={(course) => planner.apply([{ type: 'addCandidate', key: keyOf(course) }], `已放進候選「${course.title}」`)}
+                  onAdd={(course) => applyChange([{ type: 'addToSchedule', key: keyOf(course) }], `已加入「${course.title}」`)}
+                  onRemove={(course) => applyChange([{ type: 'removeFromSchedule', key: keyOf(course) }], `已移出「${course.title}」`)}
+                  onCandidate={(course) => applyChange([{ type: 'addCandidate', key: keyOf(course) }], `已放進候選「${course.title}」`)}
                 />
               ) : (
                 <p className="text-sm text-base-content/80">{data.status === 'loading' ? '正在載入課程資料…' : '課程資料載入失敗。'}</p>
@@ -110,6 +149,17 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
           </div>
         </div>
       </main>
+      <ConfirmDialog
+        open={pendingBackup !== null}
+        title="自動備案已滿"
+        message="改動前會自動備份原本的課表，但自動備案已經有 5 份。要刪掉最舊的一份再繼續嗎？"
+        confirmLabel="刪掉最舊的並繼續"
+        onConfirm={() => {
+          if (pendingBackup) planner.apply(pendingBackup.changes, pendingBackup.label, { replaceOldestAutoBackup: true });
+          setPendingBackup(null);
+        }}
+        onCancel={() => setPendingBackup(null)}
+      />
       <UndoToast label={planner.undoLabel} onUndo={planner.undo} onExpire={planner.clearUndo} />
       <MobileNav view={view.mobileView} onView={handleView} />
     </div>
