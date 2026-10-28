@@ -1,6 +1,16 @@
 // 主方案與備案：一批變更（Change[]）是一個復原單位；大改動前自動另存備案。
 
+import { DEFAULT_INTERNSHIP_SETTINGS, type InternshipSettings } from './internship.ts';
 import { addCourse, removeCourse, setAttendance, totalCredits, type Attendance, type PlanItem, type ScheduleCourse } from './schedule/selection.ts';
+
+/** 偏好類條件：學生與 AI 都可以調整（身分與資格條件不在這裡，只能由學生本人勾選）。 */
+export interface Preferences {
+  /** 希望空下來的星期（1–7）。 */
+  freeDays: number[];
+  internship: InternshipSettings;
+}
+
+export const DEFAULT_PREFERENCES: Preferences = Object.freeze({ freeDays: [], internship: DEFAULT_INTERNSHIP_SETTINGS }) as Preferences;
 
 export interface Plan {
   id: string;
@@ -15,6 +25,7 @@ export interface PlannerState {
   candidates: string[];
   plans: Plan[];
   activePlanId: string;
+  preferences: Preferences;
 }
 
 export type Change =
@@ -24,7 +35,8 @@ export type Change =
   | { type: 'removeFromSchedule'; key: string }
   | { type: 'setAttendance'; key: string; attendance: Attendance }
   | { type: 'createPlan'; name: string }
-  | { type: 'switchPlan'; planId: string };
+  | { type: 'switchPlan'; planId: string }
+  | { type: 'setPreference'; freeDays?: number[]; internship?: InternshipSettings };
 
 export interface ChangeDiff {
   added: string[];
@@ -49,7 +61,12 @@ export const DEFAULT_AUTO_BACKUP_LIMIT = 5;
 const BIG_CHANGE_COURSES = 3;
 
 export function createPlannerState(): PlannerState {
-  return { candidates: [], plans: [{ id: 'plan-1', name: '主方案', auto: false, items: [] }], activePlanId: 'plan-1' };
+  return {
+    candidates: [],
+    plans: [{ id: 'plan-1', name: '主方案', auto: false, items: [] }],
+    activePlanId: 'plan-1',
+    preferences: { freeDays: [], internship: { ...DEFAULT_INTERNSHIP_SETTINGS, fixedDays: {} } },
+  };
 }
 
 function nextPlanId(plans: readonly Plan[]): string {
@@ -99,6 +116,14 @@ function applyOne(state: PlannerState, change: Change, catalog: ReadonlyMap<stri
     }
     case 'switchPlan':
       return { ...state, activePlanId: change.planId };
+    case 'setPreference':
+      return {
+        ...state,
+        preferences: {
+          freeDays: change.freeDays ? [...new Set(change.freeDays)].sort() : state.preferences.freeDays,
+          internship: change.internship ?? state.preferences.internship,
+        },
+      };
   }
 }
 
