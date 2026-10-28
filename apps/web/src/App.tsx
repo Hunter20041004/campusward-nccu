@@ -1,8 +1,10 @@
-import { toScheduleCourse, type Course, type StorageLike } from '@campusward/engine';
+import { checkEnrollmentRules, parseEnrollmentRules, toScheduleCourse, type Course, type StorageLike } from '@campusward/engine';
+import enrollmentRules from '../../../data/rules/enrollment-11407.json' with { type: 'json' };
 import { useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header.tsx';
 import { MobileNav, type MobileView } from './components/MobileNav.tsx';
 import { PlanBar } from './components/PlanBar.tsx';
+import { RulesPanel } from './components/RulesPanel.tsx';
 import { SearchPanel } from './components/SearchPanel.tsx';
 import { SidePanel, type SideTab } from './components/SidePanel.tsx';
 import { Timetable } from './components/Timetable.tsx';
@@ -22,6 +24,7 @@ interface ViewState {
 const mobileOnly = (visible: boolean) => (visible ? '' : 'hidden md:block');
 
 const NO_COURSES: readonly Course[] = [];
+const RULES = parseEnrollmentRules(enrollmentRules);
 
 export function App({ catalog = httpCatalogSource, storage }: { catalog?: CatalogSource; storage?: StorageLike }) {
   const data = useCatalog(catalog);
@@ -37,6 +40,8 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
   const scheduledKeys = useMemo(() => new Set(planner.activePlan.items.map(({ key }) => key)), [planner.activePlan.items]);
   const candidateKeys = useMemo(() => new Set(planner.planner.candidates), [planner.planner.candidates]);
   const keyOf = (course: Course) => toScheduleCourse(course).key;
+  const reminders = useMemo(() => checkEnrollmentRules(planner.entries, planner.profile, RULES), [planner.entries, planner.profile]);
+  const titleOf = (key: string) => planner.catalog.get(key)?.title ?? '課程';
 
   const handleQuery = (query: string) => setView({ query, sideTab: 'search', ...(query ? { mobileView: 'search' as const } : {}) });
   const startSearch = () => {
@@ -68,7 +73,23 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
         <PlanBar credits={planner.credits} />
         <div className="mt-3 grid gap-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div className={mobileOnly(view.mobileView === 'timetable')}>
-            <Timetable entries={planner.entries} conflicts={planner.conflicts} onStartSearch={startSearch} onImport={() => {}} />
+            <div className="space-y-3">
+              <Timetable
+                entries={planner.entries}
+                conflicts={planner.conflicts}
+                newKeys={planner.newKeys}
+                onStartSearch={startSearch}
+                onImport={() => {}}
+                onToggleLock={(key) => {
+                  const locked = !planner.activePlan.items.find((item) => item.key === key)?.locked;
+                  planner.apply([{ type: 'setLock', key, locked }], `已${locked ? '鎖定' : '解鎖'}「${titleOf(key)}」`);
+                }}
+                onStatus={(key, status) => planner.apply([{ type: 'setStatus', key, status }], `已將「${titleOf(key)}」標為${{ planned: '排入', registered: '已灌檔', enrolled: '已選上' }[status]}`)}
+                onAttendance={(key, attendance) => planner.apply([{ type: 'setAttendance', key, attendance }], `「${titleOf(key)}」改為${attendance === 'async' ? '非同步' : '同步'}上課`)}
+                onRemove={(key) => planner.apply([{ type: 'removeFromSchedule', key }], `已移出「${titleOf(key)}」`)}
+              />
+              {planner.entries.length > 0 && <RulesPanel conflicts={planner.conflicts} reminders={reminders} />}
+            </div>
           </div>
           <div className={mobileOnly(view.mobileView !== 'timetable')}>
             <SidePanel tab={view.sideTab} onTab={(sideTab) => setView({ sideTab })}>

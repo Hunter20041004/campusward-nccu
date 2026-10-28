@@ -17,7 +17,7 @@ const metaPath = join(dir, 'meta.json');
 const previousCount = existsSync(metaPath) ? (JSON.parse(readFileSync(metaPath, 'utf8')) as { count?: number }).count : undefined;
 
 const started = Date.now();
-const { rows, queries } = await fetchTermRows({
+const { rows, queries, truncated } = await fetchTermRows({
   term,
   onProgress: (done, pending) => {
     if (done % 50 === 0) console.log(`已查詢 ${done} 次，待查 ${pending}`);
@@ -28,6 +28,7 @@ if (!result.ok) {
   console.error(result.reason);
   process.exit(1);
 }
+if (truncated.length) console.warn(`下列前綴切到最長仍被截斷，可能有遺漏：${truncated.join('、')}`);
 mkdirSync(dir, { recursive: true });
 writeFileSync(join(dir, 'courses.json'), serializeSnapshot(result.courses));
 writeFileSync(metaPath, `${JSON.stringify(result.meta, null, 2)}\n`);

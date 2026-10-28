@@ -1,7 +1,13 @@
-// 建置期抓取某學期的全校課程（計畫 2.1）。官方查詢是「包含比對」且單次最多回 500 筆：
-// 從 0–9、A–Z 出發，回傳達上限就多加一碼往下切，最後依課號去重。限制併發與請求間隔，不給官方主機添負擔。
+// 建置期抓取某學期的全校課程（計畫 2.1）。官方查詢是「包含比對」（課號、教室、備註都會命中）且單次最多回 500 筆。
+// 做法（舊專案在 115-1 驗證過，並補上字母開頭的課號）：以三碼數字前綴與單一字母查詢，只收課號真的以前綴開頭的列；
+// 回傳達上限才補一碼（數字或字母）往下切，最多切到 6 碼，仍被截斷的前綴回報出來。限制併發與請求間隔。
+// 2026-10-28 實跑：從單字元出發會因模糊比對展開爆量（3,000 次查詢仍有 5,784 個待查），故改為三碼起跳。
 
-export const START_KEYS = [...'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
+const CODE_CHARS = [...'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
+export const START_KEYS = [
+  ...Array.from({ length: 1000 }, (_, index) => String(index).padStart(3, '0')),
+  ...CODE_CHARS.slice(10),
+];
 const OFFICIAL_ORIGIN = 'https://es.nccu.edu.tw';
 
 export type OfficialRow = Record<string, unknown> & { subNum?: unknown; y?: unknown; s?: unknown };
@@ -18,6 +24,7 @@ export interface FetchOptions {
   minIntervalMs?: number;
   maxQueries?: number;
   attempts?: number;
+  maxPrefixLength?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   onProgress?: (done: number, pending: number) => void;
@@ -26,6 +33,8 @@ export interface FetchOptions {
 export interface FetchResult {
   rows: OfficialRow[];
   queries: number;
+  /** 切到最大長度仍撞上限的前綴：這些前綴底下可能有遺漏。 */
+  truncated: string[];
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
@@ -37,8 +46,9 @@ export async function fetchTermRows(options: FetchOptions): Promise<FetchResult>
     cap = 500,
     concurrency = 4,
     minIntervalMs = 200,
-    maxQueries = 3000,
+    maxQueries = 5000,
     attempts = 3,
+    maxPrefixLength = 6,
     sleep = defaultSleep,
     now = Date.now,
     onProgress,
@@ -47,6 +57,7 @@ export async function fetchTermRows(options: FetchOptions): Promise<FetchResult>
   const semester = term.slice(3);
   const rows = new Map<string, OfficialRow>();
   const queue = [...START_KEYS];
+  const truncated: string[] = [];
   let queries = 0;
   let nextSlot = 0;
 
@@ -80,16 +91,20 @@ export async function fetchTermRows(options: FetchOptions): Promise<FetchResult>
       queries += 1;
       if (queries > maxQueries) throw new Error(`查詢次數超過上限 ${maxQueries}`);
       const result = await query(keyword);
-      if (result.length >= cap) queue.push(...START_KEYS.map((key) => `${keyword}${key}`));
+      if (result.length >= cap) {
+        if (keyword.length < maxPrefixLength) queue.push(...CODE_CHARS.map((char) => `${keyword}${char}`));
+        else truncated.push(keyword);
+      }
       for (const candidate of result) {
         if (String(candidate.y) !== year || String(candidate.s) !== semester) continue;
         const code = String(candidate.subNum ?? '').trim();
-        if (code && !rows.has(code)) rows.set(code, candidate);
+        // 模糊比對會帶回其他單位的課；只收真的以前綴開頭的，其餘交給對應前綴的查詢。
+        if (code.startsWith(keyword) && !rows.has(code)) rows.set(code, candidate);
       }
       onProgress?.(queries, queue.length);
     }
   };
 
   await Promise.all(Array.from({ length: concurrency }, worker));
-  return { rows: [...rows.values()], queries };
+  return { rows: [...rows.values()], queries, truncated };
 }

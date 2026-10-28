@@ -240,3 +240,19 @@ describe('review fixes', () => {
     expect(names).toEqual(['自動備案 3（改動前）', '自動備案 4（改動前）', '自動備案 5（改動前）']);
   });
 });
+
+// 畫面用：鎖定與已灌檔／已選上（不在 AI 動作清單中）
+describe('lock and status changes', () => {
+  test('locks and unlocks a course in the active plan', () => {
+    const locked = applyChanges(withSchedule('a'), [{ type: 'setLock', key: 'a', locked: true }], catalog, { autoBackup: false });
+    if (locked.status !== 'applied') throw new Error(locked.status);
+    expect(active(locked.state).items[0]?.locked).toBe(true);
+    const unlocked = applyChanges(locked.state, [{ type: 'setLock', key: 'a', locked: false }], catalog, { autoBackup: false });
+    expect(unlocked.status === 'applied' && active(unlocked.state).items[0]?.locked).toBe(false);
+  });
+
+  test('marking a course registered also locks it', () => {
+    const result = applyChanges(withSchedule('a'), [{ type: 'setStatus', key: 'a', status: 'registered' }], catalog, { autoBackup: false });
+    expect(result.status === 'applied' && active(result.state).items[0]).toMatchObject({ status: 'registered', locked: true });
+  });
+});

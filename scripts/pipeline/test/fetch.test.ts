@@ -25,10 +25,26 @@ test('builds the official keyword URL', () => {
   expect(decodeURIComponent(buildQueryUrl('1151', '35').pathname)).toBe('/course/zh-TW/:sem=1151 35 /');
 });
 
-test('starts from digits and capital letters', () => {
-  expect(START_KEYS).toHaveLength(36);
-  expect(START_KEYS.slice(0, 3)).toEqual(['0', '1', '2']);
+// 2026-10-28 實跑：從單字元出發，兩三碼的查詢幾乎都撞上限、展開爆量（3,000 次仍有 5,784 個待查）。
+// 改用舊專案驗證過的做法：三碼數字前綴＋單一字母出發，只收課號真的以前綴開頭的列。
+test('starts from three-digit prefixes and single letters', () => {
+  expect(START_KEYS).toHaveLength(1000 + 26);
+  expect(START_KEYS.slice(0, 2)).toEqual(['000', '001']);
+  expect(START_KEYS.at(999)).toBe('999');
   expect(START_KEYS.at(-1)).toBe('Z');
+});
+
+test('keeps only rows whose code starts with the query', async () => {
+  const { fetchImpl } = fakeOfficial([row('351026011'), row('000351001'), row('ZM1010001')]);
+  const result = await fetchTermRows({ term: '1151', fetchImpl, ...fast });
+  expect(result.rows.map(({ subNum }) => subNum).sort()).toEqual(['000351001', '351026011', 'ZM1010001']);
+});
+
+test('reports prefixes still truncated at the maximum length', async () => {
+  const rows = Array.from({ length: 6 }, (_, index) => row(`35102601${index}`));
+  const { fetchImpl } = fakeOfficial(rows, { cap: 3 });
+  const result = await fetchTermRows({ term: '1151', fetchImpl, cap: 3, maxPrefixLength: 4, ...fast });
+  expect(result.truncated).toContain('3510');
 });
 
 describe('fetchTermRows', () => {
@@ -38,13 +54,13 @@ describe('fetchTermRows', () => {
     expect(result.rows.map(({ subNum }) => subNum).sort()).toEqual(['351026011', '351034001', 'ZM1010001']);
   });
 
-  test('splits a query that hits the result cap', async () => {
-    const rows = Array.from({ length: 12 }, (_, index) => row(`3${String(index).padStart(2, '0')}000001`));
+  test('splits a query that hits the result cap, including letters inside codes', async () => {
+    const rows = [...Array.from({ length: 11 }, (_, index) => row(`351${String(index).padStart(2, '0')}0001`)), row('351F00021')];
     const { fetchImpl, calls } = fakeOfficial(rows, { cap: 5 });
     const result = await fetchTermRows({ term: '1151', fetchImpl, cap: 5, ...fast });
     expect(result.rows).toHaveLength(12);
-    expect(calls).toContain('30');
-    expect(calls).toContain('31');
+    expect(calls).toContain('3510');
+    expect(calls).toContain('351F');
   });
 
   test('ignores rows from another semester', async () => {
@@ -54,20 +70,20 @@ describe('fetchTermRows', () => {
   });
 
   test('retries a failing query and then succeeds', async () => {
-    const { fetchImpl } = fakeOfficial([row('351026011')], { failures: new Map([['3', 2]]) });
+    const { fetchImpl } = fakeOfficial([row('351026011')], { failures: new Map([['351', 2]]) });
     const result = await fetchTermRows({ term: '1151', fetchImpl, ...fast });
     expect(result.rows).toHaveLength(1);
   });
 
   test('fails the whole run after three failed attempts', async () => {
-    const { fetchImpl } = fakeOfficial([row('351026011')], { failures: new Map([['3', 3]]) });
-    await expect(fetchTermRows({ term: '1151', fetchImpl, ...fast })).rejects.toThrow('查詢「3」失敗 3 次');
+    const { fetchImpl } = fakeOfficial([row('351026011')], { failures: new Map([['351', 3]]) });
+    await expect(fetchTermRows({ term: '1151', fetchImpl, ...fast })).rejects.toThrow('查詢「351」失敗 3 次');
   });
 
   test('stops when the total query limit is exceeded', async () => {
     const rows = Array.from({ length: 50 }, (_, index) => row(`9${String(index).padStart(8, '0')}`));
     const { fetchImpl } = fakeOfficial(rows, { cap: 1 });
-    await expect(fetchTermRows({ term: '1151', fetchImpl, cap: 1, maxQueries: 60, ...fast })).rejects.toThrow('查詢次數超過上限 60');
+    await expect(fetchTermRows({ term: '1151', fetchImpl, cap: 1, maxQueries: 1100, ...fast })).rejects.toThrow('查詢次數超過上限 1100');
   });
 
   test('never runs more than the allowed number of requests at once', async () => {
@@ -101,6 +117,6 @@ describe('fetchTermRows', () => {
 
   test('reports how many queries it made', async () => {
     const { fetchImpl } = fakeOfficial([]);
-    expect((await fetchTermRows({ term: '1151', fetchImpl, ...fast })).queries).toBe(36);
+    expect((await fetchTermRows({ term: '1151', fetchImpl, ...fast })).queries).toBe(1026);
   });
 });
