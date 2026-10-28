@@ -8,7 +8,7 @@ const TABS: { id: SideTab; label: string }[] = [
   { id: 'ai', label: 'AI' },
 ];
 
-export function SidePanel({ tab, onTab, query }: { tab: SideTab; onTab: (tab: SideTab) => void; query: string }) {
+export function SidePanel({ tab, onTab, children }: { tab: SideTab; onTab: (tab: SideTab) => void; children: React.ReactNode }) {
   return (
     <aside aria-label="側欄" className="relief flex min-h-[28rem] flex-col rounded-box">
       <div role="tablist" aria-label="側欄內容" className="flex gap-1 border-b border-base-300 p-2">
@@ -29,12 +29,8 @@ export function SidePanel({ tab, onTab, query }: { tab: SideTab; onTab: (tab: Si
           </button>
         ))}
       </div>
-      <div role="tabpanel" id={`side-panel-${tab}`} aria-labelledby={`side-tab-${tab}`} className="flex-1 p-4">
-        {tab === 'search' ? (
-          <p className="text-sm text-base-content/80">
-            {query ? `搜尋「${query}」` : '輸入課名、教師或課號開始搜課；也可以依星期、節次與通識類別篩選。'}
-          </p>
-        ) : (
+      <div role="tabpanel" id={`side-panel-${tab}`} aria-labelledby={`side-tab-${tab}`} className="flex min-h-0 flex-1 flex-col p-4">
+        {tab === 'search' ? children : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <OrbMark size={56} />
             <p className="font-medium">AI 光球</p>
