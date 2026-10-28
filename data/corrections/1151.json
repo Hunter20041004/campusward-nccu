@@ -1,0 +1,190 @@
+{
+  "source": "人工核對官方 115-1 課綱後的時段更正（移植自舊專案 nccu-course-adapter.mjs VERIFIED_SCHEDULE_CORRECTIONS）。鍵為「學期:課號」，只套用在同學期同課號。",
+  "corrections": {
+    "1151:701889001": {
+      "correctionId": "nccu-1151-701889001-one-time-exam",
+      "deliveryMode": "asynchronous",
+      "meetings": [],
+      "deliveryNote": "官方 115-1 課綱：第 1–10、12–16 週為遠距，第 11 週為上機考。",
+      "events": [
+        {
+          "label": "第 11 週上機考",
+          "week": 11,
+          "day": 2,
+          "start": 970,
+          "end": 1140
+        }
+      ]
+    },
+    "1151:070424001": {
+      "correctionId": "nccu-1151-taica-070424001",
+      "deliveryMode": "asynchronous-optional",
+      "meetings": [
+        {
+          "day": 3,
+          "start": 550,
+          "end": 730,
+          "label": "週三 09:10–12:10"
+        }
+      ],
+      "events": [
+        {
+          "label": "實體期末考，時間待確認",
+          "date": "2026-12-23"
+        }
+      ],
+      "deliveryNote": "官方 115-1 課綱：可接受非同步授課；同步遠距為週三 09:10–12:10。"
+    },
+    "1151:070421001": {
+      "correctionId": "nccu-1151-taica-070421001",
+      "deliveryMode": "asynchronous-optional",
+      "meetings": [
+        {
+          "day": 1,
+          "start": 540,
+          "end": 720,
+          "label": "週一 09:00–12:00"
+        }
+      ],
+      "events": [
+        {
+          "label": "實體考試",
+          "date": "2026-12-14",
+          "day": 1,
+          "start": 540,
+          "end": 720
+        }
+      ],
+      "deliveryNote": "官方 115-1 課綱：可接受非同步授課；同步遠距為週一 09:00–12:00。"
+    },
+    "1151:070422001": {
+      "correctionId": "nccu-1151-taica-070422001",
+      "deliveryMode": "asynchronous-optional",
+      "meetings": [
+        {
+          "day": 1,
+          "start": 540,
+          "end": 720,
+          "label": "週一 09:00–12:00"
+        }
+      ],
+      "events": [
+        {
+          "label": "實體期中考，時間待確認",
+          "date": "2026-11-02"
+        },
+        {
+          "label": "實體期末考，時間待確認",
+          "date": "2026-12-21"
+        }
+      ],
+      "informationNotes": [
+        "每週課間測驗，請依最新課綱確認同步要求"
+      ],
+      "deliveryNote": "官方 115-1 課綱：可接受非同步授課；同步遠距為週一 09:00–12:00。"
+    },
+    "1151:070423001": {
+      "correctionId": "nccu-1151-taica-070423001",
+      "deliveryMode": "asynchronous-optional",
+      "meetings": [
+        {
+          "day": 4,
+          "start": 790,
+          "end": 960,
+          "label": "週四 13:10–16:00"
+        }
+      ],
+      "events": [
+        {
+          "label": "實體同步考試",
+          "date": "2026-12-10",
+          "day": 4,
+          "start": 790,
+          "end": 960
+        }
+      ],
+      "deliveryNote": "官方 115-1 課綱：可接受非同步授課；同步遠距為週四 13:10–16:00。"
+    },
+    "1151:070425001": {
+      "correctionId": "nccu-1151-taica-070425001",
+      "deliveryMode": "asynchronous-optional",
+      "meetings": [
+        {
+          "day": 3,
+          "start": 550,
+          "end": 730,
+          "label": "週三 09:10–12:10"
+        }
+      ],
+      "events": [
+        {
+          "label": "考試日期官方資料不一致（10/28、12/16 或 12/23），待官方確認"
+        }
+      ],
+      "informationNotes": [
+        "週二 13:20–15:10 optional recitation"
+      ],
+      "deliveryNote": "官方 115-1 課綱：可接受非同步授課；同步遠距為週三 09:10–12:10。"
+    },
+    "1151:070426001": {
+      "correctionId": "nccu-1151-taica-070426001",
+      "deliveryMode": "asynchronous-optional",
+      "meetings": [
+        {
+          "day": 4,
+          "start": 790,
+          "end": 960,
+          "label": "週四 13:10–16:00"
+        }
+      ],
+      "events": [
+        {
+          "label": "共同展示交流",
+          "date": "2026-12-26"
+        }
+      ],
+      "deliveryNote": "官方 115-1 課綱：可接受非同步授課；同步遠距為週四 13:10–16:00。"
+    },
+    "1151:070427001": {
+      "correctionId": "nccu-1151-taica-070427001",
+      "deliveryMode": "asynchronous-optional",
+      "meetings": [
+        {
+          "day": 4,
+          "start": 540,
+          "end": 720,
+          "label": "週四 09:00–12:00"
+        }
+      ],
+      "events": [
+        {
+          "label": "實體考試",
+          "date": "2026-12-10",
+          "day": 4,
+          "start": 540,
+          "end": 720
+        }
+      ],
+      "deliveryNote": "官方 115-1 課綱：可接受非同步授課；同步遠距為週四 09:00–12:00。"
+    },
+    "1151:070455001": {
+      "correctionId": "nccu-1151-taica-070455001",
+      "deliveryMode": "asynchronous-optional",
+      "meetings": [
+        {
+          "day": 3,
+          "start": 550,
+          "end": 730,
+          "label": "週三 09:10–12:10"
+        }
+      ],
+      "events": [
+        {
+          "label": "實體同步考試，時間待確認",
+          "date": "2026-12-09"
+        }
+      ],
+      "deliveryNote": "官方 115-1 課綱：可接受非同步授課；同步遠距為週三 09:10–12:10。"
+    }
+  }
+}

@@ -28,6 +28,25 @@ export interface CourseLinks {
   location?: string;
 }
 
+export type DeliveryMode = 'in-person' | 'asynchronous' | 'asynchronous-optional';
+
+export interface Delivery {
+  mode: DeliveryMode;
+  /** 學生可選擇以非同步方式修課（不佔每週時段）。 */
+  asyncAllowed: boolean;
+  defaultAttendance: 'sync' | 'async';
+}
+
+/** 一次性的考試或活動；時間未知的欄位省略，不捏造。 */
+export interface CourseEvent {
+  label: string;
+  date?: string;
+  week?: number;
+  day?: number;
+  start?: number;
+  end?: number;
+}
+
 /** 一門官方課程（某學期的某個開課班）。只放官方資料，不含學生的選擇。 */
 export interface Course {
   term: string;
@@ -43,6 +62,10 @@ export interface Course {
   official: OfficialFields;
   links: CourseLinks;
   syllabus: SyllabusState;
+  delivery: Delivery;
+  events: CourseEvent[];
+  /** 套用的人工時段更正（data/corrections）。 */
+  correctionId?: string;
 }
 
 export interface RowResult {
@@ -135,6 +158,9 @@ export function rowToCourse(raw: unknown, term: Term): RowResult {
       },
       links,
       syllabus: officialSyllabusState({ sourceUrl: links.syllabus ?? '', lookupStatus: 'success' }),
+      // 不從備註或彈性時間推斷非同步；只有人工更正表能改變上課方式。
+      delivery: { mode: 'in-person', asyncAllowed: false, defaultAttendance: 'sync' },
+      events: [],
     },
     issues,
   };
