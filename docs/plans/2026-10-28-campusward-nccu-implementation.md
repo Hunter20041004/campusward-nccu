@@ -203,7 +203,7 @@ LICENSE                     MIT（已存在）
 - 覆蓋驗證：所有英文開頭課號都有抓到（另以 `A`–`Z` 單字查詢交叉比對）；抽查 20 門（通識、體育、碩士班、非同步、多時段課）與官網逐欄比對，存 `docs/verification/`。
 - 契約測試 `snapshot.contract.test.ts` 只在每日排程跑。
 
-### 2.4 每日排程 `snapshot.yml`
+### 2.4 每日排程 `snapshot.yml`（2026-10-28 使用者決定暫緩：之後可能取得學校資料；測試先用 115-1 資料）
 - 每日台灣時間 06:00。工作拆兩段：
   - `fetch`（`permissions: contents: read`、`npm ci --ignore-scripts`）：跑管線與全套測試，產出檔上傳為 artifact。
   - `open-pr`（`permissions: contents: write, pull-requests: write`，不安裝套件）：下載 artifact、有差異就開 PR。
@@ -213,11 +213,11 @@ LICENSE                     MIT（已存在）
 - 合併責任：由實作者（Claude 在使用者的 session 中）每個工作日檢查並合併；選課期（1/5–1/20）24 小時內合併。
 - 調查 GitHub Actions 機器連 es.nccu 是否被擋（設計第 16 節）；被擋則改本機排程＋手動推送，記入 HANDOFF。
 
-### 2.5 調查：畢業規則可取得性（文件）
+### 2.5 調查：畢業規則可取得性（文件；2026-10-28 發現匯出檔內含學校的畢業審查結果，做法待使用者確認，見 docs/research/nccu-student-export.md 第 3.1 節）
 - 選 3 個學系／學程（優先財管雙主修、資科、一個學程），找官方必修科目表來源、格式、版本、是否依入學年不同。
 - 產出 `docs/research/graduation-rules.md`：可行性與理由、規則檔 JSON schema＋1 個完整範例。完成標準：格式定稿。
 
-### 2.6 調查：全人系統修課紀錄格式 ⛔ 使用者
+### 2.6 調查：全人系統修課紀錄格式（2026-10-28 已取得一份樣本，見 docs/research/nccu-student-export.md）
 - 第 1 週就請使用者自己登入，把個資遮掉後提供格式樣本（或描述欄位）；我不代登入。樣本不進版控。
 - 不卡進度：未取得前畢業缺口檢查只支援手動輸入與貼上文字（設計 8.5）。
 

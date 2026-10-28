@@ -1,0 +1,307 @@
+[
+ {
+  "課業學習": {
+   "aboutMe": {
+    "englishName": "SYNTHETIC, STUDENT",
+    "doubleMajor": "",
+    "registerMinor": "",
+    "thesisTitle": "",
+    "chineseName": "王合成",
+    "minor2": "",
+    "instructor": "",
+    "registerMajor": "合成學系",
+    "minor1": "",
+    "registerOtherProgramList": [],
+    "collegeEnglishExemption": "未申請",
+    "studentIdentity": "臺生(一般)",
+    "studentIdentity2": "",
+    "registrationStatus": "本系生",
+    "registerDoubleMajor": "",
+    "addMjrYN": "N",
+    "studentNumber": "SYNTHETIC-0001",
+    "program": "",
+    "departmentProgramGrade": "合成四乙"
+   },
+   "showTcres": "本學期成績於11月之後開放查詢。",
+   "rankingClass": "9",
+   "graduationLanguageList": [],
+   "abroadGradeRecordList": [],
+   "rankingDepartmentDenom": "99",
+   "rankingClassDenom": "40",
+   "waivedCourseList": [],
+   "enrollmentHistoryList": [
+    {
+     "gradeName": "合成四乙",
+     "registerStatus": "註冊",
+     "academicYearSemester": "115-1"
+    }
+   ],
+   "totalAverageScore": {
+    "classRankPercentage": "1 %",
+    "departmentRankPercentage": "1 %",
+    "averageScoresOfSameGrader": "80.00",
+    "averageCreditsOfSameGrader": "100.00",
+    "rankingClass": "9 / 40",
+    "rankingDepartmentDenom": "99",
+    "rankingDepartmentNumer": "9",
+    "rankingClassDenom": "40",
+    "rankingClassNumer": "9",
+    "averageScore": "80.00",
+    "totalCredits": "20",
+    "rankingDepartment": "9 / 99"
+   },
+   "conductRecordList": [
+    {
+     "score": 80.0,
+     "academicYear": "114",
+     "semester": "2"
+    }
+   ],
+   "rankingDepartment": "9",
+   "gradeRecordList": [
+    {
+     "AcademicYear": "114",
+     "GradeRecords": [
+      {
+       "remark": "",
+       "academicYearSemester": "1142",
+       "requiredOrElectiveCourse": "必",
+       "score": "停修",
+       "academicYear": "114",
+       "credit": "3.0",
+       "courseName": "合成會計學（二）",
+       "scoreIfPass": "",
+       "semester": "2",
+       "courseCode": "900021011"
+      },
+      {
+       "remark": "",
+       "academicYearSemester": "1142",
+       "requiredOrElectiveCourse": "必",
+       "score": "87.00",
+       "academicYear": "114",
+       "credit": "2.0",
+       "courseName": "合成資訊系統（二）",
+       "scoreIfPass": "",
+       "semester": "2",
+       "courseCode": "900035011"
+      },
+      {
+       "remark": "",
+       "academicYearSemester": "1141",
+       "requiredOrElectiveCourse": "必",
+       "score": "77.00",
+       "academicYear": "114",
+       "credit": "3.0",
+       "courseName": "合成會計學（一）",
+       "scoreIfPass": "",
+       "semester": "1",
+       "courseCode": "900033011"
+      },
+      {
+       "remark": "",
+       "academicYearSemester": "1141",
+       "requiredOrElectiveCourse": "必",
+       "score": "92.00",
+       "academicYear": "114",
+       "credit": "1.0",
+       "courseName": "體育[男女合班]—合成球",
+       "scoreIfPass": "",
+       "semester": "1",
+       "courseCode": "002381001"
+      },
+      {
+       "remark": "社會通",
+       "academicYearSemester": "1141",
+       "requiredOrElectiveCourse": "群",
+       "score": "92.00",
+       "academicYear": "114",
+       "credit": "2.0",
+       "courseName": "合成通識課",
+       "scoreIfPass": "",
+       "semester": "1",
+       "courseCode": "042089001"
+      },
+      {
+       "remark": "人文通、社會通",
+       "academicYearSemester": "1141",
+       "requiredOrElectiveCourse": "群",
+       "score": "58.00",
+       "academicYear": "114",
+       "credit": "2.0",
+       "courseName": "合成跨域通識",
+       "scoreIfPass": "",
+       "semester": "1",
+       "courseCode": "044049001"
+      },
+      {
+       "remark": "",
+       "academicYearSemester": "1141",
+       "requiredOrElectiveCourse": "選",
+       "score": "85.10",
+       "academicYear": "114",
+       "credit": "3.0",
+       "courseName": "合成程式設計",
+       "scoreIfPass": "",
+       "semester": "1",
+       "courseCode": "900830011"
+      }
+     ]
+    }
+   ],
+   "alertForEvaluationList": [],
+   "alertForCreditList": [],
+   "averageScoreList": [
+    {
+     "classRankPercentage": "1 %",
+     "departmentRankPercentage": "1 %",
+     "averageScoresOfSameGrader": "80.00",
+     "averageCreditsOfSameGrader": "20.00",
+     "rankingClass": "9 / 40",
+     "rankingDepartmentDenom": "99",
+     "rankingDepartmentNumer": "9",
+     "rankingClassDenom": "40",
+     "rankingClassNumer": "9",
+     "academicYear": "114",
+     "averageScore": "80.00",
+     "semester": "2",
+     "totalCredits": "5",
+     "rankingDepartment": "9 / 99"
+    }
+   ],
+   "coursePlan": {
+    "requiredPoint": "48.0",
+    "groupPoint": "3.0",
+    "groupRemark": "",
+    "programRemark": "",
+    "liberalTotal": "",
+    "programName": "",
+    "liberalGeneral": "",
+    "coursePlanSchyy": "112",
+    "liberalEnglish": "",
+    "commonPhysical": "[體育欠1門]",
+    "commonLanguageCount": "2",
+    "requiredRemark": "[缺合成審計1][缺合成會計學（二）1]",
+    "coursePlanTimestamp": "20261026",
+    "liberalChinese": "",
+    "commonPhysicalCount": "4",
+    "commonLanguage": "",
+    "graduationCredit": "128.0"
+   },
+   "totalCredits": "20"
+  }
+ },
+ {
+  "榮譽紀錄": {
+   "contestAndHonorList": [],
+   "scholarshipRecordList": [],
+   "meritAndDemeritList": [
+    {
+     "reason": "合成獎勵事由",
+     "meritsAndDemerits": "一嘉獎",
+     "academicYear": "114",
+     "semester": "2"
+    }
+   ],
+   "awardRecordList": []
+  }
+ },
+ {
+  "職涯發展": {
+   "workAndInternshipExperienceList": [
+    {
+     "id": "0",
+     "year": "2024",
+     "month": "9",
+     "deleteSelected": false,
+     "editable": 0,
+     "jobCategory": "兼職（含工讀）",
+     "jobDescription": "",
+     "endDate": "/",
+     "startDate": "2024/9",
+     "monthEnd": "",
+     "yearEnd": "",
+     "totalHours": "20",
+     "workingUnit": "合成單位",
+     "jobType": "03",
+     "period": "2024/9"
+    }
+   ],
+   "otherCertificateList": [],
+   "skillsAndExpertiseList": [],
+   "languageList": []
+  }
+ },
+ {
+  "多元學習與發展": {
+   "specialtyTrainingList": [],
+   "clubActivitiesList": [
+    {
+     "id": "0",
+     "position": "合成職位",
+     "deleteSelected": false,
+     "editable": 0,
+     "hostCountry": "台灣，中華民國",
+     "onOffCampusType": "Y",
+     "functionOfWork": "",
+     "oncampusAndOffcampus": "校內",
+     "nameOfStudentClub": "合成社團",
+     "academicYear": "115",
+     "semester": "1",
+     "countryId": "TWN"
+    }
+   ],
+   "mentalInteractionTutorList": [
+    {
+     "name": "合成導師",
+     "academicYear": "115",
+     "semester": "1",
+     "emailAddr": "tutor@example.com",
+     "offTelNum": "00000"
+    }
+   ],
+   "internationalActivityList": []
+  }
+ },
+ {
+  "個人資料": {
+   "dormitoryPenaltyPointsRecordList": [],
+   "personalInformation": {
+    "gender": "其他",
+    "dateOfBirth": "民國00年1月1日",
+    "mainEmail": "student@example.com",
+    "spareEmail": "spare@example.com",
+    "mobilePhone": "0900000000",
+    "interests": "合成",
+    "specialties": "合成",
+    "aborigines": "",
+    "nationality": "臺灣，中華民國",
+    "militaryRemark": "",
+    "mailingAddress": "合成地址",
+    "communicationTelephone": "0900000000",
+    "emergencyContactRelation": "合成",
+    "militaryPeriod": "",
+    "emergencyContactTelephone": "0900000000",
+    "aboriginalEthnicity": "",
+    "militaryCategory": "",
+    "aboriginalLanguage": "",
+    "schoolNameBeforeEnrolling": "合成高中",
+    "emergencyContactName": "合成聯絡人",
+    "permanentTelephone": "",
+    "militaryServiceStatus": ""
+   },
+   "dormitoryLifeList": [
+    {
+     "dormitory": "合成宿舍",
+     "roomate": "(1)合成室友 合成系 SYNTHETIC-0002",
+     "remark": "",
+     "academicYear": "114",
+     "semester": "2",
+     "room": "A000",
+     "drmCod": "X00"
+    }
+   ],
+   "fireDrillRecordList": []
+  }
+ }
+]
