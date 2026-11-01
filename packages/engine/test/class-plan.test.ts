@@ -7,6 +7,7 @@ import {
   classRequiredCourses,
   formatClassName,
   freeStretch,
+  offeredClassName,
   parseClassName,
   suggestSectionSwap,
 } from '../src/schedule/classPlan.ts';
@@ -63,6 +64,74 @@ describe('parseClassName / formatClassName', () => {
     expect(parseClassName('經濟系')).toBeNull();
     expect(parseClassName('')).toBeNull();
   });
+
+  test('the long form never turns a graduate or in-service programme into an undergraduate class', () => {
+    ['法律碩士一年級', '法律碩士班一年級', '碩專一年級', 'EMBA一年級', '資訊博士班二年級', 'EMBA一'].forEach((text) => {
+      expect(parseClassName(text), text).toBeNull();
+    });
+  });
+
+  test('the long form drops 科學系／學系／系 and reads 大一 as 一年級', () => {
+    expect(parseClassName('資訊科學系二年級')).toEqual({ department: '資訊', grade: '二', section: '' });
+    expect(parseClassName('會計學系二年級甲班')).toEqual({ department: '會計', grade: '二', section: '甲' });
+    expect(parseClassName('哲學系二年級')).toEqual({ department: '哲學', grade: '二', section: '' });
+    expect(parseClassName('資訊大一')).toEqual({ department: '資訊', grade: '一', section: '' });
+  });
+
+  test('language tracks: the stored value, the official abbreviation and the long form all read the same class', () => {
+    const french = { department: '歐文學', grade: '法二', section: '' };
+    expect(parseClassName('歐文學法二')).toEqual(french);
+    expect(parseClassName('歐文法二')).toEqual(french);
+    expect(parseClassName('東南亞語越一')).toEqual({ department: '東南亞語', grade: '越一', section: '' });
+    expect(parseClassName('東南越一')).toEqual({ department: '東南亞語', grade: '越一', section: '' });
+  });
+
+  test('地政 tracks (土管／土資／土測) are kept as the section', () => {
+    expect(parseClassName('地政二土管')).toEqual({ department: '地政', grade: '二', section: '土管' });
+    expect(parseClassName('地二土測')).toEqual({ department: '地政', grade: '二', section: '土測' });
+    expect(formatClassName({ department: '地政', grade: '二', section: '土資' })).toBe('地政二土資');
+  });
+});
+
+// 語別與地政分組：形狀照 115-1 快照（歐文法二、東南越一、地二土管地二土資地二土測）。
+const tracked = [
+  make({ subNum: '561001001', subNam: '法語語法（二）', subGde: '歐文法二', subTime: '一234' }),
+  make({ subNum: '565001001', subNam: '越南語（一）', subGde: '東南越一', subTime: '二234' }),
+  make({ subNum: '207094001', subNam: '土地法（一）', subGde: '地二土管地二土資地二土測', subTime: '三234' }),
+  make({ subNum: '207004001', subNam: '土地經濟學', subGde: '地二土管地二土資', subTime: '二D56' }),
+  make({ subNum: '207054001', subNam: '大地測量學', subGde: '地二土測', subTime: '三D56' }),
+  make({ subNum: '207071001', subNam: '都市土地使用計畫', subGde: '地二土資', subTime: '二34' }),
+  make({ subNum: '207120001', subNam: '地政講座', subGde: '地政二', subTime: '五234' }),
+];
+
+describe('language tracks and 地政 tracks', () => {
+  test('every option reads back as the same class, and finds the same required courses', () => {
+    const options = classOptions(tracked);
+    expect(options.map(({ value }) => value)).toEqual(expect.arrayContaining(['歐文學法二', '東南亞語越一', '地政二', '地政二土管', '地政二土資', '地政二土測']));
+    options.forEach((option) => {
+      const parsed = parseClassName(option.value);
+      expect(parsed, option.value).toEqual({ department: option.department, grade: option.grade, section: option.section });
+      expect(formatClassName(parsed!)).toBe(option.value);
+    });
+    expect(classRequiredCourses(tracked, parseClassName('歐文學法二')!).required.map(({ title }) => title)).toEqual(['法語語法（二）']);
+    expect(classRequiredCourses(tracked, parseClassName('東南亞語越一')!).required.map(({ title }) => title)).toEqual(['越南語（一）']);
+  });
+
+  test('a 地政 track is labelled as 組', () => {
+    expect(classOptions(tracked).find(({ value }) => value === '地政二土管')?.label).toBe('地政 二年級土管組');
+  });
+
+  test('地政二 without a track: courses for all three tracks are required, single-track courses are only "maybe"', () => {
+    const { required, maybe } = classRequiredCourses(tracked, parseClassName('地政二')!);
+    expect(required.map(({ title }) => title)).toEqual(['土地法（一）', '地政講座']);
+    expect(maybe.map(({ title }) => title)).toEqual(['土地經濟學', '大地測量學', '都市土地使用計畫']);
+  });
+
+  test('地政二土管: its own track plus the shared courses; other tracks are left out', () => {
+    const { required, maybe } = classRequiredCourses(tracked, parseClassName('地政二土管')!);
+    expect(required.map(({ title }) => title)).toEqual(['土地法（一）', '土地經濟學', '地政講座']);
+    expect(maybe).toEqual([]);
+  });
 });
 
 describe('classOptions', () => {
@@ -76,6 +145,24 @@ describe('classOptions', () => {
   test('labels use the department name and the year in words', () => {
     const option = classOptions(catalog).find(({ value }) => value === '會計二甲');
     expect(option?.label).toBe('會計 二年級甲班');
+  });
+});
+
+describe('offeredClassName', () => {
+  const options = classOptions([...catalog, ...tracked]);
+
+  test('returns the option value for any form of a class that is offered', () => {
+    expect(offeredClassName('會計系二年級甲班', options)).toBe('會計二甲');
+    expect(offeredClassName('歐文法二', options)).toBe('歐文學法二');
+    expect(offeredClassName('地二土管', options)).toBe('地政二土管');
+  });
+
+  test('a section the catalog does not split falls back to the class without it', () => {
+    expect(offeredClassName('資訊二乙', options)).toBe('資訊二');
+  });
+
+  test('graduate classes, unknown classes and made-up names give undefined', () => {
+    ['資科碩一', '經濟三', '法律碩士一年級', '資訊科學系九年級', ''].forEach((text) => expect(offeredClassName(text, options), text).toBeUndefined());
   });
 });
 

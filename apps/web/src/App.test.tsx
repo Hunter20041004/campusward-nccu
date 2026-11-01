@@ -631,6 +631,8 @@ describe('automation: fill the timetable, fill the gaps, copy the right plan', (
     officialRow({ subNum: '900501001', subNam: '週五通識', subGde: '教務處通識教育中心', subKind: '', subTime: '五34', lmtKind: '人文通識' }),
     officialRow({ subNum: '900502001', subNam: '週二通識', subGde: '教務處通識教育中心', subKind: '', subTime: '二D5', lmtKind: '人文通識' }),
     officialRow({ subNum: '002008001', subNam: '體育－羽球初級', subGde: '體育', subPoint: '1.0', subTime: '三78' }),
+    // 合成匯出檔的系級（合成四乙）要在本學期的系級選單裡，匯入時才會帶入。
+    officialRow({ subNum: '999401001', subNam: '合成專題', subGde: '合成四乙', subKind: '選修', subTime: '四EF' }),
   ];
   const planNames = () => within(screen.getByRole('group', { name: '方案' })).getAllByRole('button').map((button) => button.textContent);
 
@@ -683,6 +685,47 @@ describe('automation: fill the timetable, fill the gaps, copy the right plan', (
     expect(shown(screen.getAllByText(/共/))).toHaveTextContent('共 1 學分');
     const physical = shown(screen.getAllByText(/體育欠 1 門/)).closest('li')!;
     expect(physical).toHaveTextContent('已排入「體育－羽球初級」');
+  });
+
+  const importWithClass = async (user: ReturnType<typeof userEvent.setup>, className: string) => {
+    const exportJson = structuredClone((await import('../../../packages/engine/test/fixtures/synthetic/student-export.json')).default);
+    exportJson[0]!['課業學習']!.aboutMe.departmentProgramGrade = className;
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '畢業缺口' }));
+    await user.upload(shown(screen.getAllByLabelText('上傳全人系統匯出檔')), new File([JSON.stringify(exportJson)], 'e.json', { type: 'application/json' }));
+    return screen.findByRole('status', { name: '最近的修改' });
+  };
+
+  test('importing a graduate record clears the undergraduate class typed before', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('combobox', { name: '系級' }), '資訊二');
+    expect(screen.getByRole('region', { name: '資訊二 本學期必修' })).toBeInTheDocument();
+    const toast = await importWithClass(user, '資科碩一');
+    expect(toast).toHaveTextContent('已依全人系統資料設定身分：碩博士班一年級・沒有加修');
+    expect(toast).not.toHaveTextContent('資訊二');
+    expect(screen.queryByRole('region', { name: '資訊二 本學期必修' })).toBeNull();
+  });
+
+  test('a class from the record that is not in this term\'s class list is not stored', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('combobox', { name: '系級' }), '資訊二');
+    const toast = await importWithClass(user, '經濟二');
+    expect(toast).toHaveTextContent('已依全人系統資料設定身分：學士班二年級・沒有加修');
+    expect(toast).not.toHaveTextContent('經濟二');
+    expect(screen.queryByRole('region', { name: /本學期必修$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: '用這個系級' })).toBeNull();
+  });
+
+  test('a record class with a section the catalog does not split falls back to the class without it', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    const toast = await importWithClass(user, '資訊二乙');
+    expect(toast).toHaveTextContent('已依全人系統資料設定身分：資訊二・學士班二年級・沒有加修');
+    expect(screen.getByRole('region', { name: '資訊二 本學期必修' })).toBeInTheDocument();
   });
 
   test('the identity from an import can be undone from the toast', async () => {

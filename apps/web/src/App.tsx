@@ -1,16 +1,17 @@
 import {
   candidateScheduleSummary,
   checkEnrollmentRules,
+  classOptions,
   clearStudentRecord,
   creditLimits,
   findClashes,
   findOtherSections,
   findRetakes,
-  formatClassName,
   freeStretch,
   gapGeneralEducation,
   loadStudentRecord,
   lostCourseReplacements,
+  offeredClassName,
   parseClassName,
   suggestSectionSwap,
   passedAs as passedCourseTitle,
@@ -91,6 +92,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   if (!storageRef.current) storageRef.current = browserStorage();
   const ready = data.status === 'ready';
   const courses = ready ? data.courses : NO_COURSES;
+  const classList = useMemo(() => classOptions(courses), [courses]);
   // 載入前以空學期代碼呼叫：不讀寫任何學期，版面只有一份，載入前後不會重建。
   const planner = usePlanner({ term: ready ? data.term : '', courses, storage: storageRef.current });
   // 小山（AI 小助手）跟著常發生的事反應：加課、移出、候選、復原、打字、等 AI（docs/design 小助手一節）。
@@ -131,8 +133,11 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     setRecord(next);
     if (!next) return;
     const suggested = next.suggestedProfile;
-    const parsedClass = parseClassName(next.enrollment.className);
-    const profile: IdentityProfile = { ...planner.profile, ...suggested, ...(parsedClass ? { className: formatClassName(parsedClass) } : {}) };
+    // 系級只收本學期系級選單裡有的值；研究所或對不到的系級就清掉原本的（不留「研究所＋資訊二」這種矛盾的身分）。
+    const className = suggested.level === 'graduate' ? undefined : offeredClassName(next.enrollment.className, classList);
+    const profile: IdentityProfile = { ...planner.profile, ...suggested };
+    if (className) profile.className = className;
+    else delete profile.className;
     const same = (['className', 'level', 'year', 'additionalMajor'] as const).every((field) => profile[field] === planner.profile[field]);
     if (same) return;
     const parts = [
@@ -418,8 +423,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   // 系級（易用性審查第 1 名）：本班必修、空堂找課的「本系」、學分上下限都依它；全人系統匯出檔讀到的系級按一次確認就帶入。
   // 同一個系級保持同一個物件：幫我排滿依它重算，換一門的結果才不會在每次重畫時被洗掉。
   const identityClass = useMemo(() => (planner.profile.className ? parseClassName(planner.profile.className) : null), [planner.profile.className]);
-  const recordClass = record ? parseClassName(record.enrollment.className) : null;
-  const suggestedClass = record && recordClass ? { className: formatClassName(recordClass), profile: record.suggestedProfile } : null;
+  const recordClass = record && record.suggestedProfile.level !== 'graduate' ? offeredClassName(record.enrollment.className, classList) : undefined;
+  const suggestedClass = record && recordClass ? { className: recordClass, profile: record.suggestedProfile } : null;
   const categories = useMemo(() => [...new Set(courses.map(({ official }) => official.generalEducation).filter(Boolean))], [courses]);
   const gapCategories = useMemo(() => (record ? gapGeneralEducation(record.audit.gaps, categories) : []), [categories, record]);
   const current = TOOLS.find(({ id }) => id === tool)!;

@@ -81,10 +81,14 @@ const UNIT_PATTERN = /(.+?)(?:(碩專|碩|博)?([一二三四五六七1-7])([甲
 // 官方用很短的簡稱，少數要對回系名才找得到。
 const DEPARTMENT_ALIASES: Readonly<Record<string, string>> = { 地: '地政', 外文中: '外文中心' };
 // 同一個系分語別開課（歐文法二、東南越三）：系名合併成一項，語別放進年級標籤（法二、越三），仍可依語別篩選。
-const LANGUAGE_UNITS: Readonly<Record<string, readonly [string, string]>> = {
-  歐文法: ['歐文學', '法'], 歐文德: ['歐文學', '德'], 歐文西: ['歐文學', '西'],
-  東南越: ['東南亞語', '越'], 東南泰: ['東南亞語', '泰'], 東南印: ['東南亞語', '印'],
-};
+// 合併後的寫法（歐文學法二、東南亞語越一）是系級選單存進身分的值，也要讀得回同一個系級。
+const LANGUAGE_UNITS: Readonly<Record<string, readonly [string, string]>> = Object.fromEntries(([
+  ['歐文', '歐文學', ['法', '德', '西']],
+  ['東南', '東南亞語', ['越', '泰', '印']],
+] as const).flatMap(([short, merged, languages]) => languages.flatMap((language) => [
+  [`${short}${language}`, [merged, language]],
+  [`${merged}${language}`, [merged, language]],
+] as const)));
 const UNDERGRAD_GRADE = /^[一二三四五六七1-7]$/;
 
 const canonicalDepartment = (name: string) => DEPARTMENT_ALIASES[name] ?? name;

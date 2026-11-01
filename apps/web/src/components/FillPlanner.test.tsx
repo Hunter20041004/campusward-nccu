@@ -78,4 +78,23 @@ describe('FillPlanner', () => {
     await user.click(swapButtons.at(-1)!);
     expect(screen.getByRole('list', { name: '方案 A・照優先順序的課' }).textContent).not.toBe(before);
   });
+
+  test('says why a class required course was left out: over the credit limit, or the same title already on the timetable', async () => {
+    const user = userEvent.setup();
+    // 課表上已有別系的「離散數學」（不衝堂）和 20 學分的專題，共 23 學分：資料結構排進去會超過 25。
+    const other = make('701007001', { subNam: '離散數學', subGde: '應數二', subTime: '五234' });
+    const projects = [
+      make('901001001', { subNam: '專題研究（一）', subGde: '資訊三', subKind: '選修', subPoint: '9.0', subTime: '一EF' }),
+      make('901002001', { subNam: '專題研究（二）', subGde: '資訊三', subKind: '選修', subPoint: '9.0', subTime: '五EF' }),
+      make('901003001', { subNam: '專題研究（三）', subGde: '資訊三', subKind: '選修', subPoint: '2.0', subTime: '一12' }),
+    ];
+    const fixed = [other, ...projects];
+    const filled: FillContext = { ...context, catalog: [...courses, ...fixed], entries: fixed.map((course) => ({ course, item: { key: course.key, locked: false, status: 'planned' as const, attendance: 'sync' as const } })) };
+    render(<FillPlanner context={filled} className={parseClassName('資訊二')} candidateKeys={[]} credits={23} limits={{ minimum: 12, maximum: 25 }} catalog={new Map([...catalog, ...fixed.map((course) => [course.key, course] as const)])} onApply={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: '幫我排滿' }));
+    await user.click(screen.getByRole('radio', { name: '25' }));
+    expect(screen.getByText(/有 1 門本班必修排進去會超過學分上限（25 學分），沒有排進去/)).toBeInTheDocument();
+    expect(screen.getByText(/課表上已有「離散數學」，和本班必修同名或同科目，沒有重複排/)).toBeInTheDocument();
+    expect(screen.queryByText(/每一班都衝堂/)).not.toBeInTheDocument();
+  });
 });

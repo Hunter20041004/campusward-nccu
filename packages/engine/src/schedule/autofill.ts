@@ -8,7 +8,7 @@ import { normalizeSearchText, parseClassUnits } from '../catalog.ts';
 import { evaluateEligibility, type IdentityProfile } from '../eligibility.ts';
 import { periodsForRange } from '../periods.ts';
 import { courseCategory, type CourseCategory, type EnrollmentRules } from '../rules.ts';
-import { chooseSections, classUnitMatch, freeStretch, type ClassName, type SectionPreferences } from './classPlan.ts';
+import { chooseSections, classUnitMatch, freeStretch, type ClassName, type SectionChoice, type SectionPreferences } from './classPlan.ts';
 import { addCourse, findClashes, findOtherSections, totalCredits, type ScheduleCourse, type ScheduleEntry } from './selection.ts';
 
 export interface FillContext {
@@ -130,8 +130,19 @@ interface Tier {
   rank: ReadonlyMap<string, number>;
 }
 
+/** 本班必修沒排進去的原因：clash＝每一班都衝堂；max＝排進去會超過學分上限；same＝課表上已有同名或同科目代碼的課（clashesWith 是那門課）。 */
+export type RequiredUnplacedReason = 'clash' | 'max' | 'same';
+
+export interface RequiredChoice extends Omit<SectionChoice, 'unplaced'> {
+  unplaced: { groupId: string; reason: RequiredUnplacedReason; clashesWith: string[] }[];
+}
+
+/**
+ * 本班必修的科目。課表上已有同一科（科目代碼＋課名）的不再排；課名或科目代碼和課表上的課相同、但不是同一科的
+ * （例：別系開的「社會心理學」）不自動再排一門，寫進 same，讓學生自己決定要不要換成本班那一班。
+ */
 function requiredGroups(context: FillContext, className: ClassName | null | undefined) {
-  if (!className) return [];
+  if (!className) return { groups: [], same: [], ids: [] };
   const scheduled = new Set(context.entries.map(({ course }) => groupOf(course)));
   const groups = new Map<string, ScheduleCourse[]>();
   context.catalog.forEach((course) => {
@@ -140,9 +151,20 @@ function requiredGroups(context: FillContext, className: ClassName | null | unde
     const id = groupOf(course);
     groups.set(id, [...(groups.get(id) ?? []), course]);
   });
-  return [...groups.entries()]
+  const open = [...groups.entries()]
     .filter(([id, options]) => !scheduled.has(id) && !options.every((option) => context.passed?.(option)))
     .map(([id, options]) => ({ id, options }));
+  const sameAs = (options: readonly ScheduleCourse[]) => context.entries
+    .filter(({ course: other }) => options.some((option) => normalizeSearchText(other.title) === normalizeSearchText(option.title)
+      || (subjectOf(option).length === 6 && subjectOf(other) === subjectOf(option))))
+    .map(({ course: other }) => other.key);
+  const same: RequiredChoice['unplaced'] = [];
+  const free = open.filter((group) => {
+    const keys = sameAs(group.options);
+    if (keys.length) same.push({ groupId: group.id, reason: 'same', clashesWith: keys.sort() });
+    return !keys.length;
+  });
+  return { groups: free, same, ids: open.map(({ id }) => id) };
 }
 
 function buildTiers(context: FillContext, request: FillRequest, requiredIds: ReadonlySet<string>): Tier[] {
@@ -223,20 +245,38 @@ const STRATEGIES = {
 } as const;
 
 function prepare(context: FillContext, request: FillRequest) {
-  const groups = requiredGroups(context, request.className);
-  const required = chooseSections(groups, context.entries, context.preferences);
-  const requiredPicks: FillPick[] = required.picks.map(({ key }) => ({ key, source: 'required' }));
+  const { groups, same, ids } = requiredGroups(context, request.className);
+  const chosen = chooseSections(groups, context.entries, context.preferences);
   const byKey = new Map(context.catalog.map((course) => [course.key, course]));
-  const base = [...context.entries, ...requiredPicks.map(({ key }) => asEntry(byKey.get(key)!))];
-  const tiers = buildTiers(context, request, new Set(groups.map(({ id }) => id)));
+  // 學分上限是硬性規則，本班必修也一樣：依科目順序一門一門放，放不下的寫進 unplaced（max）。
+  const base = [...context.entries];
+  const picks: SectionChoice['picks'] = [];
+  const over: RequiredChoice['unplaced'] = [];
+  chosen.picks.forEach((pick) => {
+    const course = byKey.get(pick.key)!;
+    if (context.maximumCredits !== undefined && totalCredits(base) + course.credits > context.maximumCredits) {
+      over.push({ groupId: pick.groupId, reason: 'max', clashesWith: [] });
+      return;
+    }
+    base.push(asEntry(course));
+    picks.push(pick);
+  });
+  const unplaced: RequiredChoice['unplaced'] = [
+    ...chosen.unplaced.map(({ groupId, clashesWith }) => ({ groupId, reason: 'clash' as const, clashesWith })),
+    ...over,
+    ...same,
+  ].sort((first, second) => ids.indexOf(first.groupId) - ids.indexOf(second.groupId));
+  const required: RequiredChoice = { ...chosen, picks, unplaced };
+  const requiredPicks: FillPick[] = picks.map(({ key }) => ({ key, source: 'required' }));
+  const tiers = buildTiers(context, request, new Set(ids));
   return { required, requiredPicks, base, tiers, byKey };
 }
 
 /**
  * 「幫我排滿」：2–3 份補到目標學分的完整方案（相同輸入相同輸出）。
- * 每份都含本班必修（排不進去的寫在 required.unplaced）；彼此相同的方案只留一份。
+ * 每份都含本班必修（排不進去的寫在 required.unplaced，附原因：衝堂、超過學分上限、課表上已有同名的課）；彼此相同的方案只留一份。
  */
-export function buildFillPlans(context: FillContext, request: FillRequest): { plans: FillPlan[]; required: ReturnType<typeof chooseSections> } {
+export function buildFillPlans(context: FillContext, request: FillRequest): { plans: FillPlan[]; required: RequiredChoice } {
   const { required, requiredPicks, base, tiers, byKey } = prepare(context, request);
   const make = (id: FillPlan['id'], picks: FillPick[]): FillPlan => {
     const all = [...requiredPicks, ...picks];

@@ -8,25 +8,40 @@ import { NCCU_PERIODS, periodsForRange } from '../periods.ts';
 import { addCourse, findClashes, findConflicts, findOtherSections, occupiedMeetings, type ScheduleCourse, type ScheduleEntry } from './selection.ts';
 
 const YEARS = '一二三四五六七';
-const SECTIONS = '甲乙丙丁戊己';
+const isUndergradGrade = (grade: string) => /^[^碩博]*[一二三四五六七]$/.test(grade);
+const SECTIONS = ['甲', '乙', '丙', '丁', '戊', '己'];
+// 地政系二年級起分土管、土資、土測三組，各組必修不同（官方開課班級寫「地二土管」）。
+const TRACKS = ['土管', '土資', '土測'];
+const SECTION_ORDER = [...SECTIONS, ...TRACKS];
+const isSection = (section: string) => SECTION_ORDER.includes(section);
+const isTrack = (section: string) => TRACKS.includes(section);
+// 研究所、碩專、EMBA 不是大學部系級（「法律碩士一年級」不能變成「法律碩士」這個系）。
+const GRADUATE = /碩|博|專|EMBA/i;
+// 長寫法：「資訊科學系二年級」「會計學系二年級甲班」「地政系二年級土管組」「資訊大一」。
+const LONG_FORM = /^(.{2,}?)(?:科學系|學系|系)?(?:([一二三四五六七])年級|大([一二三四]))([甲乙丙丁戊己]|土[管資測])?[班組]?$/;
 
-/** 學生的系級，例 資訊／二／''、會計／二／甲。只收大學部年級。 */
+/** 學生的系級，例 資訊／二／''、會計／二／甲、地政／二／土管、歐文學／法二／''。只收大學部年級。 */
 export interface ClassName {
   department: string;
   grade: string;
   section: string;
 }
 
-/** 「資訊二」「會計二甲」「資訊系 二年級」「會計系二年級甲班」→ 系級；研究所或看不出年級時回傳 null。 */
+/**
+ * 「資訊二」「會計二甲」「地政二土管」「歐文學法二」（也收官方簡寫「歐文法二」）「資訊系 二年級」「會計系二年級甲班」→ 系級；
+ * 研究所或看不出年級時回傳 null。classOptions 的每個值讀回來都是同一個系級。
+ */
 export function parseClassName(text: string): ClassName | null {
   const value = text.normalize('NFKC').replace(/\s+/g, '');
-  const long = /^(.+?)(?:學系|系)?([一二三四五六七])年級([甲乙丙丁戊己])?班?$/.exec(value);
-  if (long) return { department: long[1]!, grade: long[2]!, section: long[3] ?? '' };
-  const units = parseClassUnits(value);
+  if (!value || GRADUATE.test(value)) return null;
+  const long = LONG_FORM.exec(value);
+  // 長寫法換成短寫再走同一條路，語別（歐文法語）與簡稱（地）才會對回選單的寫法。
+  const short = long ? `${long[1]}${long[2] ?? long[3]}${long[4] ?? ''}` : value;
+  const units = parseClassUnits(short);
   if (units.length !== 1) return null;
   const [unit] = units as [ReturnType<typeof parseClassUnits>[number]];
-  if (!/^[^碩博]*[一二三四五六七]$/.test(unit.grade)) return null;
-  if (unit.section && !SECTIONS.includes(unit.section)) return null;
+  if (!isUndergradGrade(unit.grade)) return null;
+  if (unit.section && !isSection(unit.section)) return null;
   return { department: unit.department, grade: unit.grade, section: unit.section };
 }
 
@@ -46,8 +61,6 @@ export interface ClassOption extends ClassName {
   label: string;
 }
 
-const isUndergradGrade = (grade: string) => /^[^碩博]*[一二三四五六七]$/.test(grade);
-
 /** 從課程快照的開課班級整理出可選的大學部系級（有分班的系也列出不分班的寫法）。 */
 export function classOptions(courses: readonly Course[]): ClassOption[] {
   const labels = new Map(offeringDepartments(courses).map(({ department, label }) => [department, label]));
@@ -57,14 +70,14 @@ export function classOptions(courses: readonly Course[]): ClassOption[] {
     if (found.has(value)) return;
     const name = labels.get(department) ?? department;
     const year = `${grade.slice(0, -1)}${grade.slice(-1)}年級`;
-    found.set(value, { department, grade, section, value, label: `${name} ${year}${section ? `${section}班` : ''}` });
+    found.set(value, { department, grade, section, value, label: `${name} ${year}${section ? `${section}${isTrack(section) ? '組' : '班'}` : ''}` });
   };
   courses.forEach((course) => {
     if (course.official.degreeLevel && !course.official.degreeLevel.includes('學士')) return;
     parseClassUnits(course.official.targetGroup).forEach(({ department, grade, section }) => {
       if (!isUndergradGrade(grade)) return;
       add(department, grade, '');
-      if (section && SECTIONS.includes(section)) add(department, grade, section);
+      if (section && isSection(section)) add(department, grade, section);
     });
   });
   const rank = (grade: string) => YEARS.indexOf(grade.slice(-1));
@@ -72,8 +85,19 @@ export function classOptions(courses: readonly Course[]): ClassOption[] {
     (labels.get(first.department) ?? first.department).localeCompare(labels.get(second.department) ?? second.department, 'zh-Hant-TW')
     || first.grade.slice(0, -1).localeCompare(second.grade.slice(0, -1), 'zh-Hant-TW')
     || rank(first.grade) - rank(second.grade)
-    || SECTIONS.indexOf(first.section) - SECTIONS.indexOf(second.section)
+    || SECTION_ORDER.indexOf(first.section) - SECTION_ORDER.indexOf(second.section)
   ));
+}
+
+/**
+ * 外來的系級文字（全人系統匯出檔）對到系級選單的值：選單沒有這個班別（本學期沒有分班開課）就退回不分班的寫法；
+ * 研究所、選單沒有的系級或看不懂的文字回傳 undefined，不存一個對不到任何課的系級。
+ */
+export function offeredClassName(text: string, options: readonly ClassOption[]): string | undefined {
+  const parsed = parseClassName(text);
+  if (!parsed) return undefined;
+  const values = new Set(options.map(({ value }) => value));
+  return [formatClassName(parsed), formatClassName({ ...parsed, section: '' })].find((value) => values.has(value));
 }
 
 /** 同一門課的各班：科目代碼（課號前六碼）＋課名相同。 */
@@ -98,11 +122,17 @@ function groupCourses(courses: readonly Course[]): CourseGroup[] {
 
 /**
  * 開課班級和學生系級的關係：class＝寫了這個系級（有分班時班別也要對上；任一邊沒分班都算）；
- * department＝只寫系、看不出年級；其他（別系、別的年級）回傳 null。
+ * department＝只寫系、看不出年級，或學生沒選組而這門課只開給部分組（地二土資）；其他（別系、別的年級）回傳 null。
  */
 export function classUnitMatch(targetGroup: string, className: ClassName): 'class' | 'department' | null {
   const units = parseClassUnits(targetGroup).filter(({ department }) => department === className.department);
-  if (units.some(({ grade, section }) => grade === className.grade && (!section || !className.section || section === className.section))) return 'class';
+  const sameGrade = units.filter(({ grade }) => grade === className.grade);
+  if (sameGrade.some(({ section }) => !section || !className.section || section === className.section)) {
+    // 沒選組：三組都要修的才算本班必修；只開給部分組的課不知道學生要不要修，不自動排入。
+    const covered = new Set(sameGrade.map(({ section }) => section));
+    const partialTracks = !className.section && sameGrade.every(({ section }) => isTrack(section)) && !TRACKS.every((track) => covered.has(track));
+    return partialTracks ? 'department' : 'class';
+  }
   return units.some(({ grade }) => !grade) ? 'department' : null;
 }
 

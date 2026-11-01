@@ -88,6 +88,15 @@ export function FillPlanner({ context, className, candidateKeys, credits, limits
 
   const unplaced = result?.required.unplaced ?? [];
   const titleOf = (key: string) => catalog.get(key)?.title ?? '課程';
+  // 本班必修沒排進去的原因：衝堂、超過學分上限、課表上已有同名的課（別系開的，不自動再排一門）。
+  const count = (reason: string) => unplaced.filter((item) => item.reason === reason).length;
+  const unplacedNotes = [
+    count('clash') ? `有 ${count('clash')} 門本班必修每一班都衝堂，沒有排進去；可以在「我的系級」那裡自己選班。` : '',
+    count('max') ? `有 ${count('max')} 門本班必修排進去會超過學分上限（${context.maximumCredits ?? ''} 學分），沒有排進去。` : '',
+    ...unplaced.filter(({ reason }) => reason === 'same').map(({ clashesWith }) => (
+      `課表上已有「${clashesWith.map(titleOf).join('」「')}」，和本班必修同名或同科目，沒有重複排；要換成本班那一班，可以在「我的系級」那裡排。`
+    )),
+  ].filter(Boolean);
   return (
     <section aria-labelledby="fill-title" className="well space-y-3 rounded-2xl p-3 text-sm">
       <div className="flex items-start gap-2">
@@ -122,12 +131,12 @@ export function FillPlanner({ context, className, candidateKeys, credits, limits
       <p className="text-xs text-base-content/75">
         本班必修、課表上已有的課都保留；再從候選（同課名任一班）、本系選修、通識補，避開衝堂、空堂日與早八，同名只排一門，也照初選分發科目數上限。
       </p>
-      {unplaced.length > 0 && (
-        <p className="flex items-start gap-1.5 text-coral-ink">
+      {unplacedNotes.map((note) => (
+        <p key={note} className="flex items-start gap-1.5 text-coral-ink">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          有 {unplaced.length} 門本班必修每一班都衝堂，沒有排進去；可以在「我的系級」那裡自己選班。
+          {note}
         </p>
-      )}
+      ))}
       <p role="status" className="empty:hidden">{message}</p>
       {request && (
         plans.length === 0 ? <p>找不到可以補的課。</p> : (

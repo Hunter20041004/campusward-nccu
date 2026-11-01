@@ -170,6 +170,44 @@ describe('buildFillPlans', () => {
     });
   });
 
+  test('class required courses also stay within the maximum: the ones that do not fit are reported, not added', () => {
+    // 課表上已有 22 學分（都不和必修衝堂），上限 25：只排得下一門 3 學分的必修。
+    const fixed = [
+      make({ subNum: '901001001', subNam: '專題研究（一）', subGde: '資訊三', subKind: '選修', subPoint: '9.0', subTime: '一EF' }),
+      make({ subNum: '901002001', subNam: '專題研究（二）', subGde: '資訊三', subKind: '選修', subPoint: '9.0', subTime: '五EF' }),
+      make({ subNum: '901003001', subNam: '專題研究（三）', subGde: '資訊三', subKind: '選修', subPoint: '4.0', subTime: '一12' }),
+    ].map((course) => entry(course));
+    const { plans, required: requiredPart } = buildFillPlans(context({ entries: fixed }), { className, candidateKeys: [], target: 25 });
+    expect(requiredPart.picks.map(({ key: pick }) => pick)).toEqual([required[0]!.key]);
+    expect(requiredPart.unplaced).toEqual([
+      { groupId: expect.stringContaining('703008'), reason: 'max', clashesWith: [] },
+      { groupId: expect.stringContaining('703017'), reason: 'max', clashesWith: [] },
+    ]);
+    expect(plans.length).toBeGreaterThan(0);
+    plans.forEach((plan) => {
+      expect(plan.credits).toBeLessThanOrEqual(25);
+      expect(plan.credits).toBe(25);
+      expect(plan.reached).toBe(true);
+    });
+  });
+
+  test('a class required course whose title is already on the timetable (another department) is reported, not added twice', () => {
+    const other = make({ subNum: '701007001', subNam: '離散數學', subGde: '應數二', subTime: '五234' });
+    const { plans, required: requiredPart } = buildFillPlans(context({ entries: [entry(other)], catalog: [...catalog, other] }), { className, candidateKeys: [], target: 18 });
+    expect(requiredPart.picks.map(({ key: pick }) => pick)).not.toContain(required[0]!.key);
+    expect(requiredPart.unplaced).toEqual([{ groupId: expect.stringContaining('703007'), reason: 'same', clashesWith: [other.key] }]);
+    plans.forEach((plan) => {
+      const titles = [other, ...coursesOf(plan.picks.map(({ key: pick }) => pick))].map(({ title }) => title);
+      expect(new Set(titles).size).toBe(titles.length);
+    });
+  });
+
+  test('a class required course that clashes in every section says so', () => {
+    const blocker = make({ subNum: '902001001', subNam: '專題討論', subGde: '資訊三', subKind: '選修', subTime: '二234' });
+    const { required: requiredPart } = buildFillPlans(context({ entries: [entry(blocker)], catalog: [...catalog, blocker] }), { className, candidateKeys: [], target: 18 });
+    expect(requiredPart.unplaced).toEqual([{ groupId: expect.stringContaining('703007'), reason: 'clash', clashesWith: [blocker.key] }]);
+  });
+
   test('works without a class: general education and candidates only', () => {
     const { plans, required: requiredPart } = buildFillPlans(context({ profile: { level: 'undergrad', year: 2 } }), { candidateKeys: [], target: 9 });
     expect(requiredPart.picks).toEqual([]);
