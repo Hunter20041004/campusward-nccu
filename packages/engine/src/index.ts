@@ -19,6 +19,7 @@ export * from './plans.ts';
 export * from './history.ts';
 export * from './ai/validate.ts';
 export * from './ai/changeSet.ts';
+export * from './ai/prompt.ts';
 export * from './ai/import.ts';
 export * from './ai/plan.ts';
 export * from './storage.ts';
