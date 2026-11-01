@@ -1,10 +1,9 @@
 // 快照抽查（計畫 3.0）：平均抽 N 門，向官方查詢逐門比對主要欄位。npm run pipeline:spotcheck -- --term 1151
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseTerm, rowToCourse, type Course } from '../../packages/engine/src/index.ts';
+import { diffOfficialCourse, LIVE_FIELDS, parseTerm, type Course } from '../../packages/engine/src/index.ts';
 import { buildQueryUrl, type OfficialRow } from './fetch.ts';
 
-const FIELDS = ['title', 'teacher', 'credits', 'scheduleText', 'classroom', 'meetings', 'restrictionText'] as const;
 
 /** 依課號排序後等距抽樣，同一份快照每次抽到同一批。 */
 export function sampleCodes(codes: readonly string[], count: number): string[] {
@@ -15,12 +14,11 @@ export function sampleCodes(codes: readonly string[], count: number): string[] {
 
 /** 官方即時資料經同一套正規化後，和快照不同的欄位。 */
 export function compareWithOfficial(course: Course, row: OfficialRow | null): string[] {
-  if (!row) return ['missing'];
-  const [year, semester] = [Number(course.term.slice(0, 3)), Number(course.term.slice(3))];
-  const { course: live } = rowToCourse(row, { year, semester });
-  if (!live) return ['rejected'];
-  return FIELDS.filter((field) => JSON.stringify(course[field]) !== JSON.stringify(live[field]));
+  const result = diffOfficialCourse(course, row);
+  return result.status === 'changed' ? result.fields : result.status === 'same' ? [] : ['missing'];
 }
+
+export const COMPARED_FIELDS = LIVE_FIELDS;
 
 if (process.argv[1]?.endsWith('spotcheck.ts')) {
   const termIndex = process.argv.indexOf('--term');

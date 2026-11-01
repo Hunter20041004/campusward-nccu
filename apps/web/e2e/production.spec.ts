@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // 正式建置＋public/_headers：CSP 沒有被違反、連線只到本站與 Gemini、桌布在 CSP 下可下載（計畫 3b、5.3）。
-const ALLOWED_ORIGINS = ['http://localhost:5175', 'https://generativelanguage.googleapis.com'];
+const ALLOWED_ORIGINS = ['http://localhost:5175', 'https://generativelanguage.googleapis.com', 'https://es.nccu.edu.tw'];
 const FAKE_KEY = 'AIzaSyE2E-fake-key-0000000000000000000';
 
 async function watch(page: Page) {
@@ -23,7 +23,7 @@ test('serves the security headers', async ({ page }) => {
   const response = await page.goto('/');
   const headers = response!.headers();
   expect(headers['content-security-policy']).toContain("script-src 'self'");
-  expect(headers['content-security-policy']).toContain('connect-src \'self\' https://generativelanguage.googleapis.com');
+  expect(headers['content-security-policy']).toContain('connect-src \'self\' https://generativelanguage.googleapis.com https://es.nccu.edu.tw;');
   expect(headers['x-content-type-options']).toBe('nosniff');
   expect(headers['referrer-policy']).toBe('no-referrer');
   expect(headers['x-frame-options']).toBe('DENY');
@@ -41,6 +41,14 @@ test('runs the main flows without CSP violations or unexpected connections', asy
   await page.getByRole('searchbox', { name: '搜課' }).fill('統計學');
   await page.getByRole('button', { name: '加入課表：統計學' }).click();
   await expect(page.getByText('共 3 學分')).toBeVisible();
+
+  // 單門課向官方確認：測試不連真的政大，回一筆教師不同的資料。
+  const official = await page.evaluate(async () => (await fetch('/snapshots/1151/courses.json').then((response) => response.json()) as { code: string }[]).find(({ code }) => code === '900001001'));
+  expect(official).toBeTruthy();
+  await page.route('https://es.nccu.edu.tw/**', (route) => route.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' }));
+  await page.locator('button[aria-controls^="details-"]').first().click();
+  await page.getByRole('button', { name: '向官方確認最新資料' }).click();
+  await expect(page.getByText(/政大課程查詢目前查不到這門課/)).toBeVisible();
 
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: '手機桌布' }).click();

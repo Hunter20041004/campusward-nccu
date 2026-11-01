@@ -8,6 +8,7 @@ export * from './official/url.ts';
 export * from './official/syllabus.ts';
 export * from './official/notes.ts';
 export * from './official/course.ts';
+export * from './official/live.ts';
 export * from './official/corrections.ts';
 export * from './eligibility.ts';
 export * from './schedule/selection.ts';

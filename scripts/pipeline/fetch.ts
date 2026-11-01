@@ -4,7 +4,8 @@
 // 未定時段＋星期一到日共 8 格；某格回滿 500 筆就不採用，依序改切時段（4）、語言（3）、餘額（2）。
 // 另以開課單位查一遍交叉驗證：只有單位查得到的課代表時段格式沒涵蓋到，要併入並回報。
 
-const OFFICIAL_ORIGIN = 'https://es.nccu.edu.tw';
+import { officialQueryUrl } from '../../packages/engine/src/index.ts';
+
 /** 官方前端的開課單位清單；交叉驗證用第一層。 */
 export const UNIT_LIST_URL = 'https://qrysub.nccu.edu.tw/assets/api/unit.json';
 
@@ -35,9 +36,8 @@ export function cellKeyword(cell: Cell): string {
   ].filter(Boolean).join(' ');
 }
 
-export function buildQueryUrl(term: string, keyword: string): URL {
-  return new URL(`/course/zh-TW/${encodeURIComponent(`:sem=${term} ${keyword} `)}/`, OFFICIAL_ORIGIN);
-}
+/** 與網站的單門課確認共用同一個網址格式（引擎 official/live）。 */
+export const buildQueryUrl = officialQueryUrl;
 
 /** 回滿上限的格子往下切：時段（未定那格沒有時段）→ 語言 → 餘額；都切過就沒有子格。 */
 function children(cell: Cell): Cell[] {

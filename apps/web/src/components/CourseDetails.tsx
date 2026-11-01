@@ -1,5 +1,42 @@
-import { NCCU_HOSTS, safeExternalUrl, type Course } from '@campusward/engine';
-import { ExternalLink } from 'lucide-react';
+import { checkCourseLive, NCCU_HOSTS, safeExternalUrl, type Course, type LiveCheck, type LiveField } from '@campusward/engine';
+import { ExternalLink, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
+
+const FIELD_LABELS: Record<LiveField, string> = {
+  title: '課名', teacher: '教師', credits: '學分', scheduleText: '上課時間', classroom: '教室', meetings: '節次', restrictionText: '修課限制',
+};
+const liveValue = (course: Course, field: LiveField) => (field === 'meetings' ? course.scheduleText : String(course[field] ?? '')) || '（空白）';
+
+/** 只把學期與課號送到政大公開查詢（隱私說明頁有寫）。 */
+function LiveCheckButton({ course, fetchImpl }: { course: Course; fetchImpl: (url: URL) => Promise<Response> }) {
+  const [state, setState] = useState<LiveCheck | 'loading' | null>(null);
+  const run = async () => {
+    setState('loading');
+    setState(await checkCourseLive(course, fetchImpl));
+  };
+  return (
+    <div aria-live="polite" className="space-y-1">
+      <button type="button" className="btn btn-sm min-h-11 gap-1.5 border border-base-300 bg-base-100" onClick={() => void run()} disabled={state === 'loading'}>
+        <RefreshCw className="size-4" aria-hidden="true" />{state === 'loading' ? '確認中…' : '向官方確認最新資料'}
+      </button>
+      {state && state !== 'loading' && (
+        state.status === 'same' ? <p>和政大課程查詢目前的資料相同。</p>
+          : state.status === 'missing' ? <p className="text-coral-ink">政大課程查詢目前查不到這門課，可能已停開，請到學校系統確認。</p>
+            : state.status === 'failed' ? <p className="text-coral-ink">連不上政大課程查詢，請稍後再試。</p>
+              : (
+                <div className="rounded-field border border-coral-ink/40 px-3 py-2">
+                  <p className="font-medium">學校已更新這門課（以學校為準）：</p>
+                  <ul className="list-disc pl-5">
+                    {state.fields.filter((field) => field !== 'meetings' || !state.fields.includes('scheduleText')).map((field) => (
+                      <li key={field}>{FIELD_LABELS[field]}：{liveValue(course, field)} → {liveValue(state.live, field)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )
+      )}
+    </div>
+  );
+}
 
 function OfficialLink({ href, label }: { href: string | undefined; label: string }) {
   // 所有外部連結都經引擎的 safeExternalUrl（只放行 https 政大網域）。
@@ -14,7 +51,7 @@ function OfficialLink({ href, label }: { href: string | undefined; label: string
   );
 }
 
-export function CourseDetails({ course, id }: { course: Course; id: string }) {
+export function CourseDetails({ course, id, fetchImpl = (url) => fetch(url, { headers: { accept: 'application/json' }, credentials: 'omit', referrerPolicy: 'no-referrer' }) }: { course: Course; id: string; fetchImpl?: (url: URL) => Promise<Response> }) {
   const { official, notes } = course;
   const rows = ([
     ['教室', course.classroom],
@@ -68,6 +105,7 @@ export function CourseDetails({ course, id }: { course: Course; id: string }) {
         <OfficialLink href={course.links.remaining} label="即時餘額" />
         <OfficialLink href={course.links.teacher} label="教師資訊" />
       </div>
+      <LiveCheckButton course={course} fetchImpl={fetchImpl} />
     </section>
   );
 }
