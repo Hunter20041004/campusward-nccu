@@ -172,6 +172,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini }: { cat
               ai={(
                 <AiPanel
                   client={ai}
+                  term={ready ? data.term : ''}
                   termLabel={ready ? data.label : ''}
                   planner={planner.planner}
                   catalog={planner.catalog}

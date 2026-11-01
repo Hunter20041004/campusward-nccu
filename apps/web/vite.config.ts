@@ -1,13 +1,16 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
+import { buildSyllabusArtifacts } from './src/qa/syllabusIndex.ts';
 
 // 端到端測試以 CAMPUSWARD_DATA_DIR 指向合成資料。
 const DATA_DIR = process.env.CAMPUSWARD_DATA_DIR ?? resolve(import.meta.dirname, '../../data');
 
-/** 把 data/snapshots 與 data/corrections 提供給網站：開發時直接讀檔，建置時輸出成靜態檔。 */
+const syllabusCache = new Map<string, ReturnType<typeof buildSyllabusArtifacts>>();
+
+/** 把 data/snapshots、data/corrections 與課綱索引提供給網站：開發時直接讀檔，建置時輸出成靜態檔。 */
 function courseData(): Plugin {
   const files = () => {
     const out = new Map<string, string>();
@@ -22,6 +25,20 @@ function courseData(): Plugin {
       out.set(`snapshots/${term}/courses.json`, readFileSync(courses, 'utf8'));
     }
     out.set('snapshots/index.json', JSON.stringify(index));
+    // 課綱語料 → 索引與每門課的全文檔（建索引要幾秒，依檔案修改時間快取）。
+    const syllabusDir = join(DATA_DIR, 'syllabi');
+    const syllabusTerms: string[] = [];
+    for (const term of existsSync(syllabusDir) ? readdirSync(syllabusDir) : []) {
+      const corpus = join(syllabusDir, term, 'corpus.jsonl');
+      if (!/^\d{4}$/.test(term) || !existsSync(corpus)) continue;
+      const stamp = `${corpus}:${statSync(corpus).mtimeMs}`;
+      if (!syllabusCache.has(stamp)) syllabusCache.set(stamp, buildSyllabusArtifacts(readFileSync(corpus, 'utf8')));
+      const built = syllabusCache.get(stamp)!;
+      syllabusTerms.push(term);
+      out.set(`syllabi/${term}/index.json`, built.index);
+      built.courses.forEach((text, code) => out.set(`syllabi/${term}/courses/${code}.json`, text));
+    }
+    out.set('syllabi/index.json', JSON.stringify(syllabusTerms));
     const correctionDir = join(DATA_DIR, 'corrections');
     for (const name of existsSync(correctionDir) ? readdirSync(correctionDir) : []) {
       if (/^\d{4}\.json$/.test(name)) out.set(`corrections/${name}`, readFileSync(join(correctionDir, name), 'utf8'));

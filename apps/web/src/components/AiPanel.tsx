@@ -4,7 +4,9 @@ import { useRef, useState } from 'react';
 import type { GeminiClient } from '../ai/gemini.ts';
 import { aiSearch, planWithAi } from '../ai/orb.ts';
 import { OrbMark } from './OrbMark.tsx';
+import { httpSyllabusSource, type SyllabusSource } from '../qa/syllabusSource.ts';
 import { CareerSection } from './CareerSection.tsx';
+import { QaSection } from './QaSection.tsx';
 import { ScreenshotImport } from './ScreenshotImport.tsx';
 
 export const GEMINI_TERMS_URL = safeExternalUrl('https://ai.google.dev/gemini-api/terms', ['ai.google.dev']);
@@ -12,7 +14,10 @@ const KEY_HELP_URL = safeExternalUrl('https://aistudio.google.com/apikey', ['ais
 
 export interface AiPanelProps {
   client: GeminiClient;
+  /** 四碼學期（課綱資料用）。 */
+  term?: string;
   termLabel: string;
+  syllabi?: SyllabusSource;
   planner: PlannerState;
   catalog: ReadonlyMap<string, ScheduleCourse>;
   courses: readonly Course[];
@@ -48,7 +53,7 @@ function AnswerText({ text, catalog }: { text: string; catalog: ReadonlyMap<stri
   );
 }
 
-export function AiPanel({ client, termLabel, planner, catalog, courses, ready, onApply }: AiPanelProps) {
+export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSource, planner, catalog, courses, ready, onApply }: AiPanelProps) {
   const [accepted, setAccepted] = useState(false);
   const [hasKey, setHasKey] = useState(() => client.hasKey());
   const [keyError, setKeyError] = useState('');
@@ -177,6 +182,8 @@ export function AiPanel({ client, termLabel, planner, catalog, courses, ready, o
           </div>
         </form>
       )}
+
+      {ready && term && <QaSection source={syllabi} term={term} courses={courses} client={client} aiReady={accepted && hasKey} />}
 
       {accepted && hasKey && ready && (
         <>

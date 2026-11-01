@@ -21,3 +21,6 @@ playwright-report/
 
 # 全人系統匯出檔含大量個資，絕不進版控
 exportStudentData*.json
+
+# 代理的工作樹（每個是獨立的 git 工作區）
+.claude/worktrees/

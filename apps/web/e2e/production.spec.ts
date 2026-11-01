@@ -58,6 +58,10 @@ test('runs the main flows without CSP violations or unexpected connections', asy
   await expect(page.getByText(/學校審查資料日期/)).toBeVisible();
 
   await page.getByRole('tab', { name: 'AI' }).click();
+  // 課綱問答：沒有金鑰也能查本機索引（延遲載入的程式包，CSP 下也要能跑）。
+  await page.getByLabel('想問課程的什麼').fill('期末報告');
+  await page.getByRole('button', { name: '查課綱' }).click();
+  await expect(page.getByRole('list', { name: '找到的課綱段落' })).toContainText('英文（一）');
   await page.getByRole('checkbox', { name: /我已年滿 18 歲/ }).click();
   await page.getByLabel('Gemini 金鑰').fill(FAKE_KEY);
   await page.getByRole('button', { name: '使用這把金鑰' }).click();
