@@ -89,3 +89,12 @@ describe('Gemini client', () => {
     expect(gemini.hasKey()).toBe(false);
   });
 });
+
+test('sends a screenshot as inline data before the text', async () => {
+  const fetchImpl = vi.fn(async () => ok('{"recognizedCourses":[]}'));
+  const gemini = createGeminiClient({ fetchImpl, session: memoryStorage() });
+  gemini.setKey(KEY, false);
+  await gemini.generate({ ...call, image: { mimeType: 'image/png', data: 'AAAA' } });
+  const body = JSON.parse(String((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body)) as { contents: { parts: unknown[] }[] };
+  expect(body.contents[0]!.parts).toEqual([{ inlineData: { mimeType: 'image/png', data: 'AAAA' } }, { text: '{}' }]);
+});

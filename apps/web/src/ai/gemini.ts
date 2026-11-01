@@ -42,6 +42,8 @@ export interface GenerateRequest {
   model: string;
   system: string;
   user: string;
+  /** 截圖匯入：base64 圖片（不含 data: 前綴）。 */
+  image?: { mimeType: 'image/png' | 'image/jpeg' | 'image/webp'; data: string };
   maxOutputTokens?: number;
 }
 
@@ -104,7 +106,7 @@ export function createGeminiClient({ fetchImpl = fetch, session }: { fetchImpl?:
       key = '';
       forget();
     },
-    async generate({ model, system, user, maxOutputTokens = 4096 }) {
+    async generate({ model, system, user, image, maxOutputTokens = 4096 }) {
       if (!key) throw new GeminiError('no-key');
       let response: Response;
       try {
@@ -113,7 +115,7 @@ export function createGeminiClient({ fetchImpl = fetch, session }: { fetchImpl?:
           headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: system }] },
-            contents: [{ role: 'user', parts: [{ text: user }] }],
+            contents: [{ role: 'user', parts: [...(image ? [{ inlineData: image }] : []), { text: user }] }],
             generationConfig: { responseMimeType: 'application/json', maxOutputTokens },
           }),
           referrerPolicy: 'no-referrer',

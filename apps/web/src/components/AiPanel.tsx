@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import type { GeminiClient } from '../ai/gemini.ts';
 import { aiSearch, planWithAi } from '../ai/orb.ts';
 import { OrbMark } from './OrbMark.tsx';
+import { ScreenshotImport } from './ScreenshotImport.tsx';
 
 export const GEMINI_TERMS_URL = safeExternalUrl('https://ai.google.dev/gemini-api/terms', ['ai.google.dev']);
 const KEY_HELP_URL = safeExternalUrl('https://aistudio.google.com/apikey', ['aistudio.google.com']);
@@ -174,6 +175,10 @@ export function AiPanel({ client, termLabel, planner, catalog, courses, ready, o
             </button>
           </div>
         </form>
+      )}
+
+      {accepted && hasKey && ready && (
+        <ScreenshotImport client={client} termLabel={termLabel} planner={planner} courses={courses} onAddCandidates={(changes, label) => { onApply(changes, label); }} />
       )}
 
       {!hasKey && (
