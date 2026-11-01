@@ -496,6 +496,34 @@ test.describe('the buddy (小山)', () => {
     expect(await orbBody(page)).toBe(afterReload);
   });
 
+  test('can be dragged anywhere, stays there after a reload, and opens its panel next to it', async ({ page, isMobile }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    const orb = page.getByRole('button', { name: '小山', exact: true });
+    const before = (await orb.boundingBox())!;
+    const target = { x: 120, y: 260 };
+    await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(target.x, target.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByRole('region', { name: '小山' })).toBeHidden();
+    const moved = (await orb.boundingBox())!;
+    expect(Math.abs(moved.x + moved.width / 2 - target.x)).toBeLessThan(12);
+    expect(Math.abs(moved.y + moved.height / 2 - target.y)).toBeLessThan(12);
+    await page.reload();
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    const again = (await orb.boundingBox())!;
+    expect(Math.abs(again.x - moved.x)).toBeLessThan(2);
+    await orb.click();
+    const panel = (await page.getByRole('region', { name: '小山' }).boundingBox())!;
+    const view = page.viewportSize()!;
+    expect(panel.x).toBeGreaterThanOrEqual(0);
+    expect(panel.x + panel.width).toBeLessThanOrEqual(view.width);
+    expect(panel.y).toBeGreaterThanOrEqual(0);
+    if (!isMobile) expect(panel.x).toBeGreaterThan(again.x + again.width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
   test('does not move at all with reduced motion', async ({ browser }) => {
     const context = await browser.newContext({ reducedMotion: 'reduce' });
     const page = await context.newPage();

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
 import { App } from './App.tsx';
@@ -249,6 +249,26 @@ test('clearing local data also removes the Gemini key', async () => {
   await user.click(await screen.findByRole('button', { name: '清除本機資料' }));
   await user.click(screen.getByRole('button', { name: '確認清除' }));
   expect(ai.removeKey).toHaveBeenCalled();
+});
+
+test('小山 stays where the student moved it after a reload, and clearing local data puts it back', async () => {
+  const user = userEvent.setup();
+  const storage = memoryStorage({ 'campusward:v1:buddy-position': '{"right":300,"bottom":200}' });
+  const first = render(<App catalog={fakeCatalog()} storage={storage} guide={false} />);
+  await screen.findByText('115-1');
+  const orb = screen.getByRole('button', { name: '小山' });
+  expect(orb.style.right).toBe('300px');
+  fireEvent.keyDown(orb, { key: 'ArrowLeft', altKey: true });
+  expect(storage.values['campusward:v1:buddy-position']).toBe('{"right":324,"bottom":200}');
+  first.unmount();
+  render(<App catalog={fakeCatalog()} storage={storage} guide={false} />);
+  await screen.findByText('115-1');
+  expect(screen.getByRole('button', { name: '小山' }).style.right).toBe('324px');
+  await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '匯出與資料' }));
+  await user.click(await screen.findByRole('button', { name: '清除本機資料' }));
+  await user.click(screen.getByRole('button', { name: '確認清除' }));
+  expect(storage.values['campusward:v1:buddy-position'] ?? '').toBe('');
+  expect(screen.getByRole('button', { name: '小山' }).style.right).toBe('');
 });
 
 test('clearing local data resets the AI panel and the graduation gaps', async () => {

@@ -38,6 +38,7 @@ import { Guide } from './components/Guide.tsx';
 import { FloatingOrb } from './components/FloatingOrb.tsx';
 import { BuddyProvider } from './buddy/BuddyContext.tsx';
 import { createBuddyHub, type BuddyHub, type CourseChange } from './buddy/hub.ts';
+import { loadOrbPosition, ORB_POSITION_KEY, saveOrbPosition, type OrbPosition } from './buddy/orbPosition.ts';
 import { buildBriefing } from './ai/briefing.ts';
 import { Timetable } from './components/Timetable.tsx';
 import { UndoToast } from './components/UndoToast.tsx';
@@ -71,6 +72,12 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const planner = usePlanner({ term: ready ? data.term : '', courses, storage: storageRef.current });
   // 小山（AI 小助手）跟著常發生的事反應：加課、移出、候選、復原、打字、等 AI（docs/design 小助手一節）。
   const [buddyHub] = useState(() => givenHub ?? createBuddyHub({ storage: storageRef.current! }));
+  // 小山拖到哪裡就記在這台裝置；清除本機資料時回到右下角。
+  const [orbPosition, setOrbPosition] = useState<OrbPosition | null>(() => loadOrbPosition(storageRef.current!));
+  const moveOrb = (next: OrbPosition) => {
+    setOrbPosition(next);
+    saveOrbPosition(storageRef.current!, next);
+  };
   // 加課要等課表更新後才知道有沒有衝堂：記下加之前的衝堂數，課表變了再告訴小山。
   const conflictsBeforeAdd = useRef<number | null>(null);
   useEffect(() => {
@@ -420,6 +427,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                       setRecord(null);
                       ai.removeKey();
                       buddyHub.setQuiet(false);
+                      try { storageRef.current!.setItem(ORB_POSITION_KEY, ''); } catch { /* 擋住儲存時沒有東西要清 */ }
+                      setOrbPosition(null);
                       setDismissedNudge('');
                       void clearBrowserCaches();
                       setGeneration((value) => value + 1);
@@ -489,6 +498,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
           onDismissNudge={() => setDismissedNudge(conflictSignature)}
           {...(ai.hasKey() ? {} : { onNudge: openClashingCourse })}
           nudgeHidden={nudgeHidden}
+          position={orbPosition}
+          onPosition={moveOrb}
         >
           <AiPanel
                     key={`ai-${generation}`}

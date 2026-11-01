@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { FloatingOrb } from './FloatingOrb.tsx';
 import { BuddyProvider } from '../buddy/BuddyContext.tsx';
 import { createBuddyHub } from '../buddy/hub.ts';
@@ -76,4 +76,49 @@ test('the nudge does not pop up again after another menu covered it (phones open
   rerender(<FloatingOrb {...props} nudgeHidden>內容</FloatingOrb>);
   rerender(<FloatingOrb {...props} nudgeHidden={false}>內容</FloatingOrb>);
   expect(screen.queryByRole('button', { name: '有 1 個衝堂，要我幫忙看看嗎？' })).not.toBeInTheDocument();
+});
+
+describe('dragging 小山 anywhere', () => {
+  const base = { open: false, onOpen: vi.fn(), onClose: vi.fn() };
+
+  test('dragging moves the button and does not open the panel; a tap still opens it', () => {
+    const onOpen = vi.fn();
+    const onPosition = vi.fn();
+    render(<FloatingOrb {...base} onOpen={onOpen} onPosition={onPosition}>內容</FloatingOrb>);
+    const orb = screen.getByRole('button', { name: '小山' });
+    fireEvent.pointerDown(orb, { clientX: 1000, clientY: 700, pointerId: 1 });
+    fireEvent.pointerMove(orb, { clientX: 800, clientY: 400, pointerId: 1 });
+    fireEvent.pointerUp(orb, { clientX: 800, clientY: 400, pointerId: 1 });
+    fireEvent.click(orb);
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(onPosition).toHaveBeenLastCalledWith(expect.objectContaining({ right: expect.any(Number), bottom: expect.any(Number) }));
+    expect(orb.style.right).not.toBe('');
+    fireEvent.pointerDown(orb, { clientX: 800, clientY: 400, pointerId: 2 });
+    fireEvent.pointerMove(orb, { clientX: 802, clientY: 401, pointerId: 2 });
+    fireEvent.pointerUp(orb, { clientX: 802, clientY: 401, pointerId: 2 });
+    fireEvent.click(orb);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  test('starts where it was left last time', () => {
+    render(<FloatingOrb {...base} position={{ right: 300, bottom: 200 }}>內容</FloatingOrb>);
+    const orb = screen.getByRole('button', { name: '小山' });
+    expect(orb.style.right).toBe('300px');
+    expect(orb.style.bottom).toBe('200px');
+  });
+
+  test('can be moved with the keyboard (Alt + arrow keys)', () => {
+    const onPosition = vi.fn();
+    render(<FloatingOrb {...base} position={{ right: 300, bottom: 200 }} onPosition={onPosition}>內容</FloatingOrb>);
+    const orb = screen.getByRole('button', { name: '小山' });
+    fireEvent.keyDown(orb, { key: 'ArrowLeft', altKey: true });
+    expect(onPosition).toHaveBeenLastCalledWith({ right: 324, bottom: 200 });
+    fireEvent.keyDown(orb, { key: 'ArrowUp', altKey: true });
+    expect(onPosition).toHaveBeenLastCalledWith({ right: 324, bottom: 224 });
+  });
+
+  test('tells people it can be dragged', () => {
+    render(<FloatingOrb {...base}>內容</FloatingOrb>);
+    expect(screen.getByRole('button', { name: '小山' })).toHaveAttribute('title', expect.stringMatching(/拖/));
+  });
 });
