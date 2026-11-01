@@ -1,6 +1,7 @@
 import {
   checkEnrollmentRules,
   clearStudentRecord,
+  findClashes,
   findRetakes,
   loadStudentRecord,
   passedAs as passedCourseTitle,
@@ -26,7 +27,7 @@ import { DataPanel } from './components/DataPanel.tsx';
 import { GraduationPanel } from './components/GraduationPanel.tsx';
 import { PlanBar } from './components/PlanBar.tsx';
 import { RulesPanel } from './components/RulesPanel.tsx';
-import { SearchPanel } from './components/SearchPanel.tsx';
+import { SearchPanel, type SearchSlot } from './components/SearchPanel.tsx';
 import { ToolRail, TOOLS, type Tool } from './components/ToolRail.tsx';
 import { Guide } from './components/Guide.tsx';
 import { FloatingOrb } from './components/FloatingOrb.tsx';
@@ -116,6 +117,41 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   // 搜課結果標示「已修過」：和重修提醒同一套比對（全學年課的另一學期不算）。
   const passedAs = useMemo(() => (record ? (course: Course) => passedCourseTitle(record, toScheduleCourse(course)) : undefined), [record]);
   const titleOf = (key: string) => planner.catalog.get(key)?.title ?? '課程';
+  // 搜課結果標示「與某課衝堂」：用引擎同一套衝堂判斷，對目前方案算；同一份課表只算一次。
+  const clashesOf = useMemo(() => {
+    const cache = new Map<string, string[]>();
+    return (course: Course) => {
+      const key = toScheduleCourse(course).key;
+      let titles = cache.get(key);
+      if (!titles) {
+        titles = findClashes(planner.entries, planner.catalog.get(key) ?? toScheduleCourse(course))
+          .map((clash) => planner.catalog.get(clash)?.title ?? '課程');
+        cache.set(key, titles);
+      }
+      return titles;
+    };
+  }, [planner.catalog, planner.entries]);
+  const quoted = (titles: readonly string[]) => titles.map((title) => `「${title}」`).join('、');
+  const addLabel = (course: Course) => {
+    const clashes = clashesOf(course);
+    return `已加入「${course.title}」${clashes.length ? `，與${quoted(clashes)}衝堂` : ''}`;
+  };
+  // 愛心可以切換：已在候選就移出（也會從自己的其他方案移出，與引擎 removeCandidate 一致）。
+  const toggleCandidate = (course: Course) => {
+    const key = keyOf(course);
+    if (!candidateKeys.has(key)) {
+      courseChange('candidate', [{ type: 'addCandidate', key }], `已放進候選「${course.title}」`);
+      return;
+    }
+    const ownPlans = planner.planner.plans.filter(({ auto }) => !auto);
+    const locked = ownPlans.find(({ items }) => items.some((item) => item.key === key && item.locked));
+    const elsewhere = ownPlans.filter(({ id, items }) => id !== planner.planner.activePlanId && items.some((item) => item.key === key));
+    const label = locked
+      ? `「${course.title}」在「${locked.name}」已鎖定，先解鎖才能移出候選`
+      : `已移出候選「${course.title}」${elsewhere.length ? `，也從${quoted(elsewhere.map(({ name }) => name))}移出` : ''}`;
+    courseChange('candidate', [{ type: 'removeCandidate', key }], label);
+  };
+  const [slot, setSlot] = useState<SearchSlot | null>(null);
   const [pendingBackup, setPendingBackup] = useState<{ changes: Change[]; label: string; replace: number } | null>(null);
   // 清除本機資料後換掉這個值，讓 AI 面板與畢業缺口重新掛載（金鑰、勾選、匯入的修課資料都歸零）。
   const [generation, setGeneration] = useState(0);
@@ -209,9 +245,12 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                 searchRef={searchRef}
                 scheduledKeys={scheduledKeys}
                 candidateKeys={candidateKeys}
-                onAdd={(course) => courseChange('add', [{ type: 'addToSchedule', key: keyOf(course) }], `已加入「${course.title}」`)}
+                onAdd={(course) => courseChange('add', [{ type: 'addToSchedule', key: keyOf(course) }], addLabel(course))}
                 onRemove={(course) => courseChange('remove', [{ type: 'removeFromSchedule', key: keyOf(course) }], `已移出「${course.title}」`)}
-                onCandidate={(course) => courseChange('candidate', [{ type: 'addCandidate', key: keyOf(course) }], `已放進候選「${course.title}」`)}
+                onCandidate={toggleCandidate}
+                clashesOf={clashesOf}
+                slot={slot}
+                {...(planner.profile.level ? { defaultDegree: planner.profile.level } : {})}
                 {...(passedAs ? { passedAs } : {})}
               />
             ) : (
@@ -242,6 +281,10 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   conflicts={planner.conflicts}
                   newKeys={planner.newKeys}
                   onStartSearch={startSearch}
+                  onFindSlot={(day, period) => {
+                    setSlot((previous) => ({ day, period, nonce: (previous?.nonce ?? 0) + 1 }));
+                    setMobileView('search');
+                  }}
                   onImport={() => {
                     showTool('data');
                     setTimeout(() => document.querySelector<HTMLInputElement>('input[aria-label="匯入資料"]')?.click(), 0);

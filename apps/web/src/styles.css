@@ -204,6 +204,10 @@
   border-radius: 9999px;
   padding-inline: 1rem;
 }
+/* 選單右邊留位置給下拉箭頭（daisyUI 把箭頭畫在右側 16–20px，原本會壓到字）。 */
+.select {
+  padding-inline-end: 2.25rem;
+}
 .textarea {
   border-radius: 1rem;
 }

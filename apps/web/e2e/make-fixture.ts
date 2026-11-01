@@ -8,7 +8,7 @@ const rows = [
   officialRow({ subNum: '900001001', subNam: '統計學', teaNam: '王合成', subTime: '一234' }),
   officialRow({ subNum: '900002001', subNam: '會計學', teaNam: '林範例', subTime: '一34' }),
   officialRow({ subNum: '900003001', subNam: '英文（一）', teaNam: '陳虛構', subTime: '二D56', lmtKind: '外文通識', emiType: '是' }),
-  officialRow({ subNum: '900004001', subNam: '夜間設計', teaNam: '黃合成', subTime: '三EF' }),
+  officialRow({ subNum: '900004001', subNam: '夜間設計', teaNam: '黃合成', subTime: '三EF', subGde: '經濟二甲經濟二乙' }),
   officialRow({ subNum: '900005001', subNam: '收費專題', teaNam: '張範例', subTime: '五78', pay: '收費', gdeType: '碩士班', note: '＠備註:限本系學生' }),
 ];
 const result = buildSnapshot({ rows, term: '1151', queries: 0, fetchedAt: '2026-10-28T00:00:00.000Z' });

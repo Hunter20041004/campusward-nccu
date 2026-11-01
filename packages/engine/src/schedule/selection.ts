@@ -3,7 +3,7 @@
 
 import { evaluateEligibility, type EligibilityTarget, type IdentityProfile } from '../eligibility.ts';
 import type { CourseEvent, Delivery, OfficialFields } from '../official/course.ts';
-import { formatNccuSchedule, type Meeting } from '../periods.ts';
+import { formatNccuSchedule, type Meeting, type ScheduleFormatOptions } from '../periods.ts';
 
 export type Attendance = 'sync' | 'async';
 export type PlanItemStatus = 'planned' | 'registered' | 'enrolled';
@@ -63,9 +63,9 @@ export function occupiedMeetings({ course, item }: ScheduleEntry): Meeting[] {
   return item.attendance === 'async' ? [] : course.meetings;
 }
 
-export function candidateScheduleSummary(course: ScheduleCourse, labels: readonly string[], attendance?: Attendance): string {
+export function candidateScheduleSummary(course: ScheduleCourse, labels: readonly string[], attendance?: Attendance, options: ScheduleFormatOptions = {}): string {
   if (attendance === 'async') return '非同步／時間彈性';
-  const summaries = [...new Set(course.meetings.map((meeting) => formatNccuSchedule(meeting, labels)))];
+  const summaries = [...new Set(course.meetings.map((meeting) => formatNccuSchedule(meeting, labels, options)))];
   if (summaries.length) return summaries.join('・');
   if (course.delivery.asyncAllowed) return '非同步／時間彈性';
   return '時間未定';
@@ -124,6 +124,16 @@ export function findConflicts(entries: readonly ScheduleEntry[]): Conflict[] {
     });
   });
   return conflicts;
+}
+
+/** 還沒排進課表的課，加進去會和哪些已排的課衝堂（用 findConflicts 同一套判斷）。回傳衝堂課的代號。 */
+export function findClashes(entries: readonly ScheduleEntry[], course: ScheduleCourse): string[] {
+  if (entries.some((entry) => entry.course.key === course.key)) return [];
+  const item = addCourse([], course)[0]!;
+  const keys = findConflicts([...entries, { course, item }])
+    .filter(({ courseKeys }) => courseKeys.includes(course.key))
+    .map(({ courseKeys }) => (courseKeys[0] === course.key ? courseKeys[1] : courseKeys[0]));
+  return [...new Set(keys)];
 }
 
 export function formatCourseEventReminder(course: { title: string }, event: Partial<CourseEvent>): string {

@@ -52,10 +52,27 @@ export function periodsForRange(start: number, end: number): Period[] {
   return NCCU_PERIODS.filter((slot) => start < slot.end && slot.start < end);
 }
 
-export function formatNccuSchedule(schedule: Omit<Meeting, 'label'> & { label?: string } | null, labels: readonly string[]): string {
+/** 分鐘（自午夜起算）→「13:10」。 */
+export function formatClock(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+export interface ScheduleFormatOptions {
+  /** 節次後面加上時刻，例「週一 D56（13:10–16:00）」；時刻取自政大節次表。 */
+  clock?: boolean;
+}
+
+export function formatNccuSchedule(
+  schedule: Omit<Meeting, 'label'> & { label?: string } | null,
+  labels: readonly string[],
+  options: ScheduleFormatOptions = {},
+): string {
   if (!schedule) return '時間未定';
-  const codes = periodsForRange(schedule.start, schedule.end).map(({ code }) => code).join('');
-  return codes ? `${labels[schedule.day] ?? ''} ${codes}` : (schedule.label ?? '');
+  const slots = periodsForRange(schedule.start, schedule.end);
+  const codes = slots.map(({ code }) => code).join('');
+  if (!codes) return schedule.label ?? '';
+  const clock = options.clock ? `（${formatClock(slots[0]!.start)}–${formatClock(slots.at(-1)!.end)}）` : '';
+  return `${labels[schedule.day] ?? ''} ${codes}${clock}`;
 }
 
 export function gridPlacement(schedule: Pick<Meeting, 'start' | 'end'> & Partial<Meeting>): { rowStart: number; rowSpan: number; codes: string } | null {

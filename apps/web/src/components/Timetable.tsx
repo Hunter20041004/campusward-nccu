@@ -1,6 +1,7 @@
 import {
   NCCU_PERIODS,
   buildScheduleAgenda,
+  formatClock,
   occupiedMeetings,
   periodsForRange,
   type Attendance,
@@ -18,6 +19,8 @@ export interface TimetableProps {
   /** 最近一次修改加入的課，標示「新」。 */
   newKeys: ReadonlySet<string>;
   onStartSearch: () => void;
+  /** 點空格：找那一天、那一節的課。 */
+  onFindSlot?: (day: number, period: string) => void;
   onImport: () => void;
   onToggleLock: (key: string) => void;
   onStatus: (key: string, status: PlanItemStatus) => void;
@@ -28,7 +31,6 @@ export interface TimetableProps {
 const DAY_CHARS = ['', '一', '二', '三', '四', '五', '六', '日'];
 const STATUS_LABELS: Record<PlanItemStatus, string> = { planned: '排入', registered: '已灌檔', enrolled: '已選上' };
 const indexOf = (code: string) => NCCU_PERIODS.findIndex((period) => period.code === code);
-const clock = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 
 /** 固定顯示 1–8 與 C、D；清晨 A、B 或晚上 E–H 有課才連續補上。 */
 function visiblePeriods(entries: readonly ScheduleEntry[]): string[] {
@@ -173,12 +175,26 @@ export function Timetable(props: TimetableProps) {
                 return (
                   <div key={code} data-period={code} className="flex flex-col items-center justify-center border-t border-base-300 text-xs" style={{ gridColumnStart: 1, gridRowStart: index + 2 }}>
                     <span className="font-semibold">{code}</span>
-                    <span className="tabular text-[0.6875rem] text-base-content/70">{clock(period.start)}</span>
+                    <span className="tabular text-[0.6875rem] text-base-content/70">{formatClock(period.start)}</span>
                   </div>
                 );
               })}
+              {/* 空格可以點：把那一天、那一節帶進搜課。不放進 Tab 順序（50 格太多），鍵盤改用多條件搜尋的星期與時段。 */}
               {periods.map((code, row) => days.map((day, column) => (
-                <div key={`${code}-${day}`} aria-hidden="true" className="border-t border-base-300 bg-base-200/40" style={{ gridColumnStart: column + 2, gridRowStart: row + 2 }} />
+                props.onFindSlot ? (
+                  <button
+                    key={`${code}-${day}`}
+                    type="button"
+                    tabIndex={-1}
+                    aria-label={`找${DAY_LABELS[day]} ${code} 節的課`}
+                    title={`找${DAY_LABELS[day]} ${code} 節的課`}
+                    className="cursor-pointer border-t border-base-300 bg-base-200/40 transition-colors duration-150 hover:bg-mint-wash"
+                    style={{ gridColumnStart: column + 2, gridRowStart: row + 2 }}
+                    onClick={() => props.onFindSlot?.(day, code)}
+                  />
+                ) : (
+                  <div key={`${code}-${day}`} aria-hidden="true" className="border-t border-base-300 bg-base-200/40" style={{ gridColumnStart: column + 2, gridRowStart: row + 2 }} />
+                )
               )))}
               {blocks.map((block) => {
                 const { course, item } = block.entry;
@@ -230,7 +246,7 @@ export function Timetable(props: TimetableProps) {
                           onClick={() => setSelected(agendaItem.courseKey)}
                           className={`flex min-h-11 w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm ${isConflict ? 'course-conflict' : 'raised'}`}
                         >
-                          <span className="tabular w-24 shrink-0 text-base-content/80">{clock(agendaItem.start)}–{clock(agendaItem.end)}</span>
+                          <span className="tabular w-24 shrink-0 text-base-content/80">{formatClock(agendaItem.start)}–{formatClock(agendaItem.end)}</span>
                           <span className="flex-1 font-medium">{agendaItem.title}</span>
                           {isConflict && <span className="text-xs font-bold">衝堂</span>}
                         </button>

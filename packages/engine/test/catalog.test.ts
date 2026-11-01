@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'vitest';
-import { countActiveCatalogFilters, filterCandidateCourses, normalizeSearchText, searchCourses } from '../src/catalog.ts';
+import {
+  countActiveCatalogFilters,
+  filterCandidateCourses,
+  formatTargetGroup,
+  normalizeSearchText,
+  offeringDepartments,
+  parseTargetGroup,
+  searchCourses,
+} from '../src/catalog.ts';
 import { rowToCourse, type Course } from '../src/official/course.ts';
 import type { Meeting } from '../src/periods.ts';
 import type { ScheduleCourse } from '../src/schedule/selection.ts';
@@ -137,5 +145,99 @@ describe('searchCourses', () => {
 
   test('normalizes search text', () => {
     expect(normalizeSearchText(' Ａｂ　Ｃ（一） ')).toBe('abc(一)');
+  });
+});
+
+describe('offering groups (開課班級)', () => {
+  test('splits the official text into department and grade', () => {
+    expect(parseTargetGroup('經濟系')).toEqual([{ department: '經濟', grade: '' }]);
+    expect(parseTargetGroup('經濟二甲經濟二乙經濟三甲')).toEqual([
+      { department: '經濟', grade: '二' }, { department: '經濟', grade: '二' }, { department: '經濟', grade: '三' },
+    ]);
+    expect(parseTargetGroup('法律碩一法律博一')).toEqual([{ department: '法律', grade: '碩一' }, { department: '法律', grade: '博一' }]);
+    expect(parseTargetGroup('法碩專一')).toEqual([{ department: '法', grade: '碩專一' }]);
+    expect(parseTargetGroup('台史所')).toEqual([{ department: '台史', grade: '' }]);
+    expect(parseTargetGroup('商院學士')).toEqual([{ department: '商院', grade: '學士' }]);
+  });
+
+  test('reads land economics groups (地一土管) as 地政', () => {
+    expect(parseTargetGroup('地一土管地一土資')).toEqual([{ department: '地政', grade: '一' }, { department: '地政', grade: '一' }]);
+  });
+
+  test('keeps text it cannot split as one unit without a grade', () => {
+    expect(parseTargetGroup('教務處通識教育中心')).toEqual([{ department: '教務處通識教育中心', grade: '' }]);
+    expect(parseTargetGroup('')).toEqual([]);
+  });
+
+  test('formats the group compactly for a result row', () => {
+    expect(formatTargetGroup('經濟二甲經濟二乙經濟三甲經濟三乙')).toBe('經濟二、三');
+    expect(formatTargetGroup('經濟系')).toBe('經濟系');
+    expect(formatTargetGroup('法律碩一法律博一')).toBe('法律碩一、博一');
+    expect(formatTargetGroup('教務處通識教育中心')).toBe('教務處通識教育中心');
+  });
+
+  test('lists departments with their grades, using the 系／所 name when the data has it', () => {
+    const make = (code: string, subGde: string) => rowToCourse(officialRow({ subNum: code, subGde }), TERM).course!;
+    const departments = offeringDepartments([
+      make('900001001', '經濟系'), make('900002001', '經濟三甲經濟三乙'), make('900003001', '經濟二甲'),
+      make('900004001', '經濟碩一'), make('900005001', '應數一'),
+    ]);
+    expect(departments.find(({ department }) => department === '經濟')).toEqual({ department: '經濟', label: '經濟系', grades: ['二', '三', '碩一'], count: 4 });
+    expect(departments.find(({ department }) => department === '應數')).toEqual({ department: '應數', label: '應數', grades: ['一'], count: 1 });
+  });
+});
+
+describe('searchCourses filters for finding courses', () => {
+  const make = (overrides: Record<string, unknown>): Course => {
+    const { course } = rowToCourse(officialRow(overrides), TERM);
+    if (!course) throw new Error('row rejected');
+    return course;
+  };
+  const courses = [
+    make({ subNum: '900101001', subNam: '個體經濟學', subGde: '經濟二甲經濟二乙', subTime: '一12', gdeType: '學士班' }),
+    make({ subNum: '900102001', subNam: '經濟學', subGde: '經濟系', subTime: '二34', gdeType: '學士班', emiType: '是' }),
+    make({ subNum: '900103001', subNam: '計量經濟', subGde: '經濟碩一', subTime: '三D5', gdeType: '碩士班' }),
+    make({ subNum: '900104001', subNam: '線性代數', subGde: '應數一', subTime: '四B12', gdeType: '學士班' }),
+    make({ subNum: '900105001', subNam: '人際溝通', subGde: '教務處通識教育中心', subTime: '五78', lmtKind: '社會通識', gdeType: '學士班' }),
+    make({ subNum: '900106001', subNam: '地政法規', subGde: '地二土管地二土資', subTime: '五34', gdeType: '學士班' }),
+  ];
+  const codes = (found: Course[]) => found.map(({ code }) => code);
+
+  test('filters by department, including department-wide courses', () => {
+    expect(codes(searchCourses(courses, { department: '經濟' }))).toEqual(['900101001', '900102001', '900103001']);
+  });
+
+  test('filters by department and grade; undergraduate grades include department-wide courses', () => {
+    expect(codes(searchCourses(courses, { department: '經濟', grade: '二' }))).toEqual(['900101001', '900102001']);
+    expect(codes(searchCourses(courses, { department: '經濟', grade: '碩一' }))).toEqual(['900103001']);
+  });
+
+  test('keywords can also match the offering group, general education and tags', () => {
+    const wide = (text: string) => codes(searchCourses(courses, { text, matchDetails: true }));
+    expect(wide('經濟系')).toEqual(['900101001', '900102001', '900103001']);
+    expect(wide('應數')).toEqual(['900104001']);
+    expect(wide('地政')).toEqual(['900106001']);
+    expect(wide('通識')).toEqual(['900105001']);
+    expect(wide('社會通識')).toEqual(['900105001']);
+    expect(wide('英語授課')).toEqual(['900102001']);
+    expect(wide('emi')).toEqual(['900102001']);
+    expect(codes(searchCourses(courses, { text: '經濟系' }))).toEqual([]);
+  });
+
+  test('filters any general education category', () => {
+    expect(codes(searchCourses(courses, { anyGeneralEducation: true }))).toEqual(['900105001']);
+  });
+
+  test('filters by degree level', () => {
+    expect(codes(searchCourses(courses, { text: '經濟', degree: 'graduate' }))).toEqual(['900103001']);
+    expect(codes(searchCourses(courses, { text: '經濟', degree: 'undergrad' }))).toEqual(['900101001', '900102001']);
+  });
+
+  test('filters English-taught courses', () => {
+    expect(codes(searchCourses(courses, { emi: true }))).toEqual(['900102001']);
+  });
+
+  test('can exclude early periods', () => {
+    expect(codes(searchCourses(courses, { excludePeriods: ['A', 'B', '1'] }))).toEqual(['900102001', '900103001', '900105001', '900106001']);
   });
 });

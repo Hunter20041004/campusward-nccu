@@ -2,6 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, test } from 'vitest';
 import {
   NCCU_PERIODS,
+  formatClock,
   formatMeetings,
   formatNccuSchedule,
   gridPlacement,
@@ -26,6 +27,13 @@ test('converts exact and offset minute ranges to NCCU period codes', () => {
 
 test('formats a course time with weekday and NCCU codes', () => {
   expect(formatNccuSchedule({ day: 4, start: 790, end: 960 }, ['', '週一', '週二', '週三', '週四'])).toBe('週四 D56');
+});
+
+test('can add the clock time of the NCCU periods', () => {
+  const labels = ['', '週一', '週二', '週三', '週四'];
+  expect(formatNccuSchedule({ day: 1, start: 790, end: 960 }, labels, { clock: true })).toBe('週一 D56（13:10–16:00）');
+  expect(formatNccuSchedule({ day: 3, start: 970, end: 1080 }, labels, { clock: true })).toBe('週三 78（16:10–18:00）');
+  expect(formatClock(370)).toBe('06:10');
 });
 
 test('places a spanning course on the matching grid rows', () => {

@@ -7,6 +7,7 @@ import { createBuddyHub } from './buddy/hub.ts';
 /** 各工具都保持掛載、只隱藏沒選的；取目前看得到的那一個。 */
 const shown = <T extends HTMLElement>(elements: T[]) => elements.find((element) => !element.closest('[hidden]'))!;
 import { fakeCatalog } from './test/fakeCatalog.ts';
+import { officialRow } from '../../../packages/engine/test/fixtures/synthetic/official-rows.ts';
 import { memoryStorage } from './test/memoryStorage.ts';
 
 describe('app shell', () => {
@@ -119,6 +120,57 @@ describe('searching and adding', () => {
     await user.keyboard('{Escape}');
     expect(panel).toHaveBeenLastCalledWith(false);
     buddyHub.destroy();
+  });
+
+  test('marks search results that clash with the timetable and says so after adding one', async () => {
+    const user = userEvent.setup();
+    const rows = [
+      officialRow({ subNum: '042112001', subNam: '臺灣政治', subTime: '三78E' }),
+      officialRow({ subNum: '000603001', subNam: '民法概要', subTime: '三78' }),
+    ];
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    const search = screen.getByRole('searchbox', { name: '搜課' });
+    await user.type(search, '臺灣政治');
+    await user.click(await screen.findByRole('button', { name: '加入課表：臺灣政治' }));
+    await user.clear(search);
+    await user.type(search, '民法概要');
+    expect(screen.getByRole('article')).toHaveTextContent('與「臺灣政治」衝堂');
+    await user.click(screen.getByRole('button', { name: '加入課表：民法概要' }));
+    expect(screen.getByRole('status', { name: '最近的修改' })).toHaveTextContent('已加入「民法概要」，與「臺灣政治」衝堂');
+  });
+
+  test('the heart toggles a course in and out of the candidate list', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog()} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('searchbox', { name: '搜課' }), '合成課程');
+    const heart = await screen.findByRole('button', { name: '加入候選：合成課程概論' });
+    expect(heart).toHaveAttribute('aria-pressed', 'false');
+    await user.click(heart);
+    expect(heart).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('status', { name: '最近的修改' })).toHaveTextContent('已放進候選「合成課程概論」');
+    await user.click(heart);
+    expect(heart).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('status', { name: '最近的修改' })).toHaveTextContent('已移出候選「合成課程概論」');
+  });
+
+  test('clicking an empty timetable cell searches that day and period and shows search', async () => {
+    const user = userEvent.setup();
+    const rows = [
+      officialRow({ subNum: '900001001', subNam: '統計學', subTime: '一234' }),
+      officialRow({ subNum: '900002001', subNam: '週三下午課', subTime: '三D5' }),
+      officialRow({ subNum: '900003001', subNam: '週三早上課', subTime: '三12' }),
+    ];
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('searchbox', { name: '搜課' }), '統計學');
+    await user.click(await screen.findByRole('button', { name: '加入課表：統計學' }));
+    await user.clear(screen.getByRole('searchbox', { name: '搜課' }));
+    await user.click(screen.getByRole('button', { name: '找週三 D 節的課' }));
+    expect(document.querySelector('[data-mobile-view="search"]')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '週三' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('article').map((item) => within(item).getByRole('heading').textContent)).toEqual(['週三下午課']);
   });
 
   test('keeps the timetable after a reload', async () => {

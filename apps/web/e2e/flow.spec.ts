@@ -82,6 +82,43 @@ test.describe('desktop', () => {
   });
 });
 
+test.describe('finding courses', () => {
+  test('marks a result that clashes with the timetable, and says so after adding it', async ({ page, isMobile }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    if (isMobile) await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '搜課' }).click();
+    await addCourse(page, '統計學');
+    await page.getByRole('searchbox', { name: '搜課' }).fill('會計學');
+    const row = page.getByRole('article').filter({ hasText: '會計學' });
+    await expect(row).toContainText('與「統計學」衝堂');
+    await expect(row).toContainText('週一 34（10:10–12:00）');
+    await expectNoAxeViolations(page);
+    await row.getByRole('button', { name: '加入課表：會計學' }).click();
+    await expect(page.getByRole('status', { name: '最近的修改' })).toContainText('已加入「會計學」，與「統計學」衝堂');
+    // 手機寬度不能讓整頁橫向捲動。
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+  test('finds courses by department, by grade, and by typing the department name', async ({ page, isMobile }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    if (isMobile) await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '搜課' }).click();
+    await page.getByRole('searchbox', { name: '搜課' }).fill('經濟系');
+    await expect(page.getByRole('article')).toHaveCount(1);
+    await expect(page.getByRole('article')).toContainText('夜間設計');
+    await expect(page.getByRole('article')).toContainText('經濟二');
+    await page.getByRole('searchbox', { name: '搜課' }).fill('');
+    await page.getByRole('button', { name: '多條件搜尋' }).click();
+    await page.getByRole('combobox', { name: '開課系所' }).selectOption('經濟');
+    await page.getByRole('combobox', { name: '年級' }).selectOption('二');
+    await expect(page.getByRole('article')).toHaveCount(1);
+    await expect(page.getByRole('article')).toContainText('夜間設計');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (isMobile) expect(await smallTargets(page)).toEqual([]);
+    await expectNoAxeViolations(page);
+  });
+});
+
 test.describe('keyboard', () => {
   test.skip(({ isMobile }) => isMobile, 'desktop only');
 

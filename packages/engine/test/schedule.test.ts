@@ -5,6 +5,7 @@ import {
   addCourse,
   addSelectableCourse,
   candidateScheduleSummary,
+  findClashes,
   findConflicts,
   formatCourseEventReminder,
   lockCandidateCourse,
@@ -56,10 +57,37 @@ describe('candidateScheduleSummary', () => {
     ]), LABELS)).toBe('週二 234・週四 D56');
   });
 
+  test('can add the clock time next to the NCCU periods', () => {
+    expect(candidateScheduleSummary(course('a', 'A', [{ day: 1, start: 790, end: 960 }]), LABELS, undefined, { clock: true })).toBe('週一 D56（13:10–16:00）');
+  });
+
   test('distinguishes asynchronous and undecided candidate times', () => {
     expect(candidateScheduleSummary(course('a', 'A', [{ day: 4, start: 790, end: 960 }]), LABELS, 'async')).toBe('非同步／時間彈性');
     expect(candidateScheduleSummary(course('b', 'B', [], { delivery: ASYNC_DEFAULT }), LABELS)).toBe('非同步／時間彈性');
     expect(candidateScheduleSummary(course('c', 'C'), LABELS)).toBe('時間未定');
+  });
+});
+
+describe('findClashes', () => {
+  const entry = (scheduled: ScheduleCourse, attendance: PlanItem['attendance'] = 'sync') => ({ course: scheduled, item: item(scheduled.key, attendance) });
+  const politics = course('1151:042112001', '臺灣政治', [{ day: 3, start: 970, end: 1140 }]);
+  const stats = course('1151:000001001', '統計學', [{ day: 1, start: 490, end: 660 }]);
+
+  test('lists the scheduled courses a new course would clash with', () => {
+    const law = course('1151:000603001', '民法概要', [{ day: 3, start: 970, end: 1080 }]);
+    expect(findClashes([entry(politics), entry(stats)], law)).toEqual(['1151:042112001']);
+  });
+
+  test('ignores courses that do not overlap, asynchronous attendance, and the course itself', () => {
+    const friday = course('1151:000700001', '週五課', [{ day: 5, start: 970, end: 1080 }]);
+    expect(findClashes([entry(politics)], friday)).toEqual([]);
+    expect(findClashes([entry(politics, 'async')], course('x', 'X', [{ day: 3, start: 970, end: 1080 }]))).toEqual([]);
+    expect(findClashes([entry(politics)], politics)).toEqual([]);
+  });
+
+  test('a course that can only be taken asynchronously by default does not clash weekly', () => {
+    const flexible = course('y', 'Y', [{ day: 3, start: 970, end: 1080 }], { delivery: ASYNC_DEFAULT });
+    expect(findClashes([entry(politics)], flexible)).toEqual([]);
   });
 });
 
