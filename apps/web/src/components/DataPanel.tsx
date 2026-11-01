@@ -29,7 +29,7 @@ function download(name: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-const action = 'btn btn-sm min-h-11 gap-1.5 border border-base-300 bg-base-100';
+const action = 'btn btn-sm min-h-11 gap-1.5';
 
 export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper, canRestoreImport, onRestoreImport, now = () => new Date() }: DataPanelProps) {
   const [message, setMessage] = useState('');
@@ -67,7 +67,7 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
   };
 
   return (
-    <section aria-labelledby="data-heading" className="rounded-box border border-base-300 bg-base-100 p-4">
+    <section aria-labelledby="data-heading" className="relief p-4">
       <h2 id="data-heading" className="text-sm font-semibold">匯出與資料</h2>
       <div className="mt-2 flex flex-wrap gap-2">
         <button type="button" className={action} onClick={copyCodes}>
@@ -109,7 +109,7 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
           <p className="mt-1">會取代這台裝置上的課表與設定。匯入前會保留目前的資料，之後可以按「還原匯入前的資料」回到現在的狀態。</p>
           <div className="mt-2 flex gap-2">
             <button type="button" className="btn btn-primary btn-sm min-h-11" onClick={() => { onReplace(preview.data); setPreview(null); setMessage('已匯入，原本的資料已備份。'); }}>確認匯入</button>
-            <button type="button" className="btn btn-ghost btn-sm min-h-11 border border-base-300" onClick={() => setPreview(null)}>取消</button>
+            <button type="button" className="btn btn-ghost btn-sm min-h-11" onClick={() => setPreview(null)}>取消</button>
           </div>
         </section>
       )}
@@ -119,7 +119,7 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
           <p>會刪除這台裝置上的所有課表、備案、設定、保留的備份與 Gemini 金鑰，無法復原。建議先匯出資料。</p>
           <div className="mt-2 flex gap-2">
             <button type="button" className="btn btn-sm min-h-11 border-coral-ink bg-error text-error-content" onClick={() => { onClear(); setConfirmClear(false); setMessage('已清除本機資料。'); }}>確認清除</button>
-            <button type="button" className="btn btn-ghost btn-sm min-h-11 border border-base-300" onClick={() => setConfirmClear(false)}>取消</button>
+            <button type="button" className="btn btn-ghost btn-sm min-h-11" onClick={() => setConfirmClear(false)}>取消</button>
           </div>
         </div>
       )}

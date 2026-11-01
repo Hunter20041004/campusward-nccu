@@ -20,7 +20,7 @@ export function RulesPanel({ conflicts, reminders }: { conflicts: readonly Confl
   const warnings = items.filter(({ severity }) => severity === 'warn').length;
 
   return (
-    <section aria-labelledby="rules-heading" className="rounded-box border border-base-300 bg-base-100">
+    <section aria-labelledby="rules-heading" className="relief">
       <h2 id="rules-heading" className="sr-only">提醒</h2>
       {items.length === 0 ? (
         <p className="px-4 py-3 text-sm text-base-content/80">目前沒有衝堂或選課規則提醒。</p>

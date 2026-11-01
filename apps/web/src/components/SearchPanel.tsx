@@ -93,7 +93,7 @@ export function SearchPanel({ courses, query, scheduledKeys, candidateKeys, onAd
       ) : (
         <>
           <p className="text-sm text-base-content/80" aria-live="polite">找到 {results.length} 門</p>
-          <ul className="-mx-1 flex-1 space-y-2 overflow-y-auto px-1">
+          <ul className="well -mx-1 flex-1 divide-y divide-base-300 overflow-y-auto px-3 py-1">
             {results.slice(0, shown).map((course) => {
               const key = toScheduleCourse(course).key;
               const scheduled = scheduledKeys.has(key);
@@ -102,7 +102,8 @@ export function SearchPanel({ courses, query, scheduledKeys, candidateKeys, onAd
               const detailsId = `details-${key.replace(':', '-')}`;
               return (
                 <li key={key}>
-                  <article className="rounded-field border border-base-300 bg-base-100 p-3">
+                  {/* 左側色條：必修霧藍、其他米杏（與課表方塊同色）。 */}
+                  <article className={`border-l-4 py-3 pl-3 ${course.official.requirementKind === '必修' ? 'border-primary' : 'border-secondary'}`}>
                     <button
                       type="button"
                       aria-expanded={open}
@@ -111,9 +112,11 @@ export function SearchPanel({ courses, query, scheduledKeys, candidateKeys, onAd
                       className="flex w-full items-start gap-2 text-left"
                     >
                       <span className="min-w-0 flex-1">
-                        <h3 className="font-medium leading-snug">{course.title}</h3>
+                        <h3 className="text-lg font-bold leading-snug">{course.title}</h3>
                         <span className="mt-0.5 block text-sm text-base-content/80">
-                          <span className="tabular">{course.code}</span> · {course.teacher || '教師未定'} · {candidateScheduleSummary(toScheduleCourse(course), DAY_LABELS)} · <span className="tabular">{formatCredits(course.credits)}</span>
+                          <span className="font-bold text-base-content">{course.teacher || '教師未定'}</span>
+                          {' · '}
+                          <span className="tabular">{course.code}</span> · {candidateScheduleSummary(toScheduleCourse(course), DAY_LABELS)} · <span className="tabular">{formatCredits(course.credits)}</span>
                         </span>
                       </span>
                       <ChevronDown className={`mt-1 size-4 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
@@ -124,7 +127,7 @@ export function SearchPanel({ courses, query, scheduledKeys, candidateKeys, onAd
                         {!scheduled && (
                           <button
                             type="button"
-                            className="btn btn-ghost btn-sm min-h-11 gap-1 border border-base-300"
+                            className="btn btn-ghost btn-sm min-h-11 gap-1"
                             aria-label={`加入候選：${course.title}`}
                             onClick={() => onCandidate(course)}
                           >
@@ -133,7 +136,7 @@ export function SearchPanel({ courses, query, scheduledKeys, candidateKeys, onAd
                           </button>
                         )}
                         {scheduled ? (
-                          <button type="button" className="btn btn-sm min-h-11 gap-1 border border-base-300 bg-base-100" aria-label={`移出課表：${course.title}`} onClick={() => onRemove(course)}>
+                          <button type="button" className="btn btn-sm min-h-11 gap-1" aria-label={`移出課表：${course.title}`} onClick={() => onRemove(course)}>
                             <Minus className="size-4" aria-hidden="true" />
                             移出
                           </button>
@@ -152,7 +155,7 @@ export function SearchPanel({ courses, query, scheduledKeys, candidateKeys, onAd
             })}
           </ul>
           {results.length > shown && (
-            <button type="button" className="btn btn-ghost min-h-11 border border-base-300" onClick={() => setShown(shown + PAGE)}>
+            <button type="button" className="btn btn-ghost min-h-11" onClick={() => setShown(shown + PAGE)}>
               再顯示 {Math.min(PAGE, results.length - shown)} 門
             </button>
           )}

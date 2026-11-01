@@ -30,14 +30,14 @@ export function PlanBar({ plans, activePlanId, credits, catalog, onSwitch, onCre
                 type="button"
                 aria-pressed={pressed}
                 onClick={() => onSwitch(plan.id)}
-                className={`btn btn-sm min-h-11 shrink-0 gap-1.5 rounded-selector border ${pressed ? 'border-mist-ink bg-primary/15 text-mist-ink' : 'border-base-300 bg-base-100'}`}
+                className={`btn btn-sm min-h-11 shrink-0 gap-1.5 ${pressed ? 'tab-selected text-mist-ink' : ''}`}
               >
                 {plan.name}
-                {plan.auto && <span className="rounded-selector bg-secondary px-1.5 text-xs font-normal text-secondary-content">自動</span>}
+                {plan.auto && <span className="rounded-full bg-secondary px-2 text-xs font-normal text-secondary-content">自動</span>}
               </button>
             );
           })}
-          <button type="button" className="btn btn-ghost btn-sm min-h-11 shrink-0 gap-1 rounded-selector border border-base-300" aria-label="另存為新備案" onClick={onCreate}>
+          <button type="button" className="btn btn-ghost btn-sm min-h-11 shrink-0 gap-1" aria-label="另存為新備案" onClick={onCreate}>
             <Plus className="size-4" aria-hidden="true" />
             備案
           </button>

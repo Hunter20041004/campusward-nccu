@@ -20,7 +20,7 @@ export function CourseTags({ course }: { course: Course }) {
   return (
     <ul className="flex flex-wrap gap-1" aria-label="課程標籤">
       {tags.map((tag) => (
-        <li key={tag} className="rounded-selector bg-mint-wash px-2 py-0.5 text-xs font-medium text-accent-content">{tag}</li>
+        <li key={tag} className="chip">{tag}</li>
       ))}
     </ul>
   );

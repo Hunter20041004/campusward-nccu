@@ -4,15 +4,16 @@
   themes: false;
 }
 
-/* 設計第 7 節方向 B 的色票。文字對比以 WCAG 2.2 AA 為準。 */
+/* 設計第 7 節方向 B：2026-11-01 使用者決定改為全面柔浮雕質感（數值出處見設計文件第 7 節）。
+   面板與頁面同一個淺灰，靠凸起與凹陷的陰影分層。文字對比以 WCAG 2.2 AA 為準。 */
 @plugin "daisyui/theme" {
   name: "campusward";
   default: true;
   color-scheme: light;
-  --color-base-100: oklch(0.995 0.002 263);
-  --color-base-200: oklch(0.955 0 0);
-  --color-base-300: oklch(0.89 0.008 263);
-  --color-base-content: oklch(0.27 0.035 263);
+  --color-base-100: oklch(0.955 0 0);
+  --color-base-200: oklch(0.935 0 0);
+  --color-base-300: oklch(0.86 0 0);
+  --color-base-content: oklch(0.297 0 0);
   --color-primary: oklch(0.626 0.072 263);
   --color-primary-content: oklch(0.18 0.035 263);
   --color-secondary: oklch(0.822 0.025 77);
@@ -78,12 +79,116 @@
   }
 }
 
-/* 減輕軟浮雕：浮雕只留在課表與側欄兩張大卡片。 */
+/* 柔浮雕：大面板凸起、內容區與輸入框凹陷、按鈕凸起。 */
 @utility relief {
   background: var(--color-base-100);
-  border: 1px solid var(--color-base-300);
+  border-radius: 1rem;
+  box-shadow: -10px -11px 16px 1px rgb(252 252 252 / 0.7), 9px 14px 24px -10px rgb(0 0 0 / 0.25);
+}
+
+@utility well {
+  border-radius: 1rem;
+  box-shadow: inset 0 3px 6px rgb(0 0 0 / 0.16), inset 0 -1px 0 rgb(255 255 255 / 0.8);
+}
+
+@utility raised {
+  background: var(--color-base-100);
+  box-shadow: -5px -5px 15px rgb(252 252 252), 6px 6px 18px -14px rgb(135 135 135 / 0.3), 7px 6px 7px -6px rgb(0 0 0 / 0.08);
+}
+
+@utility crater {
+  background: var(--color-base-100);
   box-shadow:
-    0 1px 0 oklch(1 0 0 / 0.9) inset,
-    0 8px 24px -12px oklch(0.27 0.035 263 / 0.18),
-    0 2px 6px -2px oklch(0.27 0.035 263 / 0.08);
+    inset 3.4px 4.5px 9px -2.3px rgb(0 0 0 / 0.26),
+    inset -8px -6.8px 8px -6.8px rgb(255 255 255),
+    -5.7px -5.7px 17px rgb(255 255 255),
+    6.8px 6.8px 20.3px -15.5px rgb(0 0 0 / 0.6);
+}
+
+@utility tab-selected {
+  box-shadow:
+    inset -3px -4px 19px rgb(255 255 255),
+    inset 1px 1px 21px rgb(0 0 0 / 0.06),
+    -6px -6px 9.5px -7px rgb(255 255 255),
+    3px 3px 7.5px -4px rgb(0 0 0 / 0.25);
+}
+
+/* 薄荷標籤：灰字在薄荷底上對比 > 4.5:1。 */
+@utility chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  background: var(--color-mint-wash);
+  color: oklch(0.42 0 0);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  padding: 0 0.5rem;
+  box-shadow: 1px 1px 4px rgb(0 0 0 / 0.25);
+  white-space: nowrap;
+}
+
+/* 課表方塊：霧藍（必修）與米杏（其他），帶內陰影的立體感；字用深色，對比 ≥4.5:1。 */
+@utility course-mist {
+  background: var(--color-primary);
+  color: oklch(0.16 0.035 263);
+  box-shadow: inset -2px -2px 6.9px rgb(0 0 0 / 0.25), inset 4px 4px 3.5px rgb(165 182 213), inset 12px 12px 11.7px -2px rgb(142 163 204);
+}
+
+@utility course-apricot {
+  background: var(--color-secondary);
+  color: oklch(0.3 0.035 77);
+  box-shadow: inset -2px -2px 6.9px rgb(0 0 0 / 0.25), inset 4px 4px 3.5px rgb(229 221 209), inset 12px 12px 11.7px -2px rgb(218 206 188);
+}
+
+@utility course-conflict {
+  background: oklch(0.92 0.04 22);
+  color: oklch(0.38 0.13 22);
+  box-shadow: inset -2px -2px 6.9px rgb(0 0 0 / 0.2), inset 4px 4px 3.5px rgb(240 205 200), inset 0 0 0 2px var(--color-coral-ink);
+}
+
+@layer components {
+  /* 按鈕：與面板同色、凸起、圓角；按下時凹陷。 */
+  .btn {
+    background: var(--color-base-100);
+    border-color: transparent;
+    border-radius: 9999px;
+    font-weight: 700;
+    box-shadow: -5px -5px 15px rgb(252 252 252), 6px 6px 18px -14px rgb(135 135 135 / 0.3), 7px 6px 7px -6px rgb(0 0 0 / 0.08);
+  }
+  .btn:active {
+    box-shadow: inset 2px 3px 6px -1px rgb(0 0 0 / 0.22), inset -3px -3px 6px -2px rgb(255 255 255);
+  }
+  .btn-primary {
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+  }
+  .btn-ghost {
+    background: transparent;
+    box-shadow: none;
+  }
+  .btn:disabled {
+    box-shadow: none;
+  }
+  /* 輸入框：凹陷。保留一條淡框線，讓元件邊界看得出來。 */
+  .input,
+  .select,
+  .textarea {
+    background: var(--color-base-100);
+    border-color: oklch(0.88 0 0);
+    box-shadow:
+      inset 3.4px 4.5px 9px -2.3px rgb(0 0 0 / 0.26),
+      inset -8px -6.8px 8px -6.8px rgb(255 255 255),
+      -5.7px -5.7px 17px rgb(255 255 255);
+  }
+  .input,
+  .select {
+    border-radius: 9999px;
+  }
+  .textarea {
+    border-radius: 1rem;
+  }
+  .checkbox {
+    background: var(--color-base-100);
+    box-shadow: inset 1.5px 2px 4px -1px rgb(0 0 0 / 0.3), inset -2px -2px 3px -2px rgb(255 255 255);
+  }
 }

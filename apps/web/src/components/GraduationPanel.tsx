@@ -24,7 +24,7 @@ export interface GraduationPanelProps {
   onProfile: (profile: IdentityProfile) => void;
 }
 
-const action = 'btn btn-sm min-h-11 gap-1.5 border border-base-300 bg-base-100';
+const action = 'btn btn-sm min-h-11 gap-1.5';
 const LEVEL = { undergrad: '學士班', graduate: '碩博士班' } as const;
 const ADDITIONAL = { none: '沒有加修', minor: '輔系', double: '雙主修' } as const;
 const YEAR = ['一', '二', '三', '四', '五', '六', '七'];
@@ -105,7 +105,7 @@ export function GraduationPanel({ courses, entries, candidateKeys, scheduledKeys
   const titleOf = (key: string) => entries.find(({ course }) => course.key === key)?.course.title ?? key;
 
   return (
-    <section aria-labelledby="graduation-heading" className="rounded-box border border-base-300 bg-base-100 p-4">
+    <section aria-labelledby="graduation-heading" className="relief p-4">
       <h2 id="graduation-heading" className="flex items-center gap-2 text-sm font-semibold">
         <GraduationCap className="size-4" aria-hidden="true" />畢業缺口
       </h2>
@@ -133,7 +133,7 @@ export function GraduationPanel({ courses, entries, candidateKeys, scheduledKeys
             {audit.checkedAt && ` · 學校審查資料日期 ${audit.checkedAt}`}
             {audit.curriculumYear && `（${audit.curriculumYear} 學年課程架構）`}
           </p>
-          <p className="rounded-field border border-base-300 px-3 py-2 text-xs">
+          <p className="well px-3 py-2 text-xs">
             本學期正在修的課、抵免與交換課程尚未計入；以學校正式審查為準。
             {record.skippedCourseRows > 0 && ` 有 ${record.skippedCourseRows} 筆修課紀錄格式看不懂，已略過。`}
           </p>
@@ -145,7 +145,7 @@ export function GraduationPanel({ courses, entries, candidateKeys, scheduledKeys
                 ['還差', audit.remainingCredits],
                 ['本方案', credits],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-field border border-base-300 px-3 py-2">
+                <div key={label} className="well px-3 py-2">
                   <dt className="text-xs text-base-content/75">{label}</dt>
                   <dd className="font-semibold tabular-nums">{value ?? '—'}</dd>
                 </div>
@@ -169,7 +169,7 @@ export function GraduationPanel({ courses, entries, candidateKeys, scheduledKeys
             </div>
           )}
           {suggested && suggestionDiffers && (
-            <div className="rounded-field border border-base-300 px-3 py-2">
+            <div className="well px-3 py-2">
               <p>
                 匯出檔看起來是：{suggested.level ? LEVEL[suggested.level] : '身分不明'}
                 {suggested.year ? `${YEAR[suggested.year - 1]}年級` : ''}、{ADDITIONAL[suggested.additionalMajor ?? 'none']}。
@@ -181,7 +181,7 @@ export function GraduationPanel({ courses, entries, candidateKeys, scheduledKeys
             </div>
           )}
           {prerequisiteIds.length > 0 && (
-            <div className="rounded-field border border-base-300 px-3 py-2">
+            <div className="well px-3 py-2">
               <p>你已通過的課符合本學期 {prerequisiteIds.length} 項擋修條件（只比對同名課）。</p>
               <button
                 type="button"

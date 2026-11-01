@@ -17,7 +17,7 @@ function LiveCheckButton({ course, fetchImpl }: { course: Course; fetchImpl: (ur
   };
   return (
     <div aria-live="polite" className="space-y-1">
-      <button type="button" className="btn btn-sm min-h-11 gap-1.5 border border-base-300 bg-base-100" onClick={() => void run()} disabled={state === 'loading'}>
+      <button type="button" className="btn btn-sm min-h-11 gap-1.5" onClick={() => void run()} disabled={state === 'loading'}>
         <RefreshCw className="size-4" aria-hidden="true" />{state === 'loading' ? '確認中…' : '向官方確認最新資料'}
       </button>
       {state && state !== 'loading' && (

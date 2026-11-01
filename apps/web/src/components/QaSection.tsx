@@ -78,14 +78,14 @@ export function QaSection({ source, term, courses, client, aiReady }: QaSectionP
   };
 
   return (
-    <section aria-labelledby="qa-heading" className="space-y-2 rounded-field border border-base-300 px-3 py-2">
+    <section aria-labelledby="qa-heading" className="space-y-2 well px-3 py-2">
       <h3 id="qa-heading" className="flex items-center gap-1.5 font-semibold"><BookOpenText className="size-4" aria-hidden="true" />問課綱</h3>
       <form className="flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void ask(); }}>
         <label className="input input-sm min-h-11 flex-1">
           <span className="sr-only">想問課程的什麼</span>
           <input value={question} maxLength={500} onChange={(event) => setQuestion(event.target.value)} placeholder="例如：哪些課期末是交報告？" />
         </label>
-        <button type="submit" className="btn btn-sm min-h-11 border border-base-300 bg-base-100" disabled={busy || !question.trim()}>{busy ? '查詢中…' : '查課綱'}</button>
+        <button type="submit" className="btn btn-sm min-h-11" disabled={busy || !question.trim()}>{busy ? '查詢中…' : '查課綱'}</button>
       </form>
       {!aiReady && <p className="text-xs text-base-content/75">沒有金鑰也能查：會列出課綱裡相關的段落；設定金鑰後 AI 會根據這些段落回答。</p>}
       <div aria-live="polite" className="space-y-2">

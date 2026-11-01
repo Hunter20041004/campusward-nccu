@@ -69,7 +69,7 @@ function CourseActions({ entry, onToggleLock, onStatus, onAttendance, onRemove, 
   return (
     <div role="group" aria-label={`${course.title} 的操作`} className="flex flex-wrap items-center gap-2 border-t border-base-300 px-4 py-3">
       <p className="w-full text-sm font-medium sm:w-auto sm:flex-1">{course.title}</p>
-      <button type="button" className="btn btn-sm min-h-11 gap-1 border border-base-300 bg-base-100" aria-pressed={item.locked} onClick={() => onToggleLock(course.key)}>
+      <button type="button" className="btn btn-sm min-h-11 gap-1" aria-pressed={item.locked} onClick={() => onToggleLock(course.key)}>
         <Lock className="size-4" aria-hidden="true" />
         {item.locked ? '解鎖' : '鎖定'}
       </button>
@@ -80,14 +80,14 @@ function CourseActions({ entry, onToggleLock, onStatus, onAttendance, onRemove, 
         </select>
       </label>
       {course.delivery.asyncAllowed && (
-        <button type="button" className="btn btn-sm min-h-11 border border-base-300 bg-base-100" onClick={() => onAttendance(course.key, item.attendance === 'async' ? 'sync' : 'async')}>
+        <button type="button" className="btn btn-sm min-h-11" onClick={() => onAttendance(course.key, item.attendance === 'async' ? 'sync' : 'async')}>
           {item.attendance === 'async' ? '改為同步上課' : '改為非同步上課'}
         </button>
       )}
       {item.locked ? (
         <span className="text-sm text-base-content/80">已鎖定，解鎖後才能移出</span>
       ) : (
-        <button type="button" className="btn btn-sm min-h-11 border border-coral-ink/50 bg-base-100 text-coral-ink" onClick={() => onRemove(course.key)}>移出課表</button>
+        <button type="button" className="btn btn-sm min-h-11 border border-coral-ink/50 text-coral-ink" onClick={() => onRemove(course.key)}>移出課表</button>
       )}
       <button type="button" className="btn btn-ghost btn-sm min-h-11 min-w-11" aria-label="關閉操作" onClick={onClose}>
         <X className="size-4" aria-hidden="true" />
@@ -108,7 +108,7 @@ function EmptyState({ onStartSearch, onImport }: Pick<TimetableProps, 'onStartSe
           <Search className="size-4" aria-hidden="true" />
           從搜課開始
         </button>
-        <button type="button" className="btn btn-ghost min-h-11 gap-2 border border-base-300" onClick={onImport}>
+        <button type="button" className="btn btn-ghost min-h-11 gap-2" onClick={onImport}>
           <FileUp className="size-4" aria-hidden="true" />
           匯入舊站資料
         </button>
@@ -141,14 +141,16 @@ export function Timetable(props: TimetableProps) {
 
   return (
     <section aria-labelledby="timetable-heading" className="relief flex flex-col rounded-box md:min-h-[28rem]">
-      <div className="flex items-center gap-2 border-b border-base-300 px-4 py-2">
-        <h2 id="timetable-heading" className="flex-1 py-1 text-base font-semibold">課表</h2>
+      <div className="flex items-center gap-2 px-5 pt-3 pb-1">
+        <h2 id="timetable-heading" className="flex flex-1 items-center gap-2 py-1 text-xl font-bold text-mist-ink">
+          <LayoutGrid className="size-5" aria-hidden="true" />課表
+        </h2>
         {entries.length > 0 && (
-          <div className="flex rounded-field border border-base-300 md:hidden" role="group" aria-label="課表檢視">
-            <button type="button" aria-pressed={mobileMode === 'agenda'} className={`flex min-h-11 items-center gap-1 rounded-l-field px-3 text-sm ${mobileMode === 'agenda' ? 'bg-primary/15 text-mist-ink' : ''}`} onClick={() => setMobileMode('agenda')}>
+          <div className="well flex rounded-full p-1 md:hidden" role="group" aria-label="課表檢視">
+            <button type="button" aria-pressed={mobileMode === 'agenda'} className={`flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold ${mobileMode === 'agenda' ? 'tab-selected text-mist-ink' : 'text-base-content/80'}`} onClick={() => setMobileMode('agenda')}>
               <CalendarDays className="size-4" aria-hidden="true" />行程
             </button>
-            <button type="button" aria-pressed={mobileMode === 'grid'} className={`flex min-h-11 items-center gap-1 rounded-r-field px-3 text-sm ${mobileMode === 'grid' ? 'bg-primary/15 text-mist-ink' : ''}`} onClick={() => setMobileMode('grid')}>
+            <button type="button" aria-pressed={mobileMode === 'grid'} className={`flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold ${mobileMode === 'grid' ? 'tab-selected text-mist-ink' : 'text-base-content/80'}`} onClick={() => setMobileMode('grid')}>
               <LayoutGrid className="size-4" aria-hidden="true" />方格
             </button>
           </div>
@@ -157,7 +159,7 @@ export function Timetable(props: TimetableProps) {
 
       {entries.length === 0 ? <EmptyState onStartSearch={props.onStartSearch} onImport={props.onImport} /> : (
         <>
-          <div className={`${mobileMode === 'grid' ? '' : 'hidden md:block'} overflow-x-auto p-3`}>
+          <div className={`${mobileMode === 'grid' ? '' : 'hidden md:block'} well m-3 overflow-x-auto p-2`}>
             <div
               role="group"
               aria-label="每週課表"
@@ -190,9 +192,9 @@ export function Timetable(props: TimetableProps) {
                     aria-pressed={isSelected}
                     data-conflict={isConflict ? 'true' : undefined}
                     onClick={() => setSelected(isSelected ? null : course.key)}
-                    className={`relative z-10 m-0.5 flex flex-col items-start overflow-hidden rounded-field border px-1.5 py-1 text-left text-xs leading-tight transition-shadow duration-150 ${
-                      isConflict ? 'border-coral-ink/60 bg-error/15 text-coral-ink' : 'border-primary/50 bg-primary/15 text-mist-ink'
-                    } ${isSelected ? 'ring-2 ring-mist-ink' : ''}`}
+                    className={`relative z-10 m-0.5 flex flex-col items-start overflow-hidden rounded-lg px-1.5 py-1 text-left text-xs leading-tight transition-shadow duration-150 ${
+                      isConflict ? 'course-conflict' : course.official?.requirementKind === '必修' ? 'course-mist' : 'course-apricot'
+                    } ${isSelected ? 'ring-2 ring-mist-ink ring-offset-1' : ''}`}
                     style={{
                       gridColumnStart: days.indexOf(block.day) + 2,
                       gridRowStart: block.rowStart,
@@ -204,7 +206,7 @@ export function Timetable(props: TimetableProps) {
                     <span className="line-clamp-2 font-medium">{course.title}</span>
                     <span className="mt-0.5 flex flex-wrap items-center gap-1">
                       <span className="tabular">{block.codes}</span>
-                      {newKeys.has(course.key) && <span className="rounded-selector bg-mint-wash px-1 font-semibold text-accent-content">新</span>}
+                      {newKeys.has(course.key) && <span className="rounded-full bg-base-100/90 px-1.5 font-bold text-mist-ink">新</span>}
                       {item.status !== 'planned' && <span className="rounded-selector bg-secondary px-1 text-secondary-content">{STATUS_LABELS[item.status]}</span>}
                       {item.locked && <Lock className="size-3" aria-hidden="true" />}
                     </span>
@@ -227,11 +229,11 @@ export function Timetable(props: TimetableProps) {
                         <button
                           type="button"
                           onClick={() => setSelected(agendaItem.courseKey)}
-                          className={`flex min-h-11 w-full items-center gap-3 rounded-field border px-3 py-2 text-left text-sm ${isConflict ? 'border-coral-ink/60 bg-error/10' : 'border-base-300 bg-base-100'}`}
+                          className={`flex min-h-11 w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm ${isConflict ? 'course-conflict' : 'raised'}`}
                         >
                           <span className="tabular w-24 shrink-0 text-base-content/80">{clock(agendaItem.start)}–{clock(agendaItem.end)}</span>
                           <span className="flex-1 font-medium">{agendaItem.title}</span>
-                          {isConflict && <span className="text-xs font-medium text-coral-ink">衝堂</span>}
+                          {isConflict && <span className="text-xs font-bold">衝堂</span>}
                         </button>
                       </li>
                     );

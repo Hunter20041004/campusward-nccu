@@ -13,7 +13,7 @@ export interface CareerSectionProps {
   onAddCandidates: (changes: Change[], label: string) => void;
 }
 
-const action = 'btn btn-sm min-h-11 gap-1.5 border border-base-300 bg-base-100';
+const action = 'btn btn-sm min-h-11 gap-1.5';
 
 /** 職涯推薦：AI 整理能力與關鍵字，課程由本機快照搜尋；不改課表，只能由學生放進候選。 */
 export function CareerSection({ client, termLabel, courses, candidateKeys, onAddCandidates }: CareerSectionProps) {
@@ -29,7 +29,7 @@ export function CareerSection({ client, termLabel, courses, candidateKeys, onAdd
   };
 
   return (
-    <section aria-labelledby="career-heading" className="space-y-2 rounded-field border border-base-300 px-3 py-2">
+    <section aria-labelledby="career-heading" className="space-y-2 well px-3 py-2">
       <h3 id="career-heading" className="flex items-center gap-1.5 font-semibold"><Compass className="size-4" aria-hidden="true" />職涯方向找課</h3>
       <form className="flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void run(); }}>
         <label className="input input-sm min-h-11 flex-1">
