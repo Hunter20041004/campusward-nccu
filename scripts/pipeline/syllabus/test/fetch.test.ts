@@ -141,6 +141,26 @@ describe('fetchSyllabusPages', () => {
     expect(JSON.parse(readFileSync(join(cacheDir, '000211011.json'), 'utf8'))).toMatchObject({ url: url('000211011'), etag: '"x"' });
   });
 
+  test('offline mode rebuilds from the cache without any request', async () => {
+    const server = fakeServer(({ url: target }) => (target.endsWith('gone.html') ? { status: 404 } : { body: html(target) }));
+    const targets = ['a', 'gone'].map((code) => ({ code, url: url(code) }));
+    await collect(fetchSyllabusPages({ targets, cacheDir, ...server.options }));
+    const requests = server.calls.length;
+    const results = await collect(fetchSyllabusPages({ targets: [...targets, { code: 'new', url: url('new') }], cacheDir, offline: true, ...server.options }));
+    expect(server.calls).toHaveLength(requests);
+    expect(results.map(({ code, status }) => [code, status])).toEqual([['a', 'ok'], ['gone', 'missing'], ['new', 'failed']]);
+    expect(results[0]).toMatchObject({ changed: false, notModified: true });
+  });
+
+  test('a page that was missing is asked for again online', async () => {
+    let uploaded = false;
+    const server = fakeServer(() => (uploaded ? { body: html('now there') } : { status: 404 }));
+    await collect(fetchSyllabusPages({ targets: [{ code: 'a', url: url('a') }], cacheDir, ...server.options }));
+    uploaded = true;
+    const [result] = await collect(fetchSyllabusPages({ targets: [{ code: 'a', url: url('a') }], cacheDir, ...server.options }));
+    expect(result).toMatchObject({ status: 'ok', changed: true });
+  });
+
   test('a cached page for a different address is not reused', async () => {
     const server = fakeServer(() => ({ body: html('page'), headers: { etag: '"same"' } }));
     await collect(fetchSyllabusPages({ targets: [{ code: 'a', url: url('a') }], cacheDir, ...server.options }));

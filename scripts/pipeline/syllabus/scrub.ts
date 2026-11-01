@@ -38,6 +38,10 @@ export const RULES: readonly (readonly [string, RegExp])[] = Object.freeze([
 const escaped = MARK.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const ADJACENT_MARKS = new RegExp(`(?:${escaped}[\\s,;，；、/]*){2,}`, 'gu');
 
+export const STUDENT_ID_CONTEXT_RULE = 'student_id_context';
+const STUDENT_ID_MENTION = /學號|student\s*(?:id|no\.?|number)/iu;
+const BARE_STUDENT_ID = /(?<!\d)1[01]\d{7}(?!\d)/gu;
+
 export type ScrubHits = Record<string, number>;
 
 export function scrub(input: string): { text: string; hits: ScrubHits } {
@@ -48,6 +52,13 @@ export function scrub(input: string): { text: string; hits: ScrubHits } {
     let count = 0;
     text = text.replace(pattern, () => { count += 1; return MARK; });
     if (count) hits[name] = count;
+  }
+  // 參考規則之外補的一條（115-1 實跑發現）：老師舉例檔名時會裸寫學號（「學號(如1xxxxxxxx王小魚.xlsx)」），
+  // 前面沒有緊接標籤，student_id 抓不到。只在同一段文字提到學號時才移除，避免誤刪 1[01] 開頭的課號。
+  if (STUDENT_ID_MENTION.test(input)) {
+    let count = 0;
+    text = text.replace(BARE_STUDENT_ID, () => { count += 1; return MARK; });
+    if (count) hits[STUDENT_ID_CONTEXT_RULE] = count;
   }
   return { text: text.replace(ADJACENT_MARKS, MARK), hits };
 }

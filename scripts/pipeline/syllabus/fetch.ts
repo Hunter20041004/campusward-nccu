@@ -4,7 +4,7 @@
 // 「有沒有變」以內容 sha256 判斷，不信任伺服器的 ETag。
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { trustedNccuUrl } from '../../../packages/engine/src/index.ts';
 
@@ -44,14 +44,13 @@ export interface FetchPagesOptions {
   maxBytes?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  /** 不送任何請求，只用快取重建（改了解析或去個資規則後重跑用）；快取沒有的頁面算失敗。 */
+  offline?: boolean;
 }
 
-interface CacheEntry {
-  url: string;
-  etag?: string;
-  lastModified?: string;
-  sha256: string;
-}
+type CacheEntry =
+  | { url: string; etag?: string; lastModified?: string; sha256: string }
+  | { url: string; missing: true };
 
 export const MAX_PAGE_BYTES = 1_500_000;
 const USER_AGENT = 'CampuswardSyllabusPipeline/1.0 (+https://github.com/Hunter20041004/campusward-nccu)';
@@ -91,22 +90,32 @@ async function readCapped(response: Response, maxBytes: number): Promise<Uint8Ar
   return bytes;
 }
 
-function readCache(cacheDir: string, target: Target): { entry: CacheEntry; bytes: Uint8Array } | null {
+type Cached =
+  | { kind: 'page'; entry: Extract<CacheEntry, { sha256: string }>; bytes: Uint8Array }
+  | { kind: 'missing' };
+
+function readCache(cacheDir: string, target: Target): Cached | null {
   const metaPath = join(cacheDir, `${target.code}.json`);
   const htmlPath = join(cacheDir, `${target.code}.html`);
-  if (!existsSync(metaPath) || !existsSync(htmlPath)) return null;
+  if (!existsSync(metaPath)) return null;
   try {
     const entry = JSON.parse(readFileSync(metaPath, 'utf8')) as CacheEntry;
+    if (entry.url !== target.url) return null;
+    if ('missing' in entry) return { kind: 'missing' };
+    if (!existsSync(htmlPath)) return null;
     const bytes = new Uint8Array(readFileSync(htmlPath));
-    if (entry.url !== target.url || sha256(bytes) !== entry.sha256) return null;
-    return { entry, bytes };
+    // 快取檔被改過或寫一半：不信任，改抓完整頁。
+    if (sha256(bytes) !== entry.sha256) return null;
+    return { kind: 'page', entry, bytes };
   } catch {
     return null;
   }
 }
 
-function writeCache(cacheDir: string, code: string, entry: CacheEntry, bytes: Uint8Array) {
-  writeFileSync(join(cacheDir, `${code}.html`), bytes);
+function writeCache(cacheDir: string, code: string, entry: CacheEntry, bytes?: Uint8Array) {
+  const htmlPath = join(cacheDir, `${code}.html`);
+  if (bytes) writeFileSync(htmlPath, bytes);
+  else rmSync(htmlPath, { force: true });
   writeFileSync(join(cacheDir, `${code}.json`), `${JSON.stringify(entry)}\n`);
 }
 
@@ -120,6 +129,7 @@ export async function* fetchSyllabusPages(options: FetchPagesOptions): AsyncGene
     maxBytes = MAX_PAGE_BYTES,
     sleep = defaultSleep,
     now = Date.now,
+    offline = false,
   } = options;
   mkdirSync(cacheDir, { recursive: true });
   let lastRequest = Number.NEGATIVE_INFINITY;
@@ -130,7 +140,15 @@ export async function* fetchSyllabusPages(options: FetchPagesOptions): AsyncGene
   };
 
   for (const target of targets) {
-    const cached = readCache(cacheDir, target);
+    const found = readCache(cacheDir, target);
+    if (offline) {
+      if (found?.kind === 'page') yield { code: target.code, status: 'ok', bytes: found.bytes, sha256: found.entry.sha256, changed: false, notModified: true };
+      else if (found?.kind === 'missing') yield { code: target.code, status: 'missing' };
+      else yield { code: target.code, status: 'failed', reason: '快取裡沒有這一頁' };
+      continue;
+    }
+    // 之前 404 的頁面照樣再問一次（老師可能已上傳），但不帶條件標頭。
+    const cached = found?.kind === 'page' ? found : null;
     const headers: Record<string, string> = { 'user-agent': USER_AGENT, accept: 'text/html' };
     if (cached?.entry.etag) headers['if-none-match'] = cached.entry.etag;
     if (cached?.entry.lastModified) headers['if-modified-since'] = cached.entry.lastModified;
@@ -146,6 +164,7 @@ export async function* fetchSyllabusPages(options: FetchPagesOptions): AsyncGene
           result = { code: target.code, status: 'ok', bytes: cached.bytes, sha256: cached.entry.sha256, changed: false, notModified: true };
         } else if (response.status === 404) {
           await response.body?.cancel();
+          writeCache(cacheDir, target.code, { url: target.url, missing: true });
           result = { code: target.code, status: 'missing' };
         } else if (!response.ok) {
           await response.body?.cancel();
@@ -153,7 +172,7 @@ export async function* fetchSyllabusPages(options: FetchPagesOptions): AsyncGene
         } else {
           const bytes = await readCapped(response, maxBytes);
           const hash = sha256(bytes);
-          const entry: CacheEntry = { url: target.url, sha256: hash };
+          const entry: Extract<CacheEntry, { sha256: string }> = { url: target.url, sha256: hash };
           const etag = response.headers.get('etag');
           const lastModified = response.headers.get('last-modified');
           if (etag) entry.etag = etag;

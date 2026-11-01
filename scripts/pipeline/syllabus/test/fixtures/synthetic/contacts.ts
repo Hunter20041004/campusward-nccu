@@ -37,7 +37,13 @@ export const POSITIVE_CASES: readonly (readonly [string, string, string])[] = [
   ['extension', '(總機) 轉6789', `(總機) ${M}`],
   ['student_id', 'Student ID: 987654321', M],
   ['student_id', '學號：987654321', M],
+  // 參考規則之外補的一條：同一段文字提到學號時，裸寫的 9 碼學號樣式（1[01] 開頭）也移除。
+  ['student_id_context', '檔名註明學號(如109999999王小明_期中考.xlsx)', `檔名註明學號(如${M}王小明_期中考.xlsx)`],
+  ['student_id_context', '命名：系級學號—姓名，例如「作業—110000000—台灣」', `命名：系級學號—姓名，例如「作業—${M}—台灣」`],
 ];
+
+/** 沒提到學號時，1[01] 開頭的 9 碼數字多半是課號，保留。 */
+export const COURSE_CODE_WITHOUT_STUDENT_ID = '先修 101999999 或 110000000 課程';
 
 /** 相鄰的移除標記合併成一個。 */
 export const COLLAPSE_CASE = ['Email: a.test@nccu.edu.tw, Tel: 02-1234-5678', `Email: ${M}`] as const;

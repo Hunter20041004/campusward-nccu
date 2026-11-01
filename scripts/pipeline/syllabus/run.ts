@@ -1,6 +1,7 @@
 // 建置期抓某學期的課綱語料：npm run pipeline:syllabi -- --term <四碼學期>
 // 讀 data/snapshots/<學期>/courses.json，寫 data/syllabi/<學期>/corpus.jsonl 與 meta.json；
 // 原始頁只放 .cache/syllabi/<學期>/（不進版控）。每秒最多 1 個請求，全校約 2,900 頁需時約 50 分鐘。
+// 加 --offline 只用快取重建（改了解析或去個資規則後用），不送任何請求，抓取時間沿用上一版。
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,6 +23,14 @@ if (!existsSync(snapshotPath)) {
   console.error(`找不到課程快照 ${snapshotPath}，請先跑 npm run pipeline -- --term ${term}`);
   process.exit(1);
 }
+const offline = process.argv.includes('--offline');
+const dir = join('data', 'syllabi', term);
+const metaPath = join(dir, 'meta.json');
+const previousFetchedAt = existsSync(metaPath) ? (JSON.parse(readFileSync(metaPath, 'utf8')) as { fetchedAt?: string }).fetchedAt : undefined;
+if (offline && !previousFetchedAt) {
+  console.error('離線重建需要上一版 meta.json 的抓取時間，請先完整抓一次。');
+  process.exit(1);
+}
 const courses = JSON.parse(readFileSync(snapshotPath, 'utf8')) as CourseLinks[];
 
 const started = Date.now();
@@ -29,7 +38,8 @@ const { corpus, meta, failures, changed } = await buildCorpus({
   term,
   courses,
   cacheDir: join('.cache', 'syllabi', term),
-  fetchedAt: new Date().toISOString(),
+  fetchedAt: offline ? previousFetchedAt! : new Date().toISOString(),
+  offline,
   onPage: (done, total) => {
     if (done % 100 === 0 || done === total) {
       const minutes = ((Date.now() - started) / 60000).toFixed(1);
@@ -44,9 +54,8 @@ if (meta.failed > courses.length * MAX_FAILED_RATIO) {
   process.exit(1);
 }
 
-const dir = join('data', 'syllabi', term);
 mkdirSync(dir, { recursive: true });
 writeFileSync(join(dir, 'corpus.jsonl'), corpus);
-writeFileSync(join(dir, 'meta.json'), serializeMeta(meta));
+writeFileSync(metaPath, serializeMeta(meta));
 console.log(`完成：${courses.length} 門課、取得 ${meta.pages} 頁（內容有變 ${changed} 頁）、寫入 ${meta.parsed} 門、尚未上傳 ${meta.notUploaded}、沒有課綱 ${meta.missing}、失敗 ${meta.failed}`);
 console.log(`去個資：${JSON.stringify(meta.scrubHits)}；耗時 ${((Date.now() - started) / 60000).toFixed(1)} 分鐘`);

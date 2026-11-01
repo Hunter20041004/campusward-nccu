@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { MARK, RULES, scrub } from '../scrub.ts';
-import { COLLAPSE_CASE, NEGATIVE_CASES, POSITIVE_CASES } from './fixtures/synthetic/contacts.ts';
+import { MARK, RULES, scrub, STUDENT_ID_CONTEXT_RULE } from '../scrub.ts';
+import { COLLAPSE_CASE, COURSE_CODE_WITHOUT_STUDENT_ID, NEGATIVE_CASES, POSITIVE_CASES } from './fixtures/synthetic/contacts.ts';
 
 test('rules run in the reference order: links and e-mails before phones', () => {
   expect(RULES.map(([name]) => name)).toEqual([
@@ -8,6 +8,7 @@ test('rules run in the reference order: links and e-mails before phones', () => 
     'phone_labelled', 'mobile', 'landline', 'nccu_local', 'extension', 'student_id',
   ]);
   for (const [, pattern] of RULES) expect(pattern.flags).toBe('giu');
+  expect(STUDENT_ID_CONTEXT_RULE).toBe('student_id_context');
 });
 
 describe('each rule removes its kind of contact', () => {
@@ -16,6 +17,10 @@ describe('each rule removes its kind of contact', () => {
     expect(result.text).toBe(expected);
     expect(result.hits[rule]).toBeGreaterThan(0);
   });
+});
+
+test('bare 9-digit numbers are kept when the text never mentions a student id', () => {
+  expect(scrub(COURSE_CODE_WITHOUT_STUDENT_ID)).toEqual({ text: COURSE_CODE_WITHOUT_STUDENT_ID, hits: {} });
 });
 
 test('adjacent marks collapse into one', () => {
