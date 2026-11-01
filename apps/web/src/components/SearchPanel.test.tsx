@@ -318,6 +318,34 @@ describe('finding courses for a free stretch', () => {
     expect(titles()).toEqual(['通識早上', '中文通識課', '沒碰到那一節']);
   });
 
+  // 「沒選上」的課按「找這段時間的課」：那門課本身（和同一門課的別班）不該又列出來。
+  test('courses the slot excludes (the lost course and its other sections) are left out', () => {
+    const lost = make('900307001', { subNam: '沒選上的通識', subGde: '教務處通識教育中心', subKind: '', subTime: '五34', lmtKind: '人文通識' });
+    const lostOther = make('900307011', { subNam: '沒選上的通識', subGde: '教務處通識教育中心', subKind: '', subTime: '五4', lmtKind: '人文通識', teaNam: '李範例' });
+    setup('', { courses: [...free, lost, lostOther], slot: { ...slot, exclude: ['1151:900307001', '1151:900307011'] } });
+    expect(titles()).toEqual(['通識早上', '中文通識課']);
+  });
+
+  test('the slot chip says which period the courses have to cover when the free stretch is longer', () => {
+    setup('', { courses: free, slot });
+    expect(screen.getByText('週五 1–4 節空堂（08:10–12:00）').closest('button')).toHaveTextContent('要上到第 4 節');
+  });
+
+  test('a whole stretch from the agenda has no clicked period in the chip', () => {
+    setup('', { courses: free, slot: { ...slot, anyPeriod: true } });
+    expect(screen.getByText('週五 1–4 節空堂（08:10–12:00）').closest('button')).not.toHaveTextContent('要上到');
+  });
+
+  test('the hidden note names only the preferences that actually hid something', () => {
+    const monday = [
+      make('900311001', { subNam: '週一早八通識', subGde: '教務處通識教育中心', subKind: '', subTime: '一12', lmtKind: '人文通識' }),
+      make('900312001', { subNam: '週一第二節通識', subGde: '教務處通識教育中心', subKind: '', subTime: '一2', lmtKind: '人文通識' }),
+    ];
+    setup('', { courses: monday, slot: { day: 1, period: '2', start: 490, end: 720, codes: ['1', '2', '3', '4'], nonce: 1 }, preferences: { freeDays: [5], noEarly: true } });
+    expect(screen.getByText(/依偏好隱藏 1 門/)).toHaveTextContent('依偏好隱藏 1 門（不要早八）');
+    expect(screen.getByText(/依偏好隱藏 1 門/)).not.toHaveTextContent('週五');
+  });
+
   test('clearing the stretch goes back to a normal search', async () => {
     const user = userEvent.setup();
     setup('', { courses: free, slot });

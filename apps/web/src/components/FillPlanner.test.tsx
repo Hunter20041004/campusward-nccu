@@ -4,7 +4,8 @@ import { parseClassName, parseEnrollmentRules, rowToCourse, toScheduleCourse, ty
 import { describe, expect, test, vi } from 'vitest';
 import enrollmentRules from '../../../../data/rules/enrollment-11407.json' with { type: 'json' };
 import { officialRow } from '../../../../packages/engine/test/fixtures/synthetic/official-rows.ts';
-import { FillPlanner, targetOptions } from './FillPlanner.tsx';
+import type { ChangeOutcome } from './ChangeOutcome.ts';
+import { FillPlanner, targetOptions, type FillPlannerProps } from './FillPlanner.tsx';
 
 const make = (code: string, overrides: Record<string, unknown> = {}): ScheduleCourse =>
   toScheduleCourse(rowToCourse(officialRow({ subNum: code, ...overrides }), { year: 115, semester: 1 }).course!);
@@ -29,8 +30,9 @@ const context: FillContext = {
   maximumCredits: 25,
 };
 
-function setup() {
-  const onApply = vi.fn();
+// onApply 回報這次有沒有真的套用（方案滿了會被拒絕、自動備案滿了學生可能按取消）。
+function setup(outcome: ChangeOutcome = { status: 'applied' }) {
+  const onApply = vi.fn<FillPlannerProps['onApply']>(() => Promise.resolve(outcome));
   render(<FillPlanner context={context} className={parseClassName('資訊二')} candidateKeys={[]} credits={0} limits={{ minimum: 12, maximum: 25 }} catalog={catalog} onApply={onApply} />);
   return { onApply };
 }
@@ -96,5 +98,38 @@ describe('FillPlanner', () => {
     expect(screen.getByText(/有 1 門本班必修排進去會超過學分上限（25 學分），沒有排進去/)).toBeInTheDocument();
     expect(screen.getByText(/課表上已有「離散數學」，和本班必修同名或同科目，沒有重複排/)).toBeInTheDocument();
     expect(screen.queryByText(/每一班都衝堂/)).not.toBeInTheDocument();
+  });
+
+  test('when 用這份 is rejected, the panel stays open with the plans and says why', async () => {
+    const user = userEvent.setup();
+    setup({ status: 'rejected', errors: ['自己另存的方案最多 25 個。'] });
+    await user.click(screen.getByRole('button', { name: '幫我排滿' }));
+    await user.click(screen.getByRole('radio', { name: '18' }));
+    await user.click(screen.getByRole('button', { name: '用這份：方案 A・照優先順序' }));
+    expect(screen.getByRole('list', { name: '排好的方案' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('沒有套用：自己另存的方案最多 25 個。');
+  });
+
+  test('when the backup dialog is cancelled, the panel stays open and says nothing changed', async () => {
+    const user = userEvent.setup();
+    setup({ status: 'cancelled' });
+    await user.click(screen.getByRole('button', { name: '幫我排滿' }));
+    await user.click(screen.getByRole('radio', { name: '18' }));
+    await user.click(screen.getByRole('button', { name: '用這份：方案 A・照優先順序' }));
+    expect(screen.getByRole('list', { name: '排好的方案' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('沒有套用');
+  });
+
+  test('focus moves to the panel title on open, and back to the 幫我排滿 button on close or after 用這份', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: '幫我排滿' }));
+    expect(screen.getByRole('heading', { name: '幫我排滿' })).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: '收起幫我排滿' }));
+    expect(screen.getByRole('button', { name: '幫我排滿' })).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: '幫我排滿' }));
+    await user.click(screen.getByRole('radio', { name: '18' }));
+    await user.click(screen.getByRole('button', { name: '用這份：方案 A・照優先順序' }));
+    expect(screen.getByRole('button', { name: '幫我排滿' })).toHaveFocus();
   });
 });

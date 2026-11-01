@@ -1,6 +1,7 @@
 import { candidateScheduleSummary, type ScheduleCourse, type ScheduleEntry } from '@campusward/engine';
 import { ArrowLeftRight, Check, ClipboardCheck, Plus, Search, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { outcomeMessage, type ChangeOutcome } from './ChangeOutcome.ts';
 import { SafeLink } from './CourseDetails.tsx';
 import { DAY_LABELS } from './labels.ts';
 
@@ -10,12 +11,12 @@ export interface ResultMarkerProps {
   catalog: ReadonlyMap<string, ScheduleCourse>;
   /** 沒選上的課的替補（App 用引擎 lostCourseReplacements，對「確定之後」的課表算）。 */
   replacementsFor: (lostKey: string) => { sections: readonly ScheduleCourse[]; sameSlot: readonly ScheduleCourse[] };
-  /** 選上的標成已選上並鎖定，沒選上的移出課表（留在候選）；一筆可復原的修改。 */
-  onConfirm: (kept: string[], lost: string[]) => void;
+  /** 選上的標成已選上並鎖定，沒選上的移出課表（留在候選）；一筆可復原的修改。回報有沒有真的套用（自動備案滿了要等確認視窗）。 */
+  onConfirm: (kept: string[], lost: string[]) => ChangeOutcome | Promise<ChangeOutcome>;
   /** 替補：把這門加進課表。 */
   onReplace: (lostKey: string, key: string) => void;
-  /** 用空堂找課找那門課原本時段的其他課。 */
-  onFindSlot: (lostKey: string) => void;
+  /** 用空堂找課找那門課原本某一段時間（meetings 的第幾段）的其他課。 */
+  onFindSlot: (lostKey: string, meetingIndex: number) => void;
   /** 官方即時餘額連結（只連過去，本站不抓餘額）。 */
   remainingUrl?: (key: string) => string | undefined;
   /** 打開或收起：讓小山的提醒泡泡先讓開，不蓋住勾選框。 */
@@ -39,6 +40,17 @@ export function ResultMarker({ entries, catalog, replacementsFor, onConfirm, onR
   const [unticked, setUnticked] = useState<ReadonlySet<string>>(new Set());
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [message, setMessage] = useState('');
+  // 標記畫面上「沒有套用」的原因（被拒絕、或在自動備案確認視窗按了取消）。
+  const [failure, setFailure] = useState('');
+  // 打開或換到替補畫面時焦點移到標題；收起後回到「標記選課結果」按鈕（按下的按鈕本身會消失）。
+  const title = useRef<HTMLHeadingElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
+  useEffect(() => {
+    if (stage !== 'closed') title.current?.focus();
+    else if (returnFocus.current) trigger.current?.focus();
+    returnFocus.current = false;
+  }, [stage]);
   const scheduled = new Set(entries.map(({ course }) => course.key));
   const titleOf = (key: string) => catalog.get(key)?.title ?? '課程';
 
@@ -46,7 +58,7 @@ export function ResultMarker({ entries, catalog, replacementsFor, onConfirm, onR
     if (!entries.length) return null;
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn btn-sm min-h-11 gap-1.5" onClick={() => { setUnticked(new Set()); setMessage(''); setStage('marking'); }}>
+        <button ref={trigger} type="button" className="btn btn-sm min-h-11 gap-1.5" onClick={() => { setUnticked(new Set()); setMessage(''); setFailure(''); setStage('marking'); }}>
           <ClipboardCheck className="size-4" aria-hidden="true" />標記選課結果
         </button>
         <span role="status" className="text-xs text-base-content/75">{message || '初選結果出來後，一次勾完選上哪些，沒上的直接給替補'}</span>
@@ -54,10 +66,13 @@ export function ResultMarker({ entries, catalog, replacementsFor, onConfirm, onR
     );
   }
 
-  const close = () => setStage('closed');
+  const close = () => {
+    returnFocus.current = true;
+    setStage('closed');
+  };
   const header = (
     <div className="flex items-start gap-2">
-      <h3 id="result-title" className="flex flex-1 items-center gap-1.5 text-base font-bold text-mist-ink">
+      <h3 ref={title} id="result-title" tabIndex={-1} className="flex flex-1 items-center gap-1.5 text-base font-bold text-mist-ink">
         <ClipboardCheck className="size-4" aria-hidden="true" />標記選課結果
       </h3>
       <button type="button" className="btn btn-ghost btn-sm min-h-11 min-w-11 px-2" aria-label="收起標記選課結果" onClick={close}>
@@ -69,8 +84,14 @@ export function ResultMarker({ entries, catalog, replacementsFor, onConfirm, onR
   if (stage === 'marking') {
     const kept = entries.map(({ course }) => course.key).filter((key) => !unticked.has(key));
     const lost = entries.map(({ course }) => course.key).filter((key) => unticked.has(key));
-    const confirm = () => {
-      onConfirm(kept, lost);
+    const confirm = async () => {
+      // 真的存檔了才說「已鎖定」、往替補走；沒有套用就留在這一步並說明。
+      const outcome = await onConfirm(kept, lost);
+      if (outcome.status !== 'applied') {
+        setFailure(outcomeMessage(outcome));
+        return;
+      }
+      setFailure('');
       setLostKeys(lost);
       setPicked({});
       if (lost.length) setStage('replacing');
@@ -110,6 +131,7 @@ export function ResultMarker({ entries, catalog, replacementsFor, onConfirm, onR
           ))}
         </ul>
         </div>
+        <p role="status" className="text-coral-ink empty:hidden">{failure}</p>
         <button type="button" className="btn btn-primary btn-sm min-h-11 gap-1" onClick={confirm}>
           <Check className="size-4" aria-hidden="true" />
           {`確定：選上 ${kept.length} 門${lost.length ? `、沒選上 ${lost.length} 門` : ''}`}
@@ -179,9 +201,19 @@ export function ResultMarker({ entries, catalog, replacementsFor, onConfirm, onR
                     </li>
                   ))}
                 </ul>
-                <button type="button" className="btn btn-ghost btn-sm min-h-11 gap-1 text-mist-ink" aria-label={`找這段時間的課：${title}原本的時段`} onClick={() => onFindSlot(lostKey)}>
-                  <Search className="size-4" aria-hidden="true" />找這段時間的課
-                </button>
+                {/* 一門課有好幾段上課時間時，每段一顆，寫明找的是哪一段。 */}
+                <div className="flex flex-wrap gap-x-2">
+                  {(catalog.get(lostKey)?.meetings ?? []).map((meeting, index, meetings) => {
+                    const slot = candidateScheduleSummary({ ...catalog.get(lostKey)!, meetings: [meeting] }, DAY_LABELS);
+                    // 同一段時間重複列（例：兩週一次的課）只放一顆。
+                    if (meetings.findIndex((other) => other.day === meeting.day && other.start === meeting.start) !== index) return null;
+                    return (
+                      <button key={`${meeting.day}-${meeting.start}`} type="button" className="btn btn-ghost btn-sm min-h-11 gap-1 text-mist-ink" onClick={() => onFindSlot(lostKey, index)}>
+                        <Search className="size-4" aria-hidden="true" />找這段時間的課（{slot}）
+                      </button>
+                    );
+                  })}
+                </div>
               </>
             )}
           </section>

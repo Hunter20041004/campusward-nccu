@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Plan, ScheduleCourse } from '@campusward/engine';
 import { describe, expect, test, vi } from 'vitest';
@@ -113,4 +113,27 @@ test('asks for the year to check the credit limits, with a button that opens the
   expect(screen.getByText(/共/)).toHaveTextContent('共 11 學分');
   await userEvent.setup().click(screen.getByRole('button', { name: '設定年級後可檢查學分上下限' }));
   expect(onSetIdentity).toHaveBeenCalled();
+});
+
+// 第 11 輪審查：方案多了以後「＋ 備案」被捲動區切掉、也看不出可以左右捲。
+describe('many plans', () => {
+  test('the 備案 button stays outside the scrolling list of plans, so it is never cut off', () => {
+    setup();
+    const scroller = screen.getByRole('button', { name: '主方案' }).parentElement!;
+    expect(scroller).toHaveAttribute('data-plan-scroll');
+    expect(scroller).not.toContainElement(screen.getByRole('button', { name: '另存為新備案' }));
+    expect(screen.getByRole('group', { name: '方案' })).toContainElement(screen.getByRole('button', { name: '另存為新備案' }));
+  });
+
+  test('when the plans overflow, the list says there is more to the right until scrolled to the end', () => {
+    setup();
+    const scroller = screen.getByRole('button', { name: '主方案' }).parentElement!;
+    Object.defineProperty(scroller, 'scrollWidth', { configurable: true, value: 595 });
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 560 });
+    fireEvent.scroll(scroller);
+    expect(scroller).toHaveAttribute('data-more', 'end');
+    scroller.scrollLeft = 35;
+    fireEvent.scroll(scroller);
+    expect(scroller).toHaveAttribute('data-more', 'start');
+  });
 });

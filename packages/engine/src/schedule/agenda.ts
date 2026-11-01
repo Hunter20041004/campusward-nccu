@@ -57,11 +57,12 @@ const DAYTIME = NCCU_PERIODS.slice(NCCU_PERIODS.findIndex(({ code }) => code ===
 
 /**
  * 手機行程檢視的空檔（2026-11-01 易用性審查第 8 名）：每天白天連續至少 minPeriods 節沒課的時段，
- * 每段一顆「找課」，不用切到方格。非同步上課、時間未定的課不佔時間；skipDays（偏好的空堂日）不列。
+ * 每段一顆「找課」，不用切到方格。非同步上課、時間未定的課不佔時間；skipDays（偏好的空堂日）不列；
+ * skipPeriods（例：偏好「不要早八」的第 1 節）不算空檔，但這天有沒有課（wholeDay）照實際的課判斷。
  */
 export function agendaFreeStretches(
   entries: readonly ScheduleEntry[],
-  { days = [1, 2, 3, 4, 5], skipDays = [], minPeriods = 2 }: { days?: readonly number[]; skipDays?: readonly number[]; minPeriods?: number } = {},
+  { days = [1, 2, 3, 4, 5], skipDays = [], skipPeriods = [], minPeriods = 2 }: { days?: readonly number[]; skipDays?: readonly number[]; skipPeriods?: readonly string[]; minPeriods?: number } = {},
 ): AgendaFreeStretch[] {
   const busy = new Set(entries.flatMap((entry) => occupiedMeetings(entry)
     .flatMap((meeting) => periodsForRange(meeting.start, meeting.end).map(({ code }) => `${meeting.day}:${code}`))));
@@ -69,7 +70,7 @@ export function agendaFreeStretches(
     const runs: (typeof DAYTIME[number])[][] = [];
     let run: (typeof DAYTIME[number])[] = [];
     DAYTIME.forEach((period) => {
-      if (busy.has(`${day}:${period.code}`)) {
+      if (busy.has(`${day}:${period.code}`) || skipPeriods.includes(period.code)) {
         if (run.length) runs.push(run);
         run = [];
       } else run.push(period);
@@ -80,7 +81,7 @@ export function agendaFreeStretches(
       start: periods[0]!.start,
       end: periods.at(-1)!.end,
       codes: periods.map(({ code }) => code),
-      wholeDay: periods.length === DAYTIME.length,
+      wholeDay: DAYTIME.every(({ code }) => !busy.has(`${day}:${code}`)),
     }));
   });
 }

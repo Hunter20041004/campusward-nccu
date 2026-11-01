@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { addCourse, rowToCourse, toScheduleCourse, type Course, type IdentityProfile, type ScheduleEntry } from '@campusward/engine';
+import { useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { officialRow } from '../../../../packages/engine/test/fixtures/synthetic/official-rows.ts';
 import { ClassBar } from './ClassBar.tsx';
@@ -144,5 +145,54 @@ describe('ClassBar', () => {
   test('no suggestion once the class matches the record', () => {
     setup({ className: '資管二乙' }, { suggested: { className: '資管二乙', profile: { level: 'undergrad', year: 2 } } });
     expect(screen.queryByRole('button', { name: '用這個系級' })).toBeNull();
+  });
+
+  // 會更新的外層：系級與課表照真實畫面一樣跟著改。
+  function Live({ initial }: { initial: IdentityProfile }) {
+    const [profile, setProfile] = useState(initial);
+    const [entries, setEntries] = useState<ScheduleEntry[]>([]);
+    return (
+      <ClassBar
+        courses={courses}
+        profile={profile}
+        onProfile={setProfile}
+        entries={entries}
+        preferences={{ freeDays: [] }}
+        onAddCourses={(keys) => setEntries((previous) => [...previous, ...keys.map((key) => entry(courses.find((course) => keyOf(course.code) === key)!))])}
+        onSearch={() => {}}
+      />
+    );
+  }
+
+  test('a class name that is not in the list never leaves the old class\'s required courses showing', async () => {
+    const user = userEvent.setup();
+    render(<Live initial={{ className: '資訊二', level: 'undergrad', year: 2 }} />);
+    const box = screen.getByRole('combobox', { name: '系級' });
+    await user.tripleClick(box);
+    await user.keyboard('資科三');
+    expect(box).toHaveValue('資科三');
+    // 框裡和下面講的要是同一個系級：認不出來的時候不列資訊二的必修、不能一鍵排入。
+    expect(screen.queryByRole('region', { name: '資訊二 本學期必修' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '全部排入' })).toBeNull();
+    expect(screen.getByText(/找不到「資科三」這個系級/)).toBeInTheDocument();
+    // 離開輸入框：文字改回已存的系級，並說明。
+    await user.tab();
+    expect(box).toHaveValue('資訊二');
+    expect(screen.getByRole('region', { name: '資訊二 本學期必修' })).toBeInTheDocument();
+    expect(screen.getByText(/找不到「資科三」這個系級，系級維持「資訊二」/)).toBeInTheDocument();
+  });
+
+  test('typing a partial class name (資訊 on the way to 資訊二) shows no error', async () => {
+    const user = userEvent.setup();
+    render(<Live initial={{}} />);
+    await user.type(screen.getByRole('combobox', { name: '系級' }), '資訊');
+    expect(screen.queryByText(/找不到/)).toBeNull();
+  });
+
+  test('after 全部排入 the focus moves to the "all on the timetable" line instead of dropping to the page', async () => {
+    const user = userEvent.setup();
+    render(<Live initial={{ className: '資訊二', level: 'undergrad', year: 2 }} />);
+    await user.click(screen.getByRole('button', { name: '全部排入' }));
+    expect(document.activeElement).toBe(screen.getByText(/本學期必修 4 門都在課表上/).closest('p'));
   });
 });

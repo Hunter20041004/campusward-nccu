@@ -9,7 +9,8 @@ import {
   type ScheduleCourse,
 } from '@campusward/engine';
 import { Check, Shuffle, TriangleAlert, WandSparkles, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { outcomeMessage, type ChangeOutcome } from './ChangeOutcome.ts';
 import { DAY_LABELS, formatCredits } from './labels.ts';
 
 export interface FillPlannerProps {
@@ -20,8 +21,8 @@ export interface FillPlannerProps {
   credits: number;
   limits: { minimum: number; maximum: number } | null;
   catalog: ReadonlyMap<string, ScheduleCourse>;
-  /** 挑一份當目前方案，其餘另存成備案（一筆可復原的修改）。 */
-  onApply: (chosen: FillPlan, others: FillPlan[], target: number) => void;
+  /** 挑一份當目前方案，其餘另存成備案（一筆可復原的修改）；回報有沒有真的套用（自動備案滿了要等確認視窗）。 */
+  onApply: (chosen: FillPlan, others: FillPlan[], target: number) => ChangeOutcome | Promise<ChangeOutcome>;
 }
 
 const SOURCE_LABELS: Record<FillSource, string> = { required: '本班必修', candidate: '候選', department: '本系選修', general: '通識' };
@@ -68,7 +69,17 @@ export function FillPlanner({ context, className, candidateKeys, credits, limits
     setMessage('');
     setSwaps((previous) => ({ ...previous, [plan.id]: { plan: next, exclude } }));
   };
+  // 打開時焦點移到標題；收起或套用後回到「幫我排滿」按鈕（按鈕本身會消失，焦點不能掉回整頁開頭）。
+  const title = useRef<HTMLHeadingElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
+  useEffect(() => {
+    if (open) title.current?.focus();
+    else if (returnFocus.current) trigger.current?.focus();
+    returnFocus.current = false;
+  }, [open]);
   const close = () => {
+    returnFocus.current = true;
     setOpen(false);
     setTarget(null);
     setSwaps({});
@@ -78,7 +89,7 @@ export function FillPlanner({ context, className, candidateKeys, credits, limits
   if (!open) {
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn btn-sm min-h-11 gap-1.5" onClick={() => setOpen(true)}>
+        <button ref={trigger} type="button" className="btn btn-sm min-h-11 gap-1.5" onClick={() => setOpen(true)}>
           <WandSparkles className="size-4" aria-hidden="true" />幫我排滿
         </button>
         <span className="text-xs text-base-content/75">選想修幾學分，在這台裝置排出 2–3 份方案比較，不用金鑰</span>
@@ -100,7 +111,7 @@ export function FillPlanner({ context, className, candidateKeys, credits, limits
   return (
     <section aria-labelledby="fill-title" className="well space-y-3 rounded-2xl p-3 text-sm">
       <div className="flex items-start gap-2">
-        <h3 id="fill-title" className="flex flex-1 items-center gap-1.5 text-base font-bold text-mist-ink">
+        <h3 ref={title} id="fill-title" tabIndex={-1} className="flex flex-1 items-center gap-1.5 text-base font-bold text-mist-ink">
           <WandSparkles className="size-4" aria-hidden="true" />幫我排滿
         </h3>
         <button type="button" className="btn btn-ghost btn-sm min-h-11 min-w-11 px-2" aria-label="收起幫我排滿" onClick={close}>
@@ -152,9 +163,11 @@ export function FillPlanner({ context, className, candidateKeys, credits, limits
                 catalog={catalog}
                 entries={context.entries}
                 onSwap={(key) => swap(plan, key)}
-                onChoose={() => {
-                  onApply(plan, plans.filter((other) => other !== plan), request.target);
-                  close();
+                onChoose={async () => {
+                  // 真的套用了才收起；被拒絕或在確認視窗按取消，方案（含換過的課）都留著，並說明原因。
+                  const outcome = await onApply(plan, plans.filter((other) => other !== plan), request.target);
+                  if (outcome.status === 'applied') close();
+                  else setMessage(outcomeMessage(outcome));
                 }}
                 titleOf={titleOf}
               />

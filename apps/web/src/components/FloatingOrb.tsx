@@ -19,7 +19,7 @@ const bottomInset = () => (isPhone() ? 72 : 0);
 const viewport = () => ({ width: window.innerWidth, height: window.innerHeight });
 export const NUDGE_FOLD_MS = 8000;
 
-export function FloatingOrb({ open, onOpen, onClose, nudge, onNudge, onDismissNudge, nudgeHidden = false, position = null, onPosition, children }: {
+export function FloatingOrb({ open, onOpen, onClose, nudge, onNudge, onDismissNudge, nudgeHidden = false, nudgeWaiting = false, position = null, onPosition, children }: {
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
@@ -29,6 +29,8 @@ export function FloatingOrb({ open, onOpen, onClose, nudge, onNudge, onDismissNu
   onDismissNudge?: () => void;
   /** 課卡面板、手機「更多」選單等打開時為 true：泡泡不蓋住它們。 */
   nudgeHidden?: boolean;
+  /** 先不跳出提醒、也不收成小點（例：提示條正附著同一個衝堂的換班按鈕）；結束後照常出現。 */
+  nudgeWaiting?: boolean;
   /** 上次拖到的位置（離右邊、離下面幾像素）；沒有就用預設的右下角。 */
   position?: OrbPosition | null;
   onPosition?: (position: OrbPosition) => void;
@@ -36,13 +38,14 @@ export function FloatingOrb({ open, onOpen, onClose, nudge, onNudge, onDismissNu
 }) {
   const [folded, setFolded] = useState<string | null>(null);
   useEffect(() => {
-    if (!nudge || open || folded === nudge) return;
+    // 等待中（nudgeWaiting）不跳出也不開始倒數收起：等它結束才照常出現幾秒。
+    if (!nudge || open || folded === nudge || nudgeWaiting) return;
     // 被別的選單蓋住過就直接收成小點（手機每次換頁都會開「更多」，不收的話會一直重新彈出來）。
     if (nudgeHidden) { setFolded(nudge); return; }
     const timer = setTimeout(() => setFolded(nudge), NUDGE_FOLD_MS);
     return () => clearTimeout(timer);
-  }, [folded, nudge, nudgeHidden, open]);
-  const showBubble = Boolean(nudge) && !open && !nudgeHidden && folded !== nudge;
+  }, [folded, nudge, nudgeHidden, nudgeWaiting, open]);
+  const showBubble = Boolean(nudge) && !open && !nudgeHidden && !nudgeWaiting && folded !== nudge;
   const showDot = Boolean(nudge) && !open && folded === nudge;
   const panel = useRef<HTMLElement>(null);
   const button = useRef<HTMLButtonElement>(null);

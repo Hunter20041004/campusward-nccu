@@ -46,6 +46,8 @@ export interface SearchSlot {
   codes?: readonly string[];
   /** 整段空檔都算（手機行程檢視的「找課」）：不要求碰到 period 那一節。 */
   anyPeriod?: boolean;
+  /** 不列這些課（課的 key）：例如「沒選上」的那門課和它的別班，找替補時不該又列出來。 */
+  exclude?: readonly string[];
 }
 
 /** 偏好（條件裡設一次）：每次搜課與空堂找課都自動套用。 */
@@ -168,7 +170,9 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
     const start = within.start ?? clicked?.start ?? 0;
     const end = within.end ?? clicked?.end ?? 0;
     const span = codes.length > 1 ? `${codes[0]}–${codes.at(-1)}` : codes[0];
-    return { day: within.day, period: within.anyPeriod ? undefined : within.period, start, end, label: `${DAY_LABELS[within.day]} ${span} 節` };
+    // 空堂比點到的那一節長時，標籤寫明課要上到哪一節（不然「A–H 節空堂」看起來像整段都算）。
+    const touches = !within.anyPeriod && codes.length > 1 ? within.period : null;
+    return { day: within.day, period: within.anyPeriod ? undefined : within.period, start, end, label: `${DAY_LABELS[within.day]} ${span} 節`, touches };
   }, [within]);
 
   const categories = useMemo(
@@ -221,9 +225,10 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
   const freeDays = preferences?.freeDays ?? [];
   const noEarly = Boolean(preferences?.noEarly);
   const hasPreferences = freeDays.length > 0 || noEarly;
-  const { results, hiddenCount, clashCount } = useMemo(() => {
-    if (!filtering) return { results: [], hiddenCount: 0, clashCount: 0 };
-    const found = searchCourses(courses, {
+  const excluded = useMemo(() => new Set(within?.exclude ?? []), [within]);
+  const { results, hiddenCount, hiddenReasons, clashCount } = useMemo(() => {
+    if (!filtering) return { results: [], hiddenCount: 0, hiddenReasons: [], clashCount: 0 };
+    const matched = searchCourses(courses, {
       text: query,
       matchDetails: true,
       weekdays,
@@ -234,6 +239,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
       ...(emi ? { emi } : {}),
       ...(stretch ? { within: { day: stretch.day, start: stretch.start, end: stretch.end, ...(stretch.period ? { period: stretch.period } : {}) } } : {}),
     });
+    const found = excluded.size ? matched.filter((course) => !excluded.has(toScheduleCourse(course).key)) : matched;
     const preferred = hasPreferences
       ? searchCourses(found, { ...(freeDays.length ? { excludeDays: freeDays } : {}), ...(noEarly ? { excludePeriods: EARLY_PERIODS } : {}) })
       : found;
@@ -247,12 +253,19 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
     const clashing = clashesOf ? ranked.filter((course) => clashesOf(course).length > 0) : [];
     // 全部都會衝堂（例如用課號找一門課）時直接列出來，不收成一個空清單。
     const allClash = fits.length === 0;
+    // 「依偏好隱藏」只列真的藏掉課的那幾項（週一的空堂不會因為「週五空下來」少了課）。
+    const hiddenBy = (options: Parameters<typeof searchCourses>[1]) => found.length - searchCourses(found, options).length;
+    const hiddenReasons = hasPreferences ? [
+      freeDays.length && hiddenBy({ excludeDays: freeDays }) ? `週${freeDays.map((day) => DAY_LABELS[day]!.slice(1)).join('、')}空下來` : '',
+      noEarly && hiddenBy({ excludePeriods: EARLY_PERIODS }) ? '不要早八' : '',
+    ].filter(Boolean) : [];
     return {
       results: showClashes || allClash ? [...fits, ...clashing] : fits,
+      hiddenReasons,
       hiddenCount: found.length - preferred.length,
       clashCount: allClash ? 0 : clashing.length,
     };
-  }, [clashesOf, courses, dayparts, degree, department, emi, filtering, freeDays, generalEducation, grade, hasPreferences, ignorePreferences, noEarly, priorityCategories, query, showClashes, stretch, weekdays]);
+  }, [clashesOf, courses, dayparts, degree, department, emi, excluded, filtering, freeDays, generalEducation, grade, hasPreferences, ignorePreferences, noEarly, priorityCategories, query, showClashes, stretch, weekdays]);
   const pages = Math.max(1, Math.ceil(results.length / pageSize));
   const current = Math.min(page, pages - 1);
   const shown = results.slice(current * pageSize, (current + 1) * pageSize);
@@ -404,6 +417,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
             onClick={clearWithin}
           >
             <span className="tabular">{`${stretch.label}空堂（${formatClock(stretch.start)}–${formatClock(stretch.end)}）`}</span>
+            {stretch.touches && <span className="text-xs font-normal">・要上到第 {stretch.touches} 節</span>}
             <X className="size-4" aria-hidden="true" />
           </button>
           <div role="group" aria-label="空堂找課範圍" className="well flex rounded-full p-1">
@@ -431,7 +445,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-base-300 px-4 py-1.5 text-xs text-base-content/80">
                 {hasPreferences && !ignorePreferences && hiddenCount > 0 && (
                   <span className="flex items-center gap-1">
-                    依偏好隱藏 {hiddenCount} 門（{[freeDays.length ? `週${freeDays.map((day) => DAY_LABELS[day]!.slice(1)).join('、')}空下來` : '', noEarly ? '不要早八' : ''].filter(Boolean).join('、')}）
+                    依偏好隱藏 {hiddenCount} 門（{hiddenReasons.join('、')}）
                     <button type="button" className="btn btn-ghost btn-xs min-h-11 px-2 text-mist-ink underline" onClick={() => { setIgnorePreferences(true); resetPaging(); }}>顯示全部</button>
                   </span>
                 )}

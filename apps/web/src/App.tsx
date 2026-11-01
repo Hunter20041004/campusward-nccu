@@ -19,6 +19,7 @@ import {
   STORAGE_KEY,
   parseEnrollmentRules,
   periodsForRange,
+  PLAN_LIMITS,
   saveStudentRecord,
   toScheduleCourse,
   type ApplyOptions,
@@ -56,6 +57,7 @@ import { Timetable } from './components/Timetable.tsx';
 import { ClassBar } from './components/ClassBar.tsx';
 import { FillPlanner } from './components/FillPlanner.tsx';
 import type { ClashFix } from './components/ClashFix.ts';
+import { outcomeMessage, type ChangeOutcome } from './components/ChangeOutcome.ts';
 import { UndoToast } from './components/UndoToast.tsx';
 import { WeekStrip } from './components/WeekStrip.tsx';
 import { ResultMarker } from './components/ResultMarker.tsx';
@@ -268,18 +270,30 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     if (typeof matchMedia === 'function' && !matchMedia('(min-width: 768px)').matches) window.scrollTo?.({ top: 0 });
   };
   // 點到的空格延伸成整段連續空堂，只列碰到那一節、完全排得進去的課。
-  const findSlotAt = (day: number, period: string) => {
+  const findSlotAt = (day: number, period: string, exclude?: readonly string[]) => {
     const stretch = freeStretch(planner.entries, day, period);
-    findInSlot({ day, period, ...(stretch ? { start: stretch.start, end: stretch.end, codes: stretch.codes } : {}) });
+    findInSlot({ day, period, ...(stretch ? { start: stretch.start, end: stretch.end, codes: stretch.codes } : {}), ...(exclude?.length ? { exclude } : {}) });
   };
-  const [pendingBackup, setPendingBackup] = useState<{ changes: Change[]; label: string; replace: number } | null>(null);
+  // 自動備案滿了要先問；settle 在學生按下確認或取消後回報結果（面板等這個結果才往下走）。
+  const [pendingBackup, setPendingBackup] = useState<{ changes: Change[]; label: string; options?: ApplyOptions; replace: number; settle: (outcome: ChangeOutcome) => void } | null>(null);
+  // 沒有套用的修改（例：方案已滿 25 個）：在提示條的位置講原因，不悄悄沒反應。
+  const [changeError, setChangeError] = useState('');
+  const outcomeOf = (result: ReturnType<typeof planner.apply>): ChangeOutcome => {
+    if (result.status === 'applied') return { status: 'applied' };
+    return { status: 'rejected', errors: result.status === 'rejected' ? result.errors : [] };
+  };
   // 清除本機資料後換掉這個值，讓 AI 面板與畢業缺口重新掛載（金鑰、勾選、匯入的修課資料都歸零）。
   const [generation, setGeneration] = useState(0);
   // 大改動前會自動備份；備份滿了先問，不悄悄蓋掉最舊的一份（設計 6.1）。
-  const applyChange = (changes: Change[], label: string, options?: ApplyOptions) => {
+  // settle 收到最後的結果（套用、被拒絕、或在確認視窗按了取消）；沒給 settle 時被拒絕就在提示條說明原因。
+  const applyChange = (changes: Change[], label: string, options?: ApplyOptions, settle?: (outcome: ChangeOutcome) => void) => {
+    const finish = (outcome: ChangeOutcome) => {
+      setChangeError(outcome.status === 'rejected' && !settle ? outcomeMessage(outcome) : '');
+      settle?.(outcome);
+    };
     const result = planner.apply(changes, label, options);
-    if (result.status === 'needsConfirmation') setPendingBackup({ changes, label, replace: result.replace });
-    return result;
+    if (result.status === 'needsConfirmation') setPendingBackup({ changes, label, ...(options ? { options } : {}), replace: result.replace, settle: finish });
+    else finish(outcomeOf(result));
   };
   // 復原（底部提示或 AI 回覆卡）：記下復原的是哪一次，讓對話裡那張卡跟著標成已復原。
   const [undone, setUndone] = useState<{ label: string; count: number } | null>(null);
@@ -289,12 +303,20 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     buddyHub.changed('undo');
     if (label) setUndone((previous) => ({ label, count: (previous?.count ?? 0) + 1 }));
   };
-  const courseChange = (kind: CourseChange, changes: Change[], label: string, options?: ApplyOptions) => {
+  const courseChange = (kind: CourseChange, changes: Change[], label: string, options?: ApplyOptions, settle?: (outcome: ChangeOutcome) => void) => {
     const before = planner.conflicts.length;
-    if (applyChange(changes, label, options).status !== 'applied') return;
-    if (kind === 'add') conflictsBeforeAdd.current = before;
-    else buddyHub.changed(kind);
+    applyChange(changes, label, options, (outcome) => {
+      if (outcome.status === 'applied') {
+        if (kind === 'add') conflictsBeforeAdd.current = before;
+        else buddyHub.changed(kind);
+      }
+      if (settle) settle(outcome);
+      else if (outcome.status === 'rejected') setChangeError(outcomeMessage(outcome));
+    });
   };
+  /** 給面板用：等到最後結果（自動備案確認視窗按完）才回報。 */
+  const courseChangeSettled = (kind: CourseChange, changes: Change[], label: string, options?: ApplyOptions) =>
+    new Promise<ChangeOutcome>((resolve) => courseChange(kind, changes, label, options, resolve));
   const conditionCourses = useMemo(() => {
     const keys = new Set([...planner.planner.candidates, ...planner.activePlan.items.map(({ key }) => key)]);
     return [...keys].flatMap((key) => {
@@ -320,18 +342,22 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     ...(gapCategoriesFor(record, catalogList).length ? { priorityCategories: gapCategoriesFor(record, catalogList) } : {}),
   }), [catalogList, maximumCredits, planner.entries, planner.planner.preferences, planner.profile, record]);
   // 挑一份當目前方案，其餘各自另存成備案；整批是一筆可復原的修改。原本有課才另存自動備案（全空的課表沒有東西要備份）。
+  // 自己的方案最多 25 個：放不下的另一份方案就不另存，提示條講清楚（不然整批會被拒絕，什麼都沒套用）。
   const applyFill = (chosen: FillPlan, others: FillPlan[]) => {
     const home = planner.planner.activePlanId;
+    const room = Math.max(0, PLAN_LIMITS.manualPlans - planner.planner.plans.filter(({ auto }) => !auto).length);
+    const saved = others.slice(0, room);
+    const skipped = others.length - saved.length;
     const changes: Change[] = [
-      ...others.flatMap((plan): Change[] => [
+      ...saved.flatMap((plan): Change[] => [
         { type: 'createPlan', name: `排滿・${plan.label}` },
         ...plan.picks.map(({ key }): Change => ({ type: 'addToSchedule', key })),
         { type: 'switchPlan', planId: home },
       ]),
       ...chosen.picks.map(({ key }): Change => ({ type: 'addToSchedule', key })),
     ];
-    const label = `已排到 ${chosen.credits} 學分（加 ${chosen.picks.length} 門）${others.length ? `，另存 ${others.length} 份備案` : ''}`;
-    courseChange('add', changes, label, { autoBackup: planner.entries.length > 0 });
+    const label = `已排到 ${chosen.credits} 學分（加 ${chosen.picks.length} 門）${saved.length ? `，另存 ${saved.length} 份備案` : ''}${skipped ? `；自己的方案已滿 ${PLAN_LIMITS.manualPlans} 個，另 ${skipped} 份沒有另存` : ''}`;
+    return courseChangeSettled('add', changes, label, { autoBackup: planner.entries.length > 0 });
   };
 
   // 標記選課結果（易用性審查第 10 名）：選上的標成已選上（已灌檔的照舊）並鎖定，沒選上的解鎖後移出課表（留在候選）；一筆可復原的修改。
@@ -345,8 +371,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
       ...lost.flatMap((key): Change[] => [{ type: 'setLock', key, locked: false }, { type: 'removeFromSchedule', key }]),
     ];
     const label = `已標記選上 ${kept.length} 門${lost.length ? `，沒選上的 ${lost.length} 門移出課表（留在候選）` : ''}`;
-    if (lost.length) courseChange('remove', changes, label);
-    else applyChange(changes, label);
+    if (lost.length) return courseChangeSettled('remove', changes, label);
+    return new Promise<ChangeOutcome>((resolve) => applyChange(changes, label, undefined, resolve));
   };
 
   const tools: Tool[] = ['search', 'candidates', 'conditions', 'data', ...(FEATURES.graduation ? ['graduation' as const] : [])];
@@ -520,10 +546,14 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                     const section = to && to.title === titleOf(lostKey) ? `${to.teacher ?? ''} ${to.meetings.length ? candidateScheduleSummary(to, DAY_LABELS) : '時間未定'}`.trim() : '';
                     courseChange('add', [{ type: 'addToSchedule', key }], section ? `已改選「${titleOf(key)}」${section} 那一班` : `已用「${titleOf(key)}」替補「${titleOf(lostKey)}」`);
                   }}
-                  onFindSlot={(lostKey) => {
-                    const meeting = planner.catalog.get(lostKey)?.meetings[0];
+                  onFindSlot={(lostKey, index) => {
+                    const lost = planner.catalog.get(lostKey);
+                    const meeting = lost?.meetings[index];
                     const first = meeting ? periodsForRange(meeting.start, meeting.end)[0] : undefined;
-                    if (meeting && first) findSlotAt(meeting.day, first.code);
+                    if (!lost || !meeting || !first) return;
+                    // 沒選上的那門課（和同一門課的別班：課號前六碼加課名相同）不再列出來，要找的是別的課。
+                    const sameCourse = (course: ScheduleCourse) => course.title === lost.title && (course.code ?? '').slice(0, 6) === (lost.code ?? '').slice(0, 6);
+                    findSlotAt(meeting.day, first.code, [lostKey, ...catalogList.filter(sameCourse).map(({ key }) => key)]);
                   }}
                   remainingUrl={(key) => courseByKey.get(key)?.links.remaining}
                   onOpenChange={setResultsOpen}
@@ -534,10 +564,11 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                 conflicts={planner.conflicts}
                 newKeys={planner.newKeys}
                 onStartSearch={startSearch}
-                onFindSlot={findSlotAt}
+                onFindSlot={(day, period) => findSlotAt(day, period)}
                 // 手機行程檢視的空檔「找課」：整段空檔都算（易用性審查第 8 名）。
                 onFindStretch={(day, stretch) => findInSlot({ day, period: stretch.codes[0] ?? '1', start: stretch.start, end: stretch.end, codes: stretch.codes, anyPeriod: true })}
                 freeDays={planner.planner.preferences.freeDays}
+                {...(planner.planner.preferences.noEarly ? { noEarly: true } : {})}
                 onImport={() => {
                   showTool('data');
                   setTimeout(() => document.querySelector<HTMLInputElement>('input[aria-label="匯入資料"]')?.click(), 0);
@@ -699,12 +730,15 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
         message={`改動前會自動備份原本的課表，但自動備案已經滿了。要刪掉最舊的 ${pendingBackup?.replace ?? 1} 份再繼續嗎？`}
         confirmLabel={`刪掉最舊的 ${pendingBackup?.replace ?? 1} 份並繼續`}
         onConfirm={() => {
-          if (pendingBackup) planner.apply(pendingBackup.changes, pendingBackup.label, { replaceOldestAutoBackup: true });
+          if (pendingBackup) pendingBackup.settle(outcomeOf(planner.apply(pendingBackup.changes, pendingBackup.label, { ...pendingBackup.options, replaceOldestAutoBackup: true })));
           setPendingBackup(null);
         }}
-        onCancel={() => setPendingBackup(null)}
+        onCancel={() => {
+          pendingBackup?.settle({ status: 'cancelled' });
+          setPendingBackup(null);
+        }}
       />
-      <UndoToast label={planner.undoLabel} onUndo={undoLast} onExpire={planner.clearUndo} action={toastAction} />
+      <UndoToast label={planner.undoLabel} onUndo={undoLast} onExpire={planner.clearUndo} action={toastAction} error={changeError} onDismissError={() => setChangeError('')} />
       <MobileNav view={mobileView} tools={tools} onMenu={setMenuOpen} onView={(next) => (next === 'timetable' ? showTimetable() : showTool(next))} />
       {aiEnabled && (
         <FloatingOrb
@@ -715,6 +749,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
           onDismissNudge={() => setDismissedNudge(conflictSignature)}
           onNudge={openClashingCourse}
           nudgeHidden={nudgeHidden}
+          // 提示條已經附了換班按鈕：小山的衝堂提醒先等提示條消失再出現（同一件事不講兩次，手機上也不會互相蓋住）。
+          nudgeWaiting={toastAction !== null}
           position={orbPosition}
           onPosition={moveOrb}
         >

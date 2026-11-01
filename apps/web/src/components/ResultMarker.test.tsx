@@ -4,6 +4,7 @@ import { addCourse, rowToCourse, toScheduleCourse, type ScheduleCourse, type Sch
 import { useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { officialRow } from '../../../../packages/engine/test/fixtures/synthetic/official-rows.ts';
+import type { ChangeOutcome } from './ChangeOutcome.ts';
 import { ResultMarker, type ResultMarkerProps } from './ResultMarker.tsx';
 
 const make = (code: string, overrides: Record<string, unknown> = {}): ScheduleCourse =>
@@ -19,7 +20,7 @@ const required = make('703008001', { subNam: '資料結構', subTime: '四234' }
 const catalog = new Map([math, philosophy, philosophyB, ethics, required].map((course) => [course.key, course]));
 
 /** 模擬 App：確定後把沒選上的移出、選上的標成已選上；替補就加進課表。 */
-function Harness(props: Partial<ResultMarkerProps> & { onConfirmSpy?: (kept: string[], lost: string[]) => void; onReplaceSpy?: (lost: string, key: string) => void }) {
+function Harness(props: Partial<ResultMarkerProps> & { onConfirmSpy?: (kept: string[], lost: string[]) => void; onReplaceSpy?: (lost: string, key: string) => void; outcome?: ChangeOutcome }) {
   const [entries, setEntries] = useState<ScheduleEntry[]>([entry(math), entry(philosophy), entry(required, 'registered')]);
   return (
     <ResultMarker
@@ -28,7 +29,10 @@ function Harness(props: Partial<ResultMarkerProps> & { onConfirmSpy?: (kept: str
       replacementsFor={(key) => (key === philosophy.key ? { sections: [philosophyB], sameSlot: [ethics] } : { sections: [], sameSlot: [] })}
       onConfirm={(kept, lost) => {
         props.onConfirmSpy?.(kept, lost);
+        // 沒有套用（被拒絕、或自動備案滿了學生按取消）：課表不變。
+        if (props.outcome && props.outcome.status !== 'applied') return Promise.resolve(props.outcome);
         setEntries((previous) => previous.filter(({ course }) => !lost.includes(course.key)).map((value) => (kept.includes(value.course.key) && value.item.status === 'planned' ? { ...value, item: { ...value.item, status: 'enrolled', locked: true } } : value)));
+        return Promise.resolve({ status: 'applied' } as const);
       }}
       onReplace={(lost, key) => {
         props.onReplaceSpy?.(lost, key);
@@ -69,7 +73,8 @@ describe('marking the selection results', () => {
     expect(within(lost).getByRole('button', { name: /^換這班：李範例 週三 34/ })).toBeInTheDocument();
     expect(within(lost).getAllByRole('link', { name: /即時餘額/ }).length).toBeGreaterThan(0);
     await user.click(within(lost).getByRole('button', { name: /^找這段時間的課/ }));
-    expect(onFindSlot).toHaveBeenCalledWith(philosophy.key);
+    // 第幾段上課時間（一門課有好幾段時每段一顆）。
+    expect(onFindSlot).toHaveBeenCalledWith(philosophy.key, 0);
     await user.click(within(lost).getByRole('button', { name: /^改選這門：倫理學/ }));
     expect(onReplaceSpy).toHaveBeenCalledWith(philosophy.key, ethics.key);
     expect(screen.getByRole('region', { name: '沒選上「哲學與人生」的替補' })).toHaveTextContent('已補上「倫理學」');
@@ -92,9 +97,47 @@ describe('marking the selection results', () => {
 test('tells the page when it opens and closes, so the 小山 bubble can step aside', async () => {
   const user = userEvent.setup();
   const onOpenChange = vi.fn();
-  render(<ResultMarker entries={[entry(math)]} catalog={catalog} replacementsFor={() => ({ sections: [], sameSlot: [] })} onConfirm={vi.fn()} onReplace={vi.fn()} onFindSlot={vi.fn()} onOpenChange={onOpenChange} />);
+  render(<ResultMarker entries={[entry(math)]} catalog={catalog} replacementsFor={() => ({ sections: [], sameSlot: [] })} onConfirm={vi.fn(() => ({ status: 'applied' } as const))} onReplace={vi.fn()} onFindSlot={vi.fn()} onOpenChange={onOpenChange} />);
   await user.click(screen.getByRole('button', { name: '標記選課結果' }));
   expect(onOpenChange).toHaveBeenLastCalledWith(true);
   await user.click(screen.getByRole('button', { name: '收起標記選課結果' }));
   expect(onOpenChange).toHaveBeenLastCalledWith(false);
+});
+
+describe('when the change is not applied', () => {
+  test('a cancelled backup dialog keeps the marking screen and never says the results are locked', async () => {
+    const user = userEvent.setup();
+    render(<Harness outcome={{ status: 'cancelled' }} />);
+    await user.click(screen.getByRole('button', { name: '標記選課結果' }));
+    await user.click(screen.getByRole('checkbox', { name: /哲學與人生/ }));
+    await user.click(screen.getByRole('button', { name: '確定：選上 2 門、沒選上 1 門' }));
+    expect(screen.getByRole('group', { name: '選上的課' })).toBeInTheDocument();
+    expect(screen.queryByText(/已鎖定/)).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('沒有套用');
+  });
+
+  test('a rejected change keeps the marking screen and shows the reason', async () => {
+    const user = userEvent.setup();
+    render(<Harness outcome={{ status: 'rejected', errors: ['沒有存檔。'] }} />);
+    await user.click(screen.getByRole('button', { name: '標記選課結果' }));
+    await user.click(screen.getByRole('button', { name: '確定：選上 3 門' }));
+    expect(screen.getByRole('group', { name: '選上的課' })).toBeInTheDocument();
+    expect(screen.queryByText(/已鎖定/)).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('沒有套用：沒有存檔。');
+  });
+});
+
+test('focus moves to the panel title on open and on to the replacements, and back to the button on close', async () => {
+  const user = userEvent.setup();
+  render(<Harness />);
+  await user.click(screen.getByRole('button', { name: '標記選課結果' }));
+  expect(screen.getByRole('heading', { name: '標記選課結果' })).toHaveFocus();
+  await user.click(screen.getByRole('button', { name: '收起標記選課結果' }));
+  expect(screen.getByRole('button', { name: '標記選課結果' })).toHaveFocus();
+  await user.click(screen.getByRole('button', { name: '標記選課結果' }));
+  await user.click(screen.getByRole('checkbox', { name: /哲學與人生/ }));
+  await user.click(screen.getByRole('button', { name: /^確定/ }));
+  expect(screen.getByRole('heading', { name: '標記選課結果' })).toHaveFocus();
+  await user.click(screen.getByRole('button', { name: '完成' }));
+  expect(screen.getByRole('button', { name: '標記選課結果' })).toHaveFocus();
 });

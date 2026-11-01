@@ -189,6 +189,9 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
       if (undoLabel) {
         setUndoEntry({ label: undoLabel, planner: latest.current.planner, profile: previous });
         setNewKeys(new Set());
+      } else {
+        // 之後又改了身分：匯入那筆的復原（整份身分的快照）已經過時，留著會把這次的修改一起蓋掉。課表的復原不受影響。
+        setUndoEntry((entry) => (entry?.profile ? null : entry));
       }
     },
     replaceData: (next) => {

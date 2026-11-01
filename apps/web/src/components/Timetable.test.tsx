@@ -218,6 +218,14 @@ describe('free stretches in the agenda', () => {
     expect(mondayItems.findIndex((text) => text.includes('統計學'))).toBeLessThan(mondayItems.findIndex((text) => text.includes('空著')));
   });
 
+  test('with 不要早八 the free stretches start after period 1, so 找課 does not offer an early slot the preferences then hide', async () => {
+    const onFindStretch = vi.fn();
+    setup({ onFindStretch, noEarly: true });
+    const agenda = screen.getByRole('list', { name: '每日行程' });
+    await userEvent.setup().click(within(agenda).getByRole('button', { name: '找課：週二 整天' }));
+    expect(onFindStretch).toHaveBeenCalledWith(2, expect.objectContaining({ start: 550, codes: ['2', '3', '4', 'C', 'D', '5', '6', '7', '8'] }));
+  });
+
   test('a free day from the preferences is shown as kept free, without a 找課 button', () => {
     setup({ onFindStretch: vi.fn(), freeDays: [5] });
     const agenda = screen.getByRole('list', { name: '每日行程' });

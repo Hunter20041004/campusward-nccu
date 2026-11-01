@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from './App.tsx';
 import { createBuddyHub } from './buddy/hub.ts';
 
@@ -465,6 +465,21 @@ describe('timetable course panel and the conflict nudge', () => {
     await user.click(await screen.findByRole('button', { name: '加入課表：民法概要' }));
   };
   const nudgeText = '有 1 個衝堂，要我幫忙看看嗎？';
+  // 加入衝堂課時提示條已附換班按鈕，小山的衝堂提醒等提示條（15 秒）消失才出現：用假時鐘把提示條的時間走完。
+  const fakeClock = () => vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] });
+  const waitOutToast = async () => { await act(async () => { vi.advanceTimersByTime(15_000); }); };
+  afterEach(() => { vi.useRealTimers(); });
+
+  test('while the add toast offers the swap, 小山 does not repeat the same clash; the nudge comes once the toast is gone', async () => {
+    fakeClock();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await addClash(user);
+    expect(within(screen.getByRole('status', { name: '最近的修改' })).getByRole('button', { name: '把「民法概要」換到週一 D56 那班' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: nudgeText })).toBeNull();
+    await waitOutToast();
+    expect(screen.getByRole('button', { name: nudgeText })).toBeInTheDocument();
+  });
 
   test('a course card shows its details and swaps to another section in one undoable change, without an automatic backup', async () => {
     const user = userEvent.setup();
@@ -489,10 +504,12 @@ describe('timetable course panel and the conflict nudge', () => {
   });
 
   test('without a Gemini key, the nudge opens the clashing course with its other sections instead of the AI setup', async () => {
-    const user = userEvent.setup();
+    fakeClock();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const ai = { hasKey: () => false, setKey: vi.fn(), removeKey: vi.fn(), generate: vi.fn() };
     render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} ai={ai} guide={false} />);
     await addClash(user);
+    await waitOutToast();
     await user.click(screen.getByRole('button', { name: nudgeText }));
     expect(screen.getByRole('button', { name: '小山' })).toHaveAttribute('aria-expanded', 'false');
     const panel = screen.getByRole('group', { name: '民法概要 的操作' });
@@ -522,10 +539,12 @@ describe('timetable course panel and the conflict nudge', () => {
   });
 
   test('even with a Gemini key, the nudge solves the clash locally and never calls the AI', async () => {
-    const user = userEvent.setup();
+    fakeClock();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const ai = { hasKey: () => true, setKey: vi.fn(), removeKey: vi.fn(), generate: vi.fn() };
     render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} ai={ai} guide={false} />);
     await addClash(user);
+    await waitOutToast();
     await user.click(screen.getByRole('button', { name: nudgeText }));
     expect(screen.getByRole('button', { name: '小山' })).toHaveAttribute('aria-expanded', 'false');
     expect(within(screen.getByRole('group', { name: '民法概要 的操作' })).getByRole('region', { name: '換一班' })).toHaveTextContent('吳合成');
@@ -533,9 +552,11 @@ describe('timetable course panel and the conflict nudge', () => {
   });
 
   test('the nudge steps aside while a course panel or the phone menu is open', async () => {
-    const user = userEvent.setup();
+    fakeClock();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
     await addClash(user);
+    await waitOutToast();
     expect(screen.getByRole('button', { name: nudgeText })).toBeInTheDocument();
     await user.click(within(screen.getByRole('group', { name: '每週課表' })).getByRole('button', { name: /臺灣政治/ }));
     expect(screen.queryByRole('button', { name: nudgeText })).toBeNull();
@@ -548,10 +569,12 @@ describe('timetable course panel and the conflict nudge', () => {
   });
 
   test('a dismissed nudge stays dismissed after a reload until the clashes change, and clearing local data forgets it', async () => {
-    const user = userEvent.setup();
+    fakeClock();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const storage = memoryStorage();
     const first = render(<App catalog={fakeCatalog({}, rows)} storage={storage} guide={false} />);
     await addClash(user);
+    await waitOutToast();
     await user.click(screen.getByRole('button', { name: '不用了，關掉提醒' }));
     first.unmount();
     const second = render(<App catalog={fakeCatalog({}, rows)} storage={storage} guide={false} />);
@@ -561,6 +584,7 @@ describe('timetable course panel and the conflict nudge', () => {
     // 衝堂組合變了（多一門和臺灣政治衝堂的課）就再提醒。
     await search(user, '000603021');
     await user.click(await screen.findByRole('button', { name: '加入課表：民法概要' }));
+    await waitOutToast();
     expect(await screen.findByRole('button', { name: /個衝堂，要我幫忙看看嗎？/ })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '不用了，關掉提醒' }));
     expect(storage.getItem('campusward:v1:nudge-dismissed')).toBeTruthy();
@@ -842,5 +866,95 @@ describe('phone week strip, agenda free stretches, marking results, plan differe
     expect(diff).toHaveTextContent('和「主方案」相比');
     expect(diff).toHaveTextContent('多了週一通識');
     expect(diff).toHaveTextContent('學分 3 → 6（+3）');
+  });
+});
+
+// 第 11 輪審查：修改沒有套用時要講、面板不能假裝成功；找替補不列沒選上的那門課。
+describe('changes that are not applied are never silent', () => {
+  const rows = [
+    officialRow({ subNum: '703007001', subNam: '離散數學', subGde: '資訊二', subTime: '二234', tranTpe: '必修灌檔' }),
+    officialRow({ subNum: '703008001', subNam: '資料結構', subGde: '資訊二', subTime: '四234', tranTpe: '必修灌檔' }),
+    officialRow({ subNum: '703017001', subNam: '機率論', subGde: '資訊二', subTime: '三D56' }),
+    officialRow({ subNum: '703813001', subNam: '人工智慧導論', subGde: '資訊二', subKind: '選修', subTime: '一D56' }),
+    officialRow({ subNum: '900501001', subNam: '週五通識', subGde: '教務處通識教育中心', subKind: '', subTime: '五34', lmtKind: '人文通識' }),
+    officialRow({ subNum: '900502001', subNam: '週二通識', subGde: '教務處通識教育中心', subKind: '', subTime: '二D5', lmtKind: '人文通識' }),
+    officialRow({ subNum: '002008001', subNam: '體育－羽球初級', subGde: '體育', subPoint: '1.0', subTime: '三78' }),
+  ];
+  const planNames = () => within(screen.getByRole('group', { name: '方案' })).getAllByRole('button').map((button) => button.textContent);
+  /** 直接寫好存檔：自己的方案與自動備案（模擬用了一陣子的學生）。 */
+  async function seeded(plans: { name: string; auto: boolean; keys: string[] }[]) {
+    const { createPlannerState, saveStoredData } = await import('@campusward/engine');
+    const storage = memoryStorage();
+    const planner = createPlannerState();
+    planner.plans = plans.map((plan, index) => ({ id: `plan-${index + 1}`, name: plan.name, auto: plan.auto, items: plan.keys.map((key) => ({ key, attendance: 'sync' as const, status: 'planned' as const, locked: false })) }));
+    planner.candidates = [...new Set(plans.flatMap((plan) => plan.keys))];
+    saveStoredData(storage, { profile: {}, customConditions: [], terms: { '1151': { planner, manualCourses: [], deletedKeys: [] } } });
+    return storage;
+  }
+  const ownPlans = (count: number) => Array.from({ length: count }, (_, index) => ({ name: index ? `備案 ${index}` : '主方案', auto: false, keys: [] as string[] }));
+
+  test('幫我排滿 with 25 own plans applies the chosen plan and says the other plans did not fit', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={await seeded(ownPlans(25))} guide={false} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('combobox', { name: '系級' }), '資訊二');
+    await user.click(screen.getByRole('button', { name: '幫我排滿' }));
+    await user.click(screen.getByRole('radio', { name: '15' }));
+    await user.click(within(screen.getByRole('list', { name: '排好的方案' })).getAllByRole('button', { name: /^用這份：方案 A/ })[0]!);
+    const toast = screen.getByRole('status', { name: '最近的修改' });
+    expect(toast).toHaveTextContent('已排到 15 學分（加 5 門）');
+    expect(toast).toHaveTextContent('自己的方案已滿 25 個，另 1 份沒有另存');
+    expect(shown(screen.getAllByText(/共/))).toHaveTextContent('共 15 學分');
+    expect(planNames().filter((name) => name?.startsWith('排滿'))).toEqual([]);
+  });
+
+  test('a rejected change (another backup over the 25-plan limit) says why', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={await seeded(ownPlans(25))} guide={false} />);
+    await screen.findByText('115-1');
+    await user.click(screen.getByRole('button', { name: '另存為新備案' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('沒有套用：自己另存的方案最多 25 個。');
+  });
+
+  test('標記選課結果 waits for the backup dialog: cancel keeps the marking screen, confirm moves on', async () => {
+    const user = userEvent.setup();
+    const keys = ['1151:703007001', '1151:703008001', '1151:703017001'];
+    const backups = Array.from({ length: 5 }, (_, index) => ({ name: `自動備案 ${index + 1}（改動前）`, auto: true, keys: [] as string[] }));
+    render(<App catalog={fakeCatalog({}, rows)} storage={await seeded([{ name: '主方案', auto: false, keys }, ...backups])} guide={false} />);
+    await screen.findByText('115-1');
+    await user.click(screen.getByRole('button', { name: '標記選課結果' }));
+    for (const box of within(screen.getByRole('group', { name: '選上的課' })).getAllByRole('checkbox')) await user.click(box);
+    await user.click(screen.getByRole('button', { name: '確定：選上 0 門、沒選上 3 門' }));
+    expect(screen.getByText('自動備案已滿')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '取消', hidden: true }));
+    const marker = () => screen.getByRole('heading', { name: '標記選課結果' }).closest('section')!;
+    expect(within(marker()).getByRole('group', { name: '選上的課' })).toBeInTheDocument();
+    expect(marker()).not.toHaveTextContent('已鎖定');
+    expect(marker()).toHaveTextContent('沒有套用');
+    await user.click(screen.getByRole('button', { name: '確定：選上 0 門、沒選上 3 門' }));
+    await user.click(screen.getByRole('button', { name: /^刪掉最舊的 1 份並繼續/, hidden: true }));
+    expect(marker()).toHaveTextContent('選上的已鎖定');
+    expect(within(marker()).getByRole('region', { name: '沒選上「離散數學」的替補' })).toBeInTheDocument();
+  });
+
+  test('找這段時間的課 for a lost course does not list that course again, and there is one button per meeting', async () => {
+    const user = userEvent.setup();
+    const twice = [
+      ...rows,
+      officialRow({ subNum: '900601001', subNam: '兩段通識', subGde: '教務處通識教育中心', subKind: '', subTime: '一34四78', lmtKind: '人文通識' }),
+      officialRow({ subNum: '900601011', subNam: '兩段通識', subGde: '教務處通識教育中心', subKind: '', subTime: '一3', lmtKind: '人文通識', teaNam: '李範例' }),
+      officialRow({ subNum: '900602001', subNam: '週一第三節通識', subGde: '教務處通識教育中心', subKind: '', subTime: '一3', lmtKind: '人文通識' }),
+    ];
+    render(<App catalog={fakeCatalog({}, twice)} storage={await seeded([{ name: '主方案', auto: false, keys: ['1151:900601001', '1151:703007001'] }])} guide={false} />);
+    await screen.findByText('115-1');
+    await user.click(screen.getByRole('button', { name: '標記選課結果' }));
+    await user.click(within(screen.getByRole('group', { name: '選上的課' })).getByRole('checkbox', { name: /兩段通識/ }));
+    await user.click(screen.getByRole('button', { name: '確定：選上 1 門、沒選上 1 門' }));
+    const lost = screen.getByRole('region', { name: '沒選上「兩段通識」的替補' });
+    expect(within(lost).getAllByRole('button', { name: /^找這段時間的課/ }).map((button) => button.textContent)).toEqual(['找這段時間的課（週一 34）', '找這段時間的課（週四 78）']);
+    await user.click(within(lost).getByRole('button', { name: '找這段時間的課（週一 34）' }));
+    const results = screen.getByRole('list', { name: '搜尋結果' });
+    expect(within(results).getByRole('heading', { name: '週一第三節通識' })).toBeInTheDocument();
+    expect(within(results).queryByRole('heading', { name: '兩段通識' })).toBeNull();
   });
 });

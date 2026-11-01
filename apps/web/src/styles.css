@@ -242,3 +242,8 @@
     var(--color-base-100);
   box-shadow: inset 0 3px 6px rgb(0 0 0 / 0.12), inset 0 -1px 0 rgb(255 255 255 / 0.8);
 }
+
+/* 方案列放不下時，還有方案的那一側淡出，看得出可以左右捲（PlanBar）。 */
+.plan-scroll[data-more="end"] { mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent); }
+.plan-scroll[data-more="start"] { mask-image: linear-gradient(to left, #000 calc(100% - 2.5rem), transparent); }
+.plan-scroll[data-more="both"] { mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent); }

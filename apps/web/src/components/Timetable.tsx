@@ -31,6 +31,8 @@ export interface TimetableProps {
   onFindStretch?: (day: number, stretch: { start: number; end: number; codes: readonly string[] }) => void;
   /** 偏好的空堂日：行程裡寫「依偏好空下來」，不給找課。 */
   freeDays?: readonly number[];
+  /** 偏好「不要早八」：行程裡的空檔從第 2 節算起（第 1 節按了找課也會被偏好藏掉）。 */
+  noEarly?: boolean;
   onImport: () => void;
   onToggleLock: (key: string) => void;
   onStatus: (key: string, status: PlanItemStatus) => void;
@@ -242,7 +244,7 @@ export function Timetable(props: TimetableProps) {
   const agendaDays = useMemo(() => {
     const byDay = new Map(agenda.days.map(({ day, items }) => [day, items]));
     if (!props.onFindStretch) return agenda.days.map(({ day, items }) => ({ day, rows: items.map((item) => ({ type: 'course' as const, item })), keptFree: false }));
-    const stretches = agendaFreeStretches(entries, { skipDays: freeDays });
+    const stretches = agendaFreeStretches(entries, { skipDays: freeDays, ...(props.noEarly ? { skipPeriods: ['1'] } : {}) });
     const days = [...new Set([1, 2, 3, 4, 5, ...byDay.keys()])].sort((first, second) => first - second);
     return days.map((day) => {
       const items = byDay.get(day) ?? [];
@@ -253,7 +255,7 @@ export function Timetable(props: TimetableProps) {
       ].sort((first, second) => first.start - second.start);
       return { day, rows, keptFree };
     });
-  }, [agenda.days, entries, freeDays, props.onFindStretch]);
+  }, [agenda.days, entries, freeDays, props.noEarly, props.onFindStretch]);
 
   // 名稱由看得到的文字組成（WCAG 2.5.3），星期與衝堂、鎖定等狀態以只給螢幕閱讀器的文字接在後面。
   const blockExtra = (block: Block) => [

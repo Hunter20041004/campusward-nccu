@@ -172,6 +172,14 @@ describe('agendaFreeStretches', () => {
     expect(agendaFreeStretches(entries, { days: [6] }).map(({ day }) => day)).toEqual([6]);
   });
 
+  // 偏好「不要早八」：第 1 節不算空檔，空檔從第 2 節開始（找課才不會一按就全被偏好藏掉）。
+  test('periods the student skips (不要早八) are not part of any stretch', () => {
+    const stretches = agendaFreeStretches(entries, { skipPeriods: ['1'] });
+    expect(stretches.find(({ day }) => day === 1)).toMatchObject({ codes: ['2', '3', '4', 'C', 'D', '5', '6', '7', '8'], start: 550, wholeDay: true });
+    // 週二 1–2 節只剩第 2 節，不到兩節就不列。
+    expect(stretches.filter(({ day }) => day === 2).map(({ codes }) => codes.join(''))).toEqual(['678']);
+  });
+
   test('skips the student free days and ignores async or unscheduled courses', () => {
     const asyncCourse = { ...at('online', [{ day: 3, start: 490, end: 1080, label: '' }]), item: item('online', { attendance: 'async' }) };
     const stretches = agendaFreeStretches([...entries, asyncCourse], { skipDays: [5] });

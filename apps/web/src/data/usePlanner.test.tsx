@@ -52,6 +52,22 @@ describe('usePlanner', () => {
     expect(result.current.undoLabel).toBeNull();
   });
 
+  test('a later identity edit drops the import undo, so undo cannot wipe that edit', () => {
+    const { result } = setup();
+    act(() => { result.current.setProfile({ level: 'undergrad', year: 2, className: '資訊二' }, '已依全人系統資料設定為資訊二'); });
+    act(() => { result.current.setProfile({ level: 'undergrad', year: 2, className: '資訊二', additionalMajor: 'double' }); });
+    expect(result.current.undoLabel).toBeNull();
+    act(() => { result.current.undo(); });
+    expect(result.current.profile).toEqual({ level: 'undergrad', year: 2, className: '資訊二', additionalMajor: 'double' });
+  });
+
+  test('an identity edit keeps a course-change undo (it only restores the timetable)', () => {
+    const { result } = setup();
+    act(() => { result.current.apply([{ type: 'addToSchedule', key: '1151:900001001' }], '加入'); });
+    act(() => { result.current.setProfile({ level: 'undergrad', year: 1 }); });
+    expect(result.current.undoLabel).toBe('加入');
+  });
+
   test('undoes the last change', () => {
     const { result } = setup();
     act(() => { result.current.apply([{ type: 'addToSchedule', key: '1151:900001001' }], '已加入 合成課程概論'); });

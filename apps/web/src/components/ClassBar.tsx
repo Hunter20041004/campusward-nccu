@@ -14,7 +14,7 @@ import {
   type ScheduleEntry,
 } from '@campusward/engine';
 import { BookCheck, ChevronDown, GraduationCap, Plus, Search, TriangleAlert } from 'lucide-react';
-import { useEffect, useMemo, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { DAY_LABELS } from './labels.ts';
 
 export interface ClassBarProps {
@@ -59,18 +59,35 @@ export function ClassBar({ courses, profile, onProfile, entries, preferences, su
   useEffect(() => setDraft(profile.className ?? ''), [profile.className]);
   const className = useMemo(() => (profile.className ? parseClassName(profile.className) : null), [profile.className]);
 
+  // 框裡的文字對得到選單上的哪個系級（對不到是 null）。
+  const resolve = (value: string) => {
+    const parsed = parseClassName(value);
+    const name = parsed ? formatClassName(parsed) : '';
+    return parsed && options.some((option) => option.value === name) ? { parsed, name } : null;
+  };
+  // 系級框和下面的必修清單講的要是同一個系級：框裡的字還沒對到已存的系級時，先不列必修、不能一鍵排入。
+  const settled = !draft.trim() || resolve(draft)?.name === profile.className;
+  // 打到一半（「資訊」→「資訊二」）不算錯；選單裡沒有任何系級是這樣開頭的才提醒。
+  const unknown = draft.trim() && !resolve(draft) && !options.some((option) => option.value.startsWith(draft.trim()));
+  const [reverted, setReverted] = useState('');
+
   const commit = (value: string) => {
     setDraft(value);
+    setReverted('');
     if (!value.trim()) {
       if (profile.className) onProfile(without(profile, 'className'));
       return;
     }
-    const parsed = parseClassName(value);
-    if (!parsed) return;
-    const name = formatClassName(parsed);
-    // 打到一半（「資訊」→「資訊二」）只在選單裡有這個系級時才寫入，免得每打一個字就改一次身分。
-    if (!options.some((option) => option.value === name) || name === profile.className) return;
-    onProfile({ ...profile, className: name, level: 'undergrad', year: classYear(parsed) });
+    const match = resolve(value);
+    // 打到一半只在選單裡有這個系級時才寫入，免得每打一個字就改一次身分。
+    if (!match || match.name === profile.className) return;
+    onProfile({ ...profile, className: match.name, level: 'undergrad', year: classYear(match.parsed) });
+  };
+  // 離開輸入框時還對不到選單：文字改回已存的系級，並說明沒有改。
+  const blur = () => {
+    if (settled) return;
+    setReverted(draft.trim());
+    setDraft(profile.className ?? '');
   };
 
   const setYear = (year: number) => {
@@ -95,6 +112,9 @@ export function ClassBar({ courses, profile, onProfile, entries, preferences, su
             placeholder="例：資訊二、會計二甲"
             value={draft}
             onChange={(event) => commit(event.target.value)}
+            onBlur={blur}
+            onFocus={() => setReverted('')}
+            aria-describedby="identity-class-message"
             autoComplete="off"
           />
           <datalist id="class-options">
@@ -103,6 +123,10 @@ export function ClassBar({ courses, profile, onProfile, entries, preferences, su
         </label>
         <YearChoice profile={profile} onYear={setYear} onGraduate={() => onProfile({ ...without(profile, 'className', 'year'), level: 'graduate' })} />
       </div>
+      <p id="identity-class-message" aria-live="polite" className="text-sm text-coral-ink empty:hidden">
+        {unknown ? `找不到「${draft.trim()}」這個系級，請從清單選（例：資訊二、會計二甲）。`
+          : reverted ? `找不到「${reverted}」這個系級，${profile.className ? `系級維持「${profile.className}」` : '系級還沒設定'}；請從清單選。` : ''}
+      </p>
       {showSuggestion && (
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <span>全人系統資料是「{suggested.className}」，要用這個系級嗎？</span>
@@ -111,7 +135,7 @@ export function ClassBar({ courses, profile, onProfile, entries, preferences, su
           </button>
         </p>
       )}
-      {className && profile.className && (
+      {className && profile.className && settled && (
         <RequiredCourses
           key={profile.className}
           className={className}
@@ -181,19 +205,27 @@ function RequiredCourses({ className, name, courses, entries, preferences, onAdd
     ?? courses.find((course) => keyOf(course) === key)?.title ?? '課程';
   const chosen = choice.picks.filter(({ groupId }) => !unticked.has(groupId));
   const heading = `${name} 本學期必修`;
+  // 「全部排入」按下後按鈕自己消失：焦點移到「都在課表上」那一行（還有沒排的就移到清單開頭），不掉回整頁開頭。
+  const summary = useRef<HTMLParagraphElement>(null);
+  const added = useRef(false);
+  useEffect(() => {
+    if (!added.current) return;
+    added.current = false;
+    summary.current?.focus();
+  }, [pending.length]);
 
   return (
     <section aria-label={heading} className="space-y-1.5 border-t border-base-300 pt-2 text-sm">
       {required.length === 0 ? (
         <p className="text-base-content/80">這學期沒有找到開課班級寫「{name}」的必修（依官方開課班級，以系上公告為準）。</p>
       ) : pending.length === 0 ? (
-        <p className="flex items-center gap-1.5">
+        <p ref={summary} tabIndex={-1} className="flex items-center gap-1.5">
           <BookCheck className="size-4 text-mist-ink" aria-hidden="true" />
           <span><strong>{name}</strong> 本學期必修 {required.length} 門都在課表上<span className="text-xs text-base-content/75">（依官方開課班級，以系上公告為準）</span></span>
         </p>
       ) : (
         <>
-          <p>
+          <p ref={summary} tabIndex={-1}>
             <strong>{name}</strong> 本學期必修 {required.length} 門
             <span className="text-xs text-base-content/75">（依官方開課班級，以系上公告為準）</span>
           </p>
@@ -245,7 +277,10 @@ function RequiredCourses({ className, name, courses, entries, preferences, onAdd
               type="button"
               className="btn btn-primary btn-sm min-h-11 gap-1"
               disabled={chosen.length === 0}
-              onClick={() => onAddCourses(chosen.map(({ key }) => key), `已排入${name}必修 ${chosen.length} 門`)}
+              onClick={() => {
+                added.current = true;
+                onAddCourses(chosen.map(({ key }) => key), `已排入${name}必修 ${chosen.length} 門`);
+              }}
             >
               <Plus className="size-4" aria-hidden="true" />
               {chosen.length === choice.picks.length ? '全部排入' : `排入勾選的 ${chosen.length} 門`}
