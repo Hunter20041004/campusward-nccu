@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Plan, ScheduleCourse } from '@campusward/engine';
-import { expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { PlanBar } from './PlanBar.tsx';
 
 const course = (key: string, credits: number): ScheduleCourse => ({
@@ -47,11 +47,52 @@ test('shows total credits', () => {
 test('compares the active plan with another plan', async () => {
   const user = userEvent.setup();
   setup();
-  await user.selectOptions(screen.getByRole('combobox', { name: '與這個方案比較' }), 'plan-2');
+  await user.selectOptions(screen.getByRole('combobox', { name: '與這個方案比較' }), 'plan-3');
   const result = screen.getByRole('region', { name: '方案比較' });
-  expect(result).toHaveTextContent('只在主方案：課b');
-  expect(result).toHaveTextContent('只在備案 1：課c');
-  expect(result).toHaveTextContent('學分 5 → 6（+1）');
+  expect(result).toHaveTextContent('和「自動備案 1（改動前）」相比');
+  expect(result).toHaveTextContent('多了課b');
+  expect(result).toHaveTextContent('學分 3 → 5（+2）');
+  await user.selectOptions(screen.getByRole('combobox', { name: '與這個方案比較' }), '');
+  expect(screen.queryByRole('region', { name: '方案比較' })).toBeNull();
+});
+
+// 2026-11-01 易用性審查第 11 名：有兩個方案時自動顯示和主方案的差異，不用先選。
+describe('automatic comparison', () => {
+  const bar = (activePlanId: string, list: Plan[] = plans) => <PlanBar plans={list} activePlanId={activePlanId} credits={5} catalog={catalog} onSwitch={vi.fn()} onCreate={vi.fn()} />;
+
+  test('a backup is compared with the main plan without any click', () => {
+    render(bar('plan-2'));
+    const result = screen.getByRole('region', { name: '方案比較' });
+    expect(result).toHaveTextContent('和「主方案」相比');
+    expect(result).toHaveTextContent('多了課c');
+    expect(result).toHaveTextContent('少了課b');
+    expect(result).toHaveTextContent('學分 5 → 6（+1）');
+    expect(screen.getByRole('combobox', { name: '與這個方案比較' })).toHaveValue('plan-1');
+  });
+
+  test('on the main plan it compares with the plan viewed last, or the newest own backup', () => {
+    const { rerender } = render(bar('plan-1'));
+    expect(screen.getByRole('region', { name: '方案比較' })).toHaveTextContent('和「備案 1」相比');
+    expect(screen.getByRole('region', { name: '方案比較' })).toHaveTextContent('學分 6 → 5（-1）');
+    rerender(bar('plan-3'));
+    rerender(bar('plan-1'));
+    expect(screen.getByRole('region', { name: '方案比較' })).toHaveTextContent('和「自動備案 1（改動前）」相比');
+  });
+
+  test('says so when the plans have the same courses, and shows nothing with one plan', () => {
+    const same: Plan[] = [plans[0]!, { ...plans[1]!, items: plans[0]!.items }];
+    const { rerender } = render(bar('plan-2', same));
+    expect(screen.getByRole('region', { name: '方案比較' })).toHaveTextContent('課都一樣');
+    rerender(bar('plan-1', [plans[0]!]));
+    expect(screen.queryByRole('region', { name: '方案比較' })).toBeNull();
+  });
+
+  test('long differences are shortened', () => {
+    const many = new Map([...catalog, ...['d', 'e', 'f', 'g'].map((key) => [key, course(key, 1)] as const)]);
+    const list: Plan[] = [plans[0]!, { ...plans[1]!, items: ['c', 'd', 'e', 'f', 'g'].map(item) }];
+    render(<PlanBar plans={list} activePlanId="plan-2" credits={7} catalog={many} onSwitch={vi.fn()} onCreate={vi.fn()} />);
+    expect(screen.getByRole('region', { name: '方案比較' })).toHaveTextContent('多了課c、課d、課e 等 5 門');
+  });
 });
 
 // 稽核 #11（2026-11-01）：學分旁顯示上下限；沒設定年級時提示並可直接去設定。

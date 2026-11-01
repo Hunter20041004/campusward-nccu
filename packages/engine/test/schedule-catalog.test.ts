@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import corrections1151 from '../../../data/corrections/1151.json' with { type: 'json' };
 import { applyCorrections, parseCorrections } from '../src/official/corrections.ts';
 import { rowToCourse } from '../src/official/course.ts';
-import { buildScheduleAgenda } from '../src/schedule/agenda.ts';
+import { agendaFreeStretches, buildScheduleAgenda } from '../src/schedule/agenda.ts';
 import {
   buildCandidateCatalog,
   createManualCourse,
@@ -143,5 +143,39 @@ describe('buildScheduleAgenda', () => {
       { courseKey: 'async', reason: '非同步' },
       { courseKey: 'pending', reason: '時間未定' },
     ]);
+  });
+});
+
+// 2026-11-01 易用性審查第 8 名：手機行程檢視列出空檔，每段一顆「找課」（不用切到方格）。
+describe('agendaFreeStretches', () => {
+  const at = (key: string, meetings: ScheduleCourse['meetings']) => ({ course: { ...stub(key), title: key, meetings }, item: item(key) });
+  // 週二 3–4 節、週二 D–5、週四 1–2 節。
+  const entries = [
+    at('morning', [{ day: 2, start: 610, end: 720, label: '' }]),
+    at('afternoon', [{ day: 2, start: 790, end: 900, label: '' }]),
+    at('early', [{ day: 4, start: 490, end: 600, label: '' }]),
+  ];
+
+  test('lists runs of at least two free daytime periods per weekday, in order', () => {
+    const stretches = agendaFreeStretches(entries);
+    const tuesday = stretches.filter(({ day }) => day === 2).map(({ codes }) => codes.join(''));
+    // 1–2 節空、C 只有一節（午休）不列、6–8 節空。
+    expect(tuesday).toEqual(['12', '678']);
+    expect(stretches.find(({ day }) => day === 2)).toMatchObject({ start: 490, end: 600 });
+    expect(stretches.filter(({ day }) => day === 4).map(({ codes }) => codes.join(''))).toEqual(['34CD5678']);
+  });
+
+  test('a day without classes is one whole-day stretch; weekends only when asked', () => {
+    const stretches = agendaFreeStretches(entries);
+    expect(stretches.find(({ day }) => day === 1)).toMatchObject({ codes: ['1', '2', '3', '4', 'C', 'D', '5', '6', '7', '8'], start: 490, end: 1080, wholeDay: true });
+    expect(stretches.map(({ day }) => day)).not.toContain(6);
+    expect(agendaFreeStretches(entries, { days: [6] }).map(({ day }) => day)).toEqual([6]);
+  });
+
+  test('skips the student free days and ignores async or unscheduled courses', () => {
+    const asyncCourse = { ...at('online', [{ day: 3, start: 490, end: 1080, label: '' }]), item: item('online', { attendance: 'async' }) };
+    const stretches = agendaFreeStretches([...entries, asyncCourse], { skipDays: [5] });
+    expect(stretches.map(({ day }) => day)).not.toContain(5);
+    expect(stretches.find(({ day }) => day === 3)?.wholeDay).toBe(true);
   });
 });

@@ -9,8 +9,8 @@ import {
   toScheduleCourse,
   type Course,
 } from '@campusward/engine';
-import { ChevronLeft, ChevronRight, Heart, Info, Minus, Plus, Search, SlidersHorizontal, TriangleAlert, X } from 'lucide-react';
-import { useEffect, useMemo, useState, type RefObject } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight, Heart, Info, Minus, Plus, Search, SlidersHorizontal, TriangleAlert, X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { CourseDetails } from './CourseDetails.tsx';
 import { CourseTags } from './CourseTags.tsx';
 import { DAY_LABELS, DAYPARTS, formatCredits } from './labels.ts';
@@ -44,6 +44,8 @@ export interface SearchSlot {
   start?: number;
   end?: number;
   codes?: readonly string[];
+  /** 整段空檔都算（手機行程檢視的「找課」）：不要求碰到 period 那一節。 */
+  anyPeriod?: boolean;
 }
 
 /** 偏好（條件裡設一次）：每次搜課與空堂找課都自動套用。 */
@@ -114,7 +116,16 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
   // 偏好藏起來的課與會衝堂的課：預設收起，學生想看再展開（只在這次搜尋有效，不改偏好）。
   const [ignorePreferences, setIgnorePreferences] = useState(false);
   const [showClashes, setShowClashes] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpenState] = useState(false);
+  // 打開過多條件搜尋之後，收起來時才用一行小標籤列出選了什麼（易用性審查第 9 名）。
+  const [filtersUsed, setFiltersUsed] = useState(false);
+  const setFiltersOpen = (open: boolean) => {
+    setFiltersOpenState(open);
+    if (open) setFiltersUsed(true);
+  };
+  const listRef = useRef<HTMLUListElement>(null);
+  // 手機上是整頁在捲：收起篩選區時把結果留在原本的位置，不會整片往上跳。
+  const anchor = useRef<number | null>(null);
   const [pageSize, setPageSize] = useState(PAGE_SIZES[0]!);
   const [page, setPage] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -157,7 +168,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
     const start = within.start ?? clicked?.start ?? 0;
     const end = within.end ?? clicked?.end ?? 0;
     const span = codes.length > 1 ? `${codes[0]}–${codes.at(-1)}` : codes[0];
-    return { day: within.day, period: within.period, start, end, label: `${DAY_LABELS[within.day]} ${span} 節` };
+    return { day: within.day, period: within.anyPeriod ? undefined : within.period, start, end, label: `${DAY_LABELS[within.day]} ${span} 節` };
   }, [within]);
 
   const categories = useMemo(
@@ -172,6 +183,39 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
   const grades = departments.find(({ department: key }) => key === department)?.grades ?? [];
   const filterCount = weekdays.length + dayparts.length + (stretch ? 1 : 0)
     + [generalEducation, department, degree, emi].filter(Boolean).length;
+  const departmentLabel = department ? `${departmentLabels.get(department) ?? department}${grade ? ` ${gradeLabel(grade)}` : ''}` : '';
+  const chosen: { id: string; label: string; remove: () => void }[] = [
+    ...weekdays.map((day) => ({ id: `day-${day}`, label: DAY_LABELS[day]!, remove: () => setWeekdays(weekdays.filter((value) => value !== day)) })),
+    ...DAYPARTS.filter(({ id }) => dayparts.includes(id)).map(({ id, label }) => ({ id: `part-${id}`, label, remove: () => setDayparts(dayparts.filter((value) => value !== id)) })),
+    ...(generalEducation ? [{ id: 'ge', label: generalEducation === ALL_GENERAL_EDUCATION ? '所有通識' : generalEducation, remove: () => setGeneralEducation('') }] : []),
+    ...(degree ? [{ id: 'degree', label: DEGREES.find(({ value }) => value === degree)!.label, remove: () => setDegree('') }] : []),
+    ...(department ? [{ id: 'department', label: departmentLabel, remove: () => { setDepartment(''); setGrade(''); } }] : []),
+    ...(emi ? [{ id: 'emi', label: '英語授課', remove: () => setEmi(false) }] : []),
+  ];
+  const canFold = filtersOpen && chosen.length > 0;
+  const fold = (keepPlace: boolean) => {
+    if (!canFold) return;
+    anchor.current = keepPlace ? listRef.current?.getBoundingClientRect().top ?? null : null;
+    setFiltersOpen(false);
+  };
+  useLayoutEffect(() => {
+    if (filtersOpen || anchor.current === null) return;
+    const before = anchor.current;
+    anchor.current = null;
+    const after = listRef.current?.getBoundingClientRect().top;
+    if (after !== undefined && after !== before) window.scrollBy?.(0, after - before);
+  }, [filtersOpen]);
+  // 手機：結果不是自己捲、是整頁在捲。結果的頂端捲到頂列下面時就收起來（頂列加週條約 140px）。
+  useEffect(() => {
+    if (!canFold) return;
+    const onScroll = () => {
+      const list = listRef.current;
+      if (!list || list.scrollHeight > list.clientHeight + 1) return;
+      if (list.getBoundingClientRect().top < 140) fold(true);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  });
   // 學制只是縮小範圍，單獨開著不列出全校的課。
   const filtering = Boolean(query.trim() || weekdays.length || dayparts.length || stretch || generalEducation || department || emi);
   const freeDays = preferences?.freeDays ?? [];
@@ -188,7 +232,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
       ...(department ? { department, grade } : {}),
       ...(degree ? { degree } : {}),
       ...(emi ? { emi } : {}),
-      ...(stretch ? { within: { day: stretch.day, start: stretch.start, end: stretch.end, period: stretch.period } } : {}),
+      ...(stretch ? { within: { day: stretch.day, start: stretch.start, end: stretch.end, ...(stretch.period ? { period: stretch.period } : {}) } } : {}),
     });
     const preferred = hasPreferences
       ? searchCourses(found, { ...(freeDays.length ? { excludeDays: freeDays } : {}), ...(noEarly ? { excludePeriods: EARLY_PERIODS } : {}) })
@@ -324,6 +368,33 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
         </div>
       </fieldset>
 
+      {!filtersOpen && filtersUsed && chosen.length > 0 && (
+        // 整行都可以點來展開（滑鼠、觸控）；鍵盤用最後的「展開條件」。
+        <div
+          role="group"
+          aria-label="已選條件"
+          className="well flex cursor-pointer flex-wrap items-center gap-1.5 rounded-2xl px-2 py-1"
+          onClick={(event) => { if (event.target === event.currentTarget) setFiltersOpen(true); }}
+        >
+          {chosen.map(({ id, label, remove }) => (
+            <button
+              key={id}
+              type="button"
+              aria-label={`${label}，取消條件`}
+              className="btn btn-sm tab-selected min-h-11 gap-1 px-3 text-mist-ink"
+              onClick={() => { remove(); resetPaging(); }}
+            >
+              {label}
+              <X className="size-4" aria-hidden="true" />
+            </button>
+          ))}
+          <button type="button" className="btn btn-ghost btn-sm ml-auto min-h-11 gap-1 px-2 text-xs" aria-expanded={false} aria-controls="search-filters" onClick={() => setFiltersOpen(true)}>
+            展開條件
+            <ChevronDown className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+
       {stretch && (
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -387,7 +458,12 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
             <div aria-hidden="true" className={`hidden gap-3 border-b border-base-300 px-4 py-2 text-xs font-bold text-base-content/70 @4xl:grid ${COLUMNS}`}>
               <span className="pl-2">課程名稱</span><span>教師</span><span>課程編號</span><span>類型</span><span>時間／地點</span><span className="w-32 text-right">收藏・加入</span>
             </div>
-            <ul className="min-h-0 flex-1 divide-y divide-base-300 overflow-y-auto px-2">
+            <ul
+              ref={listRef}
+              aria-label="搜尋結果"
+              className="min-h-0 flex-1 divide-y divide-base-300 overflow-y-auto px-2"
+              onScroll={(event) => { if (event.currentTarget.scrollTop > 16) fold(false); }}
+            >
               {shown.map((course) => {
                 const key = toScheduleCourse(course).key;
                 const scheduled = scheduledKeys.has(key);
@@ -464,7 +540,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
                               className={`btn btn-sm min-h-11 gap-1 ${clashing ? '' : 'btn-primary'}`}
                               aria-label={`加入課表：${course.title}`}
                               title={clashing ? `會與${quoteTitles(clashes)}衝堂` : undefined}
-                              onClick={() => onAdd(course)}
+                              onClick={() => { onAdd(course); fold(false); }}
                             >
                               <Plus className="size-4" aria-hidden="true" />
                               加入

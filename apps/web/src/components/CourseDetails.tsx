@@ -40,7 +40,7 @@ function LiveCheckButton({ course, fetchImpl }: { course: Course; fetchImpl: (ur
   );
 }
 
-function SafeLink({ href, label, hosts = NCCU_HOSTS, note = '開新分頁，政大官方網站' }: { href: string | undefined; label: string; hosts?: readonly string[]; note?: string }) {
+export function SafeLink({ href, label, hosts = NCCU_HOSTS, note = '開新分頁，政大官方網站' }: { href: string | undefined; label: string; hosts?: readonly string[]; note?: string }) {
   // 所有外部連結都經引擎的 safeExternalUrl（官方連結只放行 https 政大網域；心得搜尋只放行 Dcard 與 Google）。
   const safe = safeExternalUrl(href, hosts);
   if (!safe) return null;

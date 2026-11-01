@@ -5,6 +5,7 @@ import { parseEnrollmentRules } from '../src/rules.ts';
 import {
   buildFillPlans,
   isClassAutoEnrolled,
+  lostCourseReplacements,
   pickGapCourse,
   swapFillCourse,
   type FillContext,
@@ -278,5 +279,58 @@ describe('isClassAutoEnrolled', () => {
     expect(isClassAutoEnrolled(sectioned, parseClassName('會計二甲')!)).toBe(true);
     expect(isClassAutoEnrolled(sectioned, parseClassName('會計二乙')!)).toBe(false);
     expect(isClassAutoEnrolled(sectioned, parseClassName('會計二')!)).toBe(true);
+  });
+});
+
+// 2026-11-01 易用性審查第 10 名：初選沒選上的課，直接給替補（同課名別班、同一段時間排得進去的課），規則同幫我排滿。
+describe('lostCourseReplacements', () => {
+  const lost = general[0]!; // 哲學與人生 一234 人文通識
+  const otherSection = make({ subNum: '041001011', subNam: '哲學與人生', subGde: '通識', subKind: '', lmtKind: '人文通識', subTime: '三34' });
+  const fridaySection = make({ subNum: '041001021', subNam: '哲學與人生', subGde: '通識', subKind: '', lmtKind: '人文通識', subTime: '五34' });
+  const sameCategory = make({ subNum: '041003001', subNam: '倫理學', subGde: '通識', subKind: '', lmtKind: '人文通識', subTime: '一34' });
+  const notTouching = make({ subNum: '041004001', subNam: '美學', subGde: '通識', subKind: '', lmtKind: '人文通識', subTime: '一78' });
+  const pool = [...catalog, otherSection, fridaySection, sameCategory, notTouching];
+  // 選上的是離散數學（二234）與資料結構（四234）；沒選上的哲學與人生已經移出課表。
+  const kept = [entry(required[0]!, 'registered'), entry(required[1]!, 'registered')];
+
+  test('offers other sections of the same course that fit, and courses in the freed time slot', () => {
+    const result = lostCourseReplacements(context({ catalog: pool, entries: kept }), lost);
+    expect(result.sections.map(({ key }) => key)).toEqual([otherSection.key, fridaySection.key]);
+    const sameSlot = result.sameSlot.map(({ title }) => title);
+    // 同一類通識排前面；不碰到原本那段時間（一 78）的不算；同名的別班不重複列在這裡。
+    expect(sameSlot[0]).toBe('倫理學');
+    expect(sameSlot).not.toContain('美學');
+    expect(sameSlot).not.toContain('哲學與人生');
+    expect(sameSlot.length).toBeLessThanOrEqual(3);
+    // 沒選上的是通識：同時段的替補也只列通識（和空堂找課預設「通識」一致），不塞別系的選修。
+    expect(sameSlot).not.toContain('機器學習概論');
+    expect(result.sameSlot.every((course) => course.official?.generalEducation)).toBe(true);
+  });
+
+  test('for a department course, same-slot replacements are courses of the same department or general education', () => {
+    const lostElective = department[2]!; // 機器學習概論 一234（資訊系）
+    const sameDepartment = make({ subNum: '703902001', subNam: '雲端運算', subGde: '資訊三', subTime: '一34', subKind: '選修' });
+    const otherDepartment = make({ subNum: '507002001', subNam: '日文會話', subGde: '日文系', subKind: '選修', subTime: '一34' });
+    const result = lostCourseReplacements(context({ catalog: [...pool, sameDepartment, otherDepartment], entries: kept }), lostElective);
+    const titles = result.sameSlot.map(({ title }) => title);
+    expect(titles[0]).toBe('雲端運算');
+    expect(titles).not.toContain('日文會話');
+  });
+
+  test('follows the same rules as filling the timetable: free days, clashes, early classes', () => {
+    const result = lostCourseReplacements(context({ catalog: pool, entries: kept, preferences: { freeDays: [5], noEarly: true } }), lost);
+    expect(result.sections.map(({ key }) => key)).toEqual([otherSection.key]);
+    const clashing = [...kept, entry(general[6]!)]; // 國文 三234 和三34 那班衝堂
+    expect(lostCourseReplacements(context({ catalog: pool, entries: clashing }), lost).sections.map(({ key }) => key)).toEqual([fridaySection.key]);
+    for (const course of lostCourseReplacements(context({ catalog: pool, entries: kept, preferences: { freeDays: [], noEarly: true } }), lost).sameSlot) {
+      expect(course.meetings.flatMap(({ start, end }) => periodsForRange(start, end)).some(({ code }) => EARLY.has(code))).toBe(false);
+    }
+  });
+
+  test('is deterministic and respects the limit', () => {
+    const first = lostCourseReplacements(context({ catalog: pool, entries: kept }), lost, 1);
+    expect(first.sections).toHaveLength(1);
+    expect(first.sameSlot).toHaveLength(1);
+    expect(lostCourseReplacements(context({ catalog: pool, entries: kept }), lost, 1)).toEqual(first);
   });
 });

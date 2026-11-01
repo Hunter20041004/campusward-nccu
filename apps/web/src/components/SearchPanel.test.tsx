@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { rowToCourse, type Course } from '@campusward/engine';
 import { describe, expect, test, vi } from 'vitest';
@@ -312,10 +312,70 @@ describe('finding courses for a free stretch', () => {
     expect(titles()).toEqual(['中文通識課', '通識早上']);
   });
 
+  // 易用性審查第 8 名：手機行程檢視的「找課」帶整段空檔過來，不是某一節，所以整段裡排得進去的都算。
+  test('a whole stretch from the agenda lists everything inside it, without a clicked period', () => {
+    setup('', { courses: free, slot: { ...slot, anyPeriod: true } });
+    expect(titles()).toEqual(['通識早上', '中文通識課', '沒碰到那一節']);
+  });
+
   test('clearing the stretch goes back to a normal search', async () => {
     const user = userEvent.setup();
     setup('', { courses: free, slot });
     await user.click(screen.getByRole('button', { name: '清除空堂：週五 1–4 節' }));
     expect(screen.queryByRole('group', { name: '空堂找課範圍' })).toBeNull();
+  });
+});
+
+// 2026-11-01 易用性審查第 9 名：選好條件、開始捲結果時，篩選區收成一行可以取消的小標籤，點這一行再展開。
+describe('collapsing the filters', () => {
+  const results = () => screen.getByRole('list', { name: '搜尋結果' });
+  async function chooseFilters() {
+    const user = userEvent.setup();
+    setup('');
+    await user.click(screen.getByRole('button', { name: '多條件搜尋' }));
+    await user.click(screen.getByRole('button', { name: '週三' }));
+    await user.click(screen.getByRole('button', { name: '下午' }));
+    return user;
+  }
+
+  test('scrolling the results folds the chosen filters into one row of removable chips', async () => {
+    const user = await chooseFilters();
+    expect(screen.getByRole('group', { name: '星期' })).toBeVisible();
+    fireEvent.scroll(results(), { target: { scrollTop: 120 } });
+    expect(screen.queryByRole('group', { name: '星期' })).toBeNull();
+    const row = screen.getByRole('group', { name: '已選條件' });
+    expect(within(row).getByRole('button', { name: '週三，取消條件' })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: '下午，取消條件' })).toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: '下午，取消條件' }));
+    expect(within(screen.getByRole('group', { name: '已選條件' })).queryByRole('button', { name: '下午，取消條件' })).toBeNull();
+    await user.click(within(screen.getByRole('group', { name: '已選條件' })).getByRole('button', { name: '展開條件' }));
+    expect(screen.getByRole('button', { name: '週三' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '下午' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('on a phone the page itself scrolls: scrolling past the top of the results also folds them', async () => {
+    await chooseFilters();
+    fireEvent.scroll(window);
+    expect(screen.queryByRole('group', { name: '星期' })).toBeNull();
+    expect(screen.getByRole('group', { name: '已選條件' })).toBeInTheDocument();
+  });
+
+  test('adding a course folds the filters, so the undo toast never covers the first result', async () => {
+    const user = await chooseFilters();
+    await user.click(screen.getAllByRole('button', { name: /^加入課表/ })[0]!);
+    expect(screen.queryByRole('group', { name: '星期' })).toBeNull();
+  });
+
+  test('stays open while nothing is chosen, and removing the last chip hides the row', async () => {
+    const user = userEvent.setup();
+    setup('統計');
+    await user.click(screen.getByRole('button', { name: '多條件搜尋' }));
+    fireEvent.scroll(results(), { target: { scrollTop: 120 } });
+    expect(screen.getByRole('group', { name: '星期' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '週五' }));
+    fireEvent.scroll(results(), { target: { scrollTop: 240 } });
+    const row = screen.getByRole('group', { name: '已選條件' });
+    await user.click(within(row).getByRole('button', { name: '週五，取消條件' }));
+    expect(screen.queryByRole('group', { name: '已選條件' })).toBeNull();
   });
 });

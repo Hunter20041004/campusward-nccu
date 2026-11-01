@@ -716,3 +716,88 @@ describe('automation: fill the timetable, fill the gaps, copy the right plan', (
     expect(within(dialog).getByRole('button', { name: /複製 1 個課號|仍要複製/ })).toBeInTheDocument();
   });
 });
+
+// 易用性審查第 8–11 名（2026-11-01，使用者核可）：手機週條與行程空檔找課、篩選收成小標籤、標記選課結果、自動比較方案。
+describe('phone week strip, agenda free stretches, marking results, plan differences', () => {
+  const rows = [
+    officialRow({ subNum: '042112001', subNam: '臺灣政治', subTime: '三78E', teaNam: '李合成' }),
+    officialRow({ subNum: '000603001', subNam: '民法概要', subTime: '三78', teaNam: '詹合成' }),
+    officialRow({ subNum: '000603011', subNam: '民法概要', subTime: '一D56', teaNam: '吳合成' }),
+    officialRow({ subNum: '000603021', subNam: '民法概要', subTime: '三E', teaNam: '周合成' }),
+    officialRow({ subNum: '900601001', subNam: '週一通識', subGde: '教務處通識教育中心', subKind: '', subTime: '一34', lmtKind: '人文通識' }),
+  ];
+  const search = async (user: ReturnType<typeof userEvent.setup>, text: string) => {
+    const box = screen.getByRole('searchbox', { name: '搜課' });
+    await user.clear(box);
+    await user.type(box, text);
+  };
+  const add = async (user: ReturnType<typeof userEvent.setup>, text: string, title: string) => {
+    await search(user, text);
+    await user.click(await screen.findByRole('button', { name: `加入課表：${title}` }));
+  };
+
+  test('the week strip on the search tab lights up what was just added and shows the clash', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    const strip = () => screen.getByRole('button', { name: /^課表週覽/ });
+    expect(strip()).toHaveAccessibleName(expect.stringContaining('還沒有排課'));
+    await add(user, '臺灣政治', '臺灣政治');
+    expect(strip()).toHaveAccessibleName(expect.stringContaining('1 門'));
+    expect(document.querySelector('[data-cell="3-7"]')).toHaveAttribute('data-state', 'new');
+    await add(user, '000603001', '民法概要');
+    expect(strip()).toHaveAccessibleName(expect.stringContaining('1 個衝堂'));
+    expect(document.querySelector('[data-cell="3-7"]')).toHaveAttribute('data-state', 'clash');
+    await user.click(strip());
+    expect(document.querySelector('[data-mobile-view="timetable"]')).toBeInTheDocument();
+  });
+
+  test('a free stretch in the agenda finds courses for the whole stretch on the search tab', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await add(user, '臺灣政治', '臺灣政治');
+    const agenda = screen.getByRole('list', { name: '每日行程' });
+    await user.click(within(agenda).getByRole('button', { name: '找課：週一 整天' }));
+    expect(document.querySelector('[data-mobile-view="search"]')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '清除空堂：週一 1–8 節' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '週一通識' })).toBeInTheDocument();
+  });
+
+  test('marking the results: one screen, the lost course leaves the timetable, and a section replaces it in one click', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await add(user, '臺灣政治', '臺灣政治');
+    await add(user, '000603001', '民法概要');
+    await user.click(screen.getByRole('button', { name: '標記選課結果' }));
+    await user.click(within(screen.getByRole('group', { name: '選上的課' })).getByRole('checkbox', { name: /民法概要/ }));
+    await user.click(screen.getByRole('button', { name: '確定：選上 1 門、沒選上 1 門' }));
+    const toast = screen.getByRole('status', { name: '最近的修改' });
+    expect(toast).toHaveTextContent('已標記選上 1 門，沒選上的 1 門移出課表（留在候選）');
+    const grid = screen.getByRole('group', { name: '每週課表' });
+    expect(within(grid).getByRole('button', { name: /臺灣政治/ })).toHaveTextContent('已選上');
+    expect(within(grid).getByRole('button', { name: /臺灣政治/ })).toHaveAccessibleName(expect.stringContaining('已鎖定'));
+    expect(within(grid).queryByRole('button', { name: /民法概要/ })).toBeNull();
+    const lost = screen.getByRole('region', { name: '沒選上「民法概要」的替補' });
+    // 周合成那班（三E）和選上的臺灣政治衝堂，不列。
+    expect(within(lost).queryByRole('button', { name: /周合成/ })).toBeNull();
+    await user.click(within(lost).getByRole('button', { name: /^換這班：吳合成 週一 D56/ }));
+    expect(toast).toHaveTextContent('已改選「民法概要」吳合成 週一 D56 那一班');
+    expect(within(grid).getByRole('button', { name: /民法概要/ })).toHaveAccessibleName(expect.stringContaining('D56'));
+    expect(screen.getByRole('region', { name: '沒選上「民法概要」的替補' })).toHaveTextContent('已補上「民法概要」');
+  });
+
+  test('with a backup the differences from the main plan show up without any click', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await add(user, '臺灣政治', '臺灣政治');
+    await user.click(screen.getByRole('button', { name: '另存為新備案' }));
+    await add(user, '週一通識', '週一通識');
+    const diff = screen.getByRole('region', { name: '方案比較' });
+    expect(diff).toHaveTextContent('和「主方案」相比');
+    expect(diff).toHaveTextContent('多了週一通識');
+    expect(diff).toHaveTextContent('學分 3 → 6（+3）');
+  });
+});

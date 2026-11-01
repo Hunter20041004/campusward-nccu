@@ -694,3 +694,88 @@ test.describe('usage guide wording and periods', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0);
   });
 });
+
+// 易用性審查第 8–11 名（2026-11-01，使用者核可）。
+test.describe('phone week strip, folding filters, marking results, plan differences', () => {
+  const nav = (page: Page) => page.getByRole('navigation', { name: '主要分頁' });
+
+  test('on a phone the search tab shows the week strip and the agenda finds courses for a free stretch', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'mobile only');
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    await nav(page).getByRole('button', { name: '搜課' }).click();
+    const strip = page.getByRole('button', { name: /^課表週覽/ });
+    await expect(strip).toBeVisible();
+    await addCourse(page, '統計學');
+    await addCourse(page, '會計學');
+    await expect(strip).toContainText('衝堂 1');
+    await expect(page.locator('[data-cell="1-3"]')).toHaveAttribute('data-state', 'clash');
+    expect(await smallTargets(page)).toEqual([]);
+    await expectNoAxeViolations(page);
+    await nav(page).getByRole('button', { name: '課表' }).click();
+    const agenda = page.getByRole('list', { name: '每日行程' });
+    await agenda.getByRole('button', { name: '找課：週二 整天' }).click();
+    await expect(page.getByRole('button', { name: '清除空堂：週二 1–8 節' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '英文（一）' })).toBeVisible();
+  });
+
+  test('chosen filters fold into removable chips, and the undo toast does not cover the first result', async ({ page, isMobile }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    if (isMobile) await nav(page).getByRole('button', { name: '搜課' }).click();
+    await page.getByRole('button', { name: '多條件搜尋' }).click();
+    await page.getByRole('group', { name: '星期' }).getByRole('button', { name: '週一' }).click();
+    await page.getByRole('button', { name: '加入課表：統計學' }).click();
+    const chips = page.getByRole('group', { name: '已選條件' });
+    await expect(chips).toBeVisible();
+    await expect(page.getByRole('group', { name: '星期' })).toBeHidden();
+    const toast = page.getByRole('status', { name: '最近的修改' }).locator('div').first();
+    await expect(toast).toBeVisible();
+    const first = (await page.getByRole('list', { name: '搜尋結果' }).locator('article').first().boundingBox())!;
+    const toastBox = (await toast.boundingBox())!;
+    expect(first.y + first.height <= toastBox.y || first.y >= toastBox.y + toastBox.height).toBe(true);
+    // 捲到一半時，手機的週條（黏在頂列下）會蓋住捲到它下面的搜尋框，axe 會把「被蓋住一半」算成目標太小；回到頂端再檢查。
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expectNoAxeViolations(page);
+    if (isMobile) expect(await smallTargets(page)).toEqual([]);
+    await chips.getByRole('button', { name: '展開條件' }).click();
+    await expect(page.getByRole('group', { name: '星期' }).getByRole('button', { name: '週一' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('marking results takes one screen, and a lost course is replaced by another section in one click', async ({ page, isMobile }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    if (isMobile) await nav(page).getByRole('button', { name: '搜課' }).click();
+    await addCourse(page, '統計學');
+    // 詹範例那班（一34）和統計學衝堂，初選沒選上；吳範例那班（四34）可以替補。
+    await page.getByRole('searchbox', { name: '搜課' }).fill('900006001');
+    await page.getByRole('button', { name: '加入課表：民法概要' }).click();
+    if (isMobile) await nav(page).getByRole('button', { name: '課表' }).click();
+    await page.getByRole('button', { name: '標記選課結果' }).click();
+    await page.getByRole('group', { name: '選上的課' }).getByText('民法概要').click();
+    await page.getByRole('button', { name: '確定：選上 1 門、沒選上 1 門' }).click();
+    const lost = page.getByRole('region', { name: '沒選上「民法概要」的替補' });
+    await expect(lost.getByRole('button', { name: /^換這班：吳範例 週四 34/ })).toBeVisible();
+    await expectNoAxeViolations(page);
+    if (isMobile) expect(await smallTargets(page)).toEqual([]);
+    await lost.getByRole('button', { name: /^換這班：吳範例/ }).click();
+    await expect(page.getByRole('status', { name: '最近的修改' })).toContainText('已改選「民法概要」吳範例 週四 34 那一班');
+    await expect(lost).toContainText('已補上「民法概要」');
+  });
+
+  test('a backup shows its differences from the main plan right away', async ({ page, isMobile }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    if (isMobile) await nav(page).getByRole('button', { name: '搜課' }).click();
+    await addCourse(page, '統計學');
+    if (isMobile) await nav(page).getByRole('button', { name: '課表' }).click();
+    await page.getByRole('button', { name: '另存為新備案' }).click();
+    await addCourse(page, '英文（一）');
+    if (isMobile) await nav(page).getByRole('button', { name: '課表' }).click();
+    const diff = page.getByRole('region', { name: '方案比較' });
+    await expect(diff).toContainText('和「主方案」相比');
+    await expect(diff).toContainText('英文（一）');
+    await expectNoAxeViolations(page);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+});

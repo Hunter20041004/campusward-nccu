@@ -1,6 +1,7 @@
 import { offeringLine } from './offering.ts';
 import {
   NCCU_PERIODS,
+  agendaFreeStretches,
   buildScheduleAgenda,
   candidateScheduleSummary,
   formatClock,
@@ -26,6 +27,10 @@ export interface TimetableProps {
   onStartSearch: () => void;
   /** 點空格：找那一天、那一節的課。 */
   onFindSlot?: (day: number, period: string) => void;
+  /** 手機行程檢視的空檔「找課」：帶整段空檔（易用性審查第 8 名）。給了才列出空檔。 */
+  onFindStretch?: (day: number, stretch: { start: number; end: number; codes: readonly string[] }) => void;
+  /** 偏好的空堂日：行程裡寫「依偏好空下來」，不給找課。 */
+  freeDays?: readonly number[];
   onImport: () => void;
   onToggleLock: (key: string) => void;
   onStatus: (key: string, status: PlanItemStatus) => void;
@@ -44,6 +49,7 @@ export interface TimetableProps {
 
 const DAY_CHARS = ['', '一', '二', '三', '四', '五', '六', '日'];
 const STATUS_LABELS: Record<PlanItemStatus, string> = { planned: '排入', registered: '已灌檔', enrolled: '已選上' };
+const NO_DAYS: readonly number[] = [];
 const indexOf = (code: string) => NCCU_PERIODS.findIndex((period) => period.code === code);
 
 /** 固定顯示 1–8 與 C、D；清晨 A、B 或晚上 E–H 有課才連續補上。 */
@@ -231,6 +237,23 @@ export function Timetable(props: TimetableProps) {
   const conflicted = useMemo(() => new Set(conflicts.flatMap(({ courseKeys }) => courseKeys)), [conflicts]);
   const agenda = useMemo(() => buildScheduleAgenda(entries), [entries]);
   const unscheduled = entries.filter((entry) => occupiedMeetings(entry).length === 0);
+  // 行程裡穿插空檔：週一到週五每天都列，課和空檔照時間排；偏好的空堂日只寫一句。
+  const freeDays = props.freeDays ?? NO_DAYS;
+  const agendaDays = useMemo(() => {
+    const byDay = new Map(agenda.days.map(({ day, items }) => [day, items]));
+    if (!props.onFindStretch) return agenda.days.map(({ day, items }) => ({ day, rows: items.map((item) => ({ type: 'course' as const, item })), keptFree: false }));
+    const stretches = agendaFreeStretches(entries, { skipDays: freeDays });
+    const days = [...new Set([1, 2, 3, 4, 5, ...byDay.keys()])].sort((first, second) => first - second);
+    return days.map((day) => {
+      const items = byDay.get(day) ?? [];
+      const keptFree = freeDays.includes(day) && items.length === 0;
+      const rows = [
+        ...items.map((item) => ({ type: 'course' as const, item, start: item.start })),
+        ...stretches.filter((stretch) => stretch.day === day).map((stretch) => ({ type: 'free' as const, stretch, start: stretch.start })),
+      ].sort((first, second) => first.start - second.start);
+      return { day, rows, keptFree };
+    });
+  }, [agenda.days, entries, freeDays, props.onFindStretch]);
 
   // 名稱由看得到的文字組成（WCAG 2.5.3），星期與衝堂、鎖定等狀態以只給螢幕閱讀器的文字接在後面。
   const blockExtra = (block: Block) => [
@@ -333,11 +356,32 @@ export function Timetable(props: TimetableProps) {
           </div>
 
           <ul aria-label="每日行程" className={`${mobileMode === 'agenda' ? '' : 'hidden'} space-y-3 p-4 md:hidden`}>
-            {agenda.days.map(({ day, items }) => (
+            {agendaDays.map(({ day, rows, keptFree }) => (
               <li key={day}>
                 <h3 className="mb-1 text-sm font-semibold">{DAY_LABELS[day]}</h3>
                 <ul className="space-y-1.5">
-                  {items.map((agendaItem) => {
+                  {keptFree && <li className="px-3 text-sm text-base-content/75">依偏好空下來</li>}
+                  {rows.map((row) => {
+                    if (row.type === 'free') {
+                      const { stretch } = row;
+                      const span = stretch.codes.length > 1 ? `${stretch.codes[0]}–${stretch.codes.at(-1)}` : stretch.codes[0];
+                      const where = stretch.wholeDay ? '整天' : `${span} 節`;
+                      return (
+                        <li key={`free-${stretch.start}`} className="flex min-h-11 items-center gap-3 rounded-2xl border border-dashed border-base-300 py-1 pl-3 pr-1 text-sm">
+                          <span className="tabular w-24 shrink-0 text-base-content/75">{formatClock(stretch.start)}–{formatClock(stretch.end)}</span>
+                          <span className="flex-1 text-base-content/80">{stretch.wholeDay ? '整天沒課' : `${span} 節空著`}</span>
+                          <button
+                            type="button"
+                            className="btn btn-sm min-h-11 gap-1"
+                            aria-label={`找課：${DAY_LABELS[day]} ${where}`}
+                            onClick={() => props.onFindStretch?.(day, stretch)}
+                          >
+                            <Search className="size-4" aria-hidden="true" />找課
+                          </button>
+                        </li>
+                      );
+                    }
+                    const agendaItem = row.item;
                     const isConflict = conflicted.has(agendaItem.courseKey);
                     return (
                       <li key={`${agendaItem.courseKey}-${agendaItem.start}`}>

@@ -10,12 +10,14 @@ import {
   freeStretch,
   gapGeneralEducation,
   loadStudentRecord,
+  lostCourseReplacements,
   parseClassName,
   suggestSectionSwap,
   passedAs as passedCourseTitle,
   RECORD_KEY,
   STORAGE_KEY,
   parseEnrollmentRules,
+  periodsForRange,
   saveStudentRecord,
   toScheduleCourse,
   type ApplyOptions,
@@ -54,6 +56,8 @@ import { ClassBar } from './components/ClassBar.tsx';
 import { FillPlanner } from './components/FillPlanner.tsx';
 import type { ClashFix } from './components/ClashFix.ts';
 import { UndoToast } from './components/UndoToast.tsx';
+import { WeekStrip } from './components/WeekStrip.tsx';
+import { ResultMarker } from './components/ResultMarker.tsx';
 import { gemini } from './ai/session.ts';
 import { FEATURES } from './features.ts';
 import type { GeminiClient } from './ai/gemini.ts';
@@ -252,6 +256,17 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     removeCandidate(key, course.title);
   };
   const [slot, setSlot] = useState<SearchSlot | null>(null);
+  /** 空堂找課：帶時段到搜課頁；手機換到搜課頁時從頂端開始，先看到空堂和「通識／本系／全部」。 */
+  const findInSlot = (next: Omit<SearchSlot, 'nonce'>) => {
+    setSlot((previous) => ({ ...next, nonce: (previous?.nonce ?? 0) + 1 }));
+    showTool('search');
+    if (typeof matchMedia === 'function' && !matchMedia('(min-width: 768px)').matches) window.scrollTo?.({ top: 0 });
+  };
+  // 點到的空格延伸成整段連續空堂，只列碰到那一節、完全排得進去的課。
+  const findSlotAt = (day: number, period: string) => {
+    const stretch = freeStretch(planner.entries, day, period);
+    findInSlot({ day, period, ...(stretch ? { start: stretch.start, end: stretch.end, codes: stretch.codes } : {}) });
+  };
   const [pendingBackup, setPendingBackup] = useState<{ changes: Change[]; label: string; replace: number } | null>(null);
   // 清除本機資料後換掉這個值，讓 AI 面板與畢業缺口重新掛載（金鑰、勾選、匯入的修課資料都歸零）。
   const [generation, setGeneration] = useState(0);
@@ -314,6 +329,21 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     courseChange('add', changes, label, { autoBackup: planner.entries.length > 0 });
   };
 
+  // 標記選課結果（易用性審查第 10 名）：選上的標成已選上（已灌檔的照舊）並鎖定，沒選上的解鎖後移出課表（留在候選）；一筆可復原的修改。
+  const markResults = (kept: string[], lost: string[]) => {
+    const statusOf = (key: string) => planner.activePlan.items.find((item) => item.key === key)?.status;
+    const changes: Change[] = [
+      ...kept.flatMap((key): Change[] => [
+        ...(statusOf(key) === 'planned' ? [{ type: 'setStatus', key, status: 'enrolled' } as const] : []),
+        { type: 'setLock', key, locked: true },
+      ]),
+      ...lost.flatMap((key): Change[] => [{ type: 'setLock', key, locked: false }, { type: 'removeFromSchedule', key }]),
+    ];
+    const label = `已標記選上 ${kept.length} 門${lost.length ? `，沒選上的 ${lost.length} 門移出課表（留在候選）` : ''}`;
+    if (lost.length) courseChange('remove', changes, label);
+    else applyChange(changes, label);
+  };
+
   const tools: Tool[] = ['search', 'candidates', 'conditions', 'data', ...(FEATURES.graduation ? ['graduation' as const] : [])];
   const aiEnabled = FEATURES.orb || FEATURES.qa || FEATURES.demo;
   const [aiOpen, setAiOpen] = useState(false);
@@ -339,6 +369,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const setCardOpenFor = useCallback((key: string | null) => setCardOpen(key !== null), []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [copyPreviewOpen, setCopyPreviewOpen] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
   const [cardFocus, setCardFocus] = useState<{ key: string; nonce: number } | null>(null);
   // 沒有金鑰時，按衝堂提醒直接打開衝堂那門課的面板（可以「換一班」），不先跳 AI 設定。
   // 衝堂的鍵：後加入的那門排前面（通常是學生想換的那門）。
@@ -352,7 +383,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     openCourseCard(key);
   };
   const conflictFix = conflictKeys.length ? clashFixFor(conflictKeys) : null;
-  const nudgeHidden = cardOpen || menuOpen || copyPreviewOpen || guideOpen || pendingBackup !== null;
+  const nudgeHidden = cardOpen || menuOpen || copyPreviewOpen || resultsOpen || guideOpen || pendingBackup !== null;
   const nudge = conflictSignature && dismissedNudge !== conflictSignature
     ? `有 ${planner.conflicts.length} 個衝堂，要我幫忙看看嗎？`
     : null;
@@ -470,24 +501,38 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   onApply={applyFill}
                 />
               )}
+              {ready && (
+                <ResultMarker
+                  entries={planner.entries}
+                  catalog={planner.catalog}
+                  replacementsFor={(key) => {
+                    const lost = planner.catalog.get(key);
+                    return lost ? lostCourseReplacements(fillContext, lost) : { sections: [], sameSlot: [] };
+                  }}
+                  onConfirm={markResults}
+                  onReplace={(lostKey, key) => {
+                    const to = planner.catalog.get(key);
+                    const section = to && to.title === titleOf(lostKey) ? `${to.teacher ?? ''} ${to.meetings.length ? candidateScheduleSummary(to, DAY_LABELS) : '時間未定'}`.trim() : '';
+                    courseChange('add', [{ type: 'addToSchedule', key }], section ? `已改選「${titleOf(key)}」${section} 那一班` : `已用「${titleOf(key)}」替補「${titleOf(lostKey)}」`);
+                  }}
+                  onFindSlot={(lostKey) => {
+                    const meeting = planner.catalog.get(lostKey)?.meetings[0];
+                    const first = meeting ? periodsForRange(meeting.start, meeting.end)[0] : undefined;
+                    if (meeting && first) findSlotAt(meeting.day, first.code);
+                  }}
+                  remainingUrl={(key) => courseByKey.get(key)?.links.remaining}
+                  onOpenChange={setResultsOpen}
+                />
+              )}
               <Timetable
                 entries={planner.entries}
                 conflicts={planner.conflicts}
                 newKeys={planner.newKeys}
                 onStartSearch={startSearch}
-                onFindSlot={(day, period) => {
-                  // 點到的空格延伸成整段連續空堂，只列完全排得進去的課。
-                  const stretch = freeStretch(planner.entries, day, period);
-                  setSlot((previous) => ({
-                    day,
-                    period,
-                    nonce: (previous?.nonce ?? 0) + 1,
-                    ...(stretch ? { start: stretch.start, end: stretch.end, codes: stretch.codes } : {}),
-                  }));
-                  showTool('search');
-                  // 手機換到搜課頁時從頂端開始，先看到空堂和「通識／本系／全部」，不停在課表捲到的位置。
-                  if (typeof matchMedia === 'function' && !matchMedia('(min-width: 768px)').matches) window.scrollTo?.({ top: 0 });
-                }}
+                onFindSlot={findSlotAt}
+                // 手機行程檢視的空檔「找課」：整段空檔都算（易用性審查第 8 名）。
+                onFindStretch={(day, stretch) => findInSlot({ day, period: stretch.codes[0] ?? '1', start: stretch.start, end: stretch.end, codes: stretch.codes, anyPeriod: true })}
+                freeDays={planner.planner.preferences.freeDays}
                 onImport={() => {
                   showTool('data');
                   setTimeout(() => document.querySelector<HTMLInputElement>('input[aria-label="匯入資料"]')?.click(), 0);
@@ -520,9 +565,14 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
             <h2 id="tool-title" className="flex items-center gap-2 px-5 pt-4 text-xl font-bold text-mist-ink">
               {current.icon}{current.label}<span aria-hidden="true" className="h-5 w-0.5 rounded bg-mist-ink/50" />
             </h2>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {/* 手機是整頁在捲（不在這個框裡捲），週條才黏得住頂端；桌機面板固定高度、在框裡捲。 */}
+            <div className="min-h-0 flex-1 overflow-x-clip p-4 md:overflow-y-auto">
               {/* 每個工具都保持掛載、只隱藏沒選的：切換不會丟掉搜尋條件、AI 結果與輸入到一半的文字。 */}
               <div hidden={tool !== 'search'} className="flex h-full flex-col">
+              {/* 手機：搜課頁頂端的迷你週條，加了課馬上看得到那個時段亮起來（易用性審查第 8 名）。 */}
+              <div className="sticky top-[5.25rem] z-10 -mx-1 mb-2 rounded-2xl bg-base-100 px-1 pb-1 sm:top-16 md:hidden">
+                <WeekStrip entries={planner.entries} conflicts={planner.conflicts} newKeys={planner.newKeys} onOpen={showTimetable} />
+              </div>
               {ready ? (
                 <SearchPanel
                   courses={courses}

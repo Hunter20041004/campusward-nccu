@@ -21,12 +21,35 @@ function creditRangeNote(credits: number, { minimum, maximum }: { minimum: numbe
   return `學分下限 ${minimum}、上限 ${maximum}`;
 }
 
+const MAX_TITLES = 3;
+
+/**
+ * 自動比較的對象（2026-11-01 易用性審查第 11 名）：看備案時和主方案（第一個自己的方案）比；
+ * 正在看主方案時和上一個看過的方案比，沒看過就和最新的一份自己的備案比。
+ */
+function autoCompareId(plans: readonly Plan[], activePlanId: string, previous: string | null): string {
+  const main = plans.find(({ auto }) => !auto) ?? plans[0];
+  if (main && main.id !== activePlanId) return main.id;
+  const others = plans.filter(({ id }) => id !== activePlanId);
+  if (previous && others.some(({ id }) => id === previous)) return previous;
+  return (others.filter(({ auto }) => !auto).at(-1) ?? others.at(-1))?.id ?? '';
+}
+
 export function PlanBar({ plans, activePlanId, credits, catalog, onSwitch, onCreate, limits, onSetIdentity }: PlanBarProps) {
-  const [compareId, setCompareId] = useState('');
+  // 記住上一個看過的方案；學生自己選的比較對象只對當下這個方案有效，換方案就回到自動。
+  const [seen, setSeen] = useState<{ current: string; previous: string | null }>({ current: activePlanId, previous: null });
+  if (seen.current !== activePlanId) setSeen({ current: activePlanId, previous: seen.current });
+  const [chosen, setChosen] = useState<{ active: string; id: string } | null>(null);
+  const previous = seen.current === activePlanId ? seen.previous : seen.current;
+  const compareId = chosen?.active === activePlanId ? chosen.id : autoCompareId(plans, activePlanId, previous);
   const active = plans.find(({ id }) => id === activePlanId);
   const other = plans.find(({ id }) => id === compareId && id !== activePlanId);
-  const comparison = active && other ? comparePlans(active, other, catalog) : null;
-  const titles = (keys: string[]) => keys.map((key) => catalog.get(key)?.title ?? key).join('、') || '無';
+  // comparePlans(other, active)：「多了」是只在目前這份的課，學分寫「比較對象 → 目前這份」。
+  const comparison = active && other ? comparePlans(other, active, catalog) : null;
+  const titles = (keys: string[]) => {
+    const names = keys.slice(0, MAX_TITLES).map((key) => catalog.get(key)?.title ?? key).join('、');
+    return keys.length > MAX_TITLES ? `${names} 等 ${keys.length} 門` : names;
+  };
 
   return (
     <div className="space-y-2">
@@ -73,20 +96,31 @@ export function PlanBar({ plans, activePlanId, credits, catalog, onSwitch, onCre
       )}
       {plans.length > 1 && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          <label className="flex items-center gap-2">
+          {comparison && other && (
+            <section aria-label="方案比較" className="well flex min-w-0 flex-1 basis-64 flex-wrap items-baseline gap-x-3 gap-y-1 rounded-2xl px-3 py-2">
+              <span className="font-bold">和「{other.name}」相比：</span>
+              {comparison.onlyInSecond.length === 0 && comparison.onlyInFirst.length === 0 ? (
+                <span>課都一樣</span>
+              ) : (
+                <>
+                  {comparison.onlyInSecond.length > 0 && (
+                    <span><span aria-hidden="true" className="font-bold text-mist-ink">+</span><span className="sr-only">多了</span>{titles(comparison.onlyInSecond)}</span>
+                  )}
+                  {comparison.onlyInFirst.length > 0 && (
+                    <span><span aria-hidden="true" className="font-bold text-coral-ink">−</span><span className="sr-only">少了</span>{titles(comparison.onlyInFirst)}</span>
+                  )}
+                </>
+              )}
+              <span className="tabular">學分 {comparison.firstCredits} → {comparison.secondCredits}（{comparison.creditDifference >= 0 ? '+' : ''}{comparison.creditDifference}）</span>
+            </section>
+          )}
+          <label className="flex items-center gap-2 text-xs">
             <span>與這個方案比較</span>
-            <select className="select select-sm min-h-11 w-auto" value={compareId} onChange={(event) => setCompareId(event.target.value)}>
+            <select className="select select-sm min-h-11 w-auto" value={other ? compareId : ''} onChange={(event) => setChosen({ active: activePlanId, id: event.target.value })}>
               <option value="">不比較</option>
               {plans.filter(({ id }) => id !== activePlanId).map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
             </select>
           </label>
-          {comparison && active && other && (
-            <section aria-label="方案比較" className="well flex flex-wrap gap-x-4 gap-y-1 rounded-2xl px-3 py-2">
-              <span>只在{active.name}：{titles(comparison.onlyInFirst)}</span>
-              <span>只在{other.name}：{titles(comparison.onlyInSecond)}</span>
-              <span className="tabular">學分 {comparison.firstCredits} → {comparison.secondCredits}（{comparison.creditDifference >= 0 ? '+' : ''}{comparison.creditDifference}）</span>
-            </section>
-          )}
         </div>
       )}
     </div>

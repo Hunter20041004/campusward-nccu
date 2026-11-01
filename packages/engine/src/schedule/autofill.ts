@@ -8,8 +8,8 @@ import { normalizeSearchText, parseClassUnits } from '../catalog.ts';
 import { evaluateEligibility, type IdentityProfile } from '../eligibility.ts';
 import { periodsForRange } from '../periods.ts';
 import { courseCategory, type CourseCategory, type EnrollmentRules } from '../rules.ts';
-import { chooseSections, classUnitMatch, type ClassName, type SectionPreferences } from './classPlan.ts';
-import { addCourse, findClashes, totalCredits, type ScheduleCourse, type ScheduleEntry } from './selection.ts';
+import { chooseSections, classUnitMatch, freeStretch, type ClassName, type SectionPreferences } from './classPlan.ts';
+import { addCourse, findClashes, findOtherSections, totalCredits, type ScheduleCourse, type ScheduleEntry } from './selection.ts';
 
 export interface FillContext {
   /** 目前方案的課：全部當固定點，不會被拿掉。 */
@@ -355,4 +355,42 @@ export function pickGapCourse(context: FillContext, gap: GapTarget): GapPick {
 /** 複製課號預覽：官方「必修灌檔」而且開課班級是學生自己的系級（系所會灌進去，不必自己登記）。 */
 export function isClassAutoEnrolled(course: ScheduleCourse, className: ClassName): boolean {
   return course.official?.enrollmentType === '必修灌檔' && classUnitMatch(course.official.targetGroup, className) === 'class';
+}
+
+/**
+ * 初選沒選上的課的替補（2026-11-01 易用性審查第 10 名）：context.entries 是選上、留在課表上的課（沒選上的已移出）。
+ * sections：同課名、換了排得進去的別班（findOtherSections）；sameSlot：碰到原本那段時間、整段落在空出來的空堂裡的別門課
+ * （通識只換通識、同類排前面；系上的課換同系的課或通識）。兩者都照幫我排滿同一套規則（fitProblems），確定性。
+ */
+export function lostCourseReplacements(context: FillContext, lost: ScheduleCourse, limit = 3): { sections: ScheduleCourse[]; sameSlot: ScheduleCourse[] } {
+  const fits = (course: ScheduleCourse) => fitProblems(context.entries, course, context).length === 0;
+  const sections = findOtherSections([...context.entries, asEntry(lost)], lost.key, context.catalog).filter(fits).slice(0, limit);
+  const stretches = lost.meetings.flatMap((meeting) => {
+    const [first] = periodsForRange(meeting.start, meeting.end);
+    const stretch = first ? freeStretch(context.entries, meeting.day, first.code) : null;
+    return stretch ? [{ meeting, stretch }] : [];
+  });
+  const title = normalizeSearchText(lost.title);
+  const scheduled = new Set(context.entries.map(({ course }) => course.key));
+  const inFreedSlot = (course: ScheduleCourse) => course.meetings.some((meeting) => stretches.some(({ meeting: freed, stretch }) => meeting.day === freed.day
+    && meeting.start < freed.end && freed.start < meeting.end
+    && meeting.start >= stretch.start && meeting.end <= stretch.end));
+  const category = lost.official?.generalEducation ?? '';
+  const department = lost.code?.slice(0, 3) ?? '';
+  // 通識只換通識（同類排前面）；系上的課換同系的課或通識。別系的課不列：多半不是學生要的，也常有修課限制。
+  const rankOf = (course: ScheduleCourse) => {
+    const other = course.official?.generalEducation ?? '';
+    if (category) return other === category ? 0 : other ? 1 : Infinity;
+    if (department && course.code?.slice(0, 3) === department && !other) return 0;
+    return other ? 1 : Infinity;
+  };
+  const origin = firstMeeting(lost);
+  const sameSlot = context.catalog
+    .filter((course) => course.code && course.itemType === 'course' && course.key !== lost.key && !scheduled.has(course.key)
+      && normalizeSearchText(course.title) !== title && rankOf(course) !== Infinity && inFreedSlot(course) && fits(course))
+    .sort((first, second) => rankOf(first) - rankOf(second)
+      || Math.abs(firstMeeting(first) - origin) - Math.abs(firstMeeting(second) - origin)
+      || first.key.localeCompare(second.key))
+    .slice(0, limit);
+  return { sections, sameSlot };
 }

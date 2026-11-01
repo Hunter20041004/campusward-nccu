@@ -200,6 +200,32 @@ describe('agenda view', () => {
   });
 });
 
+// 易用性審查第 8 名：手機預設的行程檢視也能從空檔找課，不用先切到方格。
+describe('free stretches in the agenda', () => {
+  test('lists each weekday with its free stretches between the classes, each with a 找課 button', async () => {
+    const onFindStretch = vi.fn();
+    setup({ onFindStretch });
+    const agenda = screen.getByRole('list', { name: '每日行程' });
+    expect(within(agenda).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['週一', '週二', '週三', '週四', '週五']);
+    // 週一 2–4 節有課：之後 C–8 節空著（第 1 節只有一節，不列）。
+    const monday = within(agenda).getByRole('button', { name: '找課：週一 C–8 節' });
+    expect(monday.closest('li')).toHaveTextContent('12:10–18:00');
+    expect(within(agenda).getByRole('button', { name: '找課：週二 整天' }).closest('li')).toHaveTextContent('整天沒課');
+    await userEvent.setup().click(within(agenda).getByRole('button', { name: '找課：週二 整天' }));
+    expect(onFindStretch).toHaveBeenCalledWith(2, expect.objectContaining({ start: 490, end: 1080, codes: ['1', '2', '3', '4', 'C', 'D', '5', '6', '7', '8'] }));
+    // 課和空檔照時間排：週一先是統計學，再來才是下午的空檔。
+    const mondayItems = within(within(agenda).getAllByRole('listitem')[0]!).getAllByRole('listitem').map((item) => item.textContent ?? '');
+    expect(mondayItems.findIndex((text) => text.includes('統計學'))).toBeLessThan(mondayItems.findIndex((text) => text.includes('空著')));
+  });
+
+  test('a free day from the preferences is shown as kept free, without a 找課 button', () => {
+    setup({ onFindStretch: vi.fn(), freeDays: [5] });
+    const agenda = screen.getByRole('list', { name: '每日行程' });
+    expect(within(agenda).queryByRole('button', { name: /^找課：週五/ })).toBeNull();
+    expect(agenda).toHaveTextContent('依偏好空下來');
+  });
+});
+
 test('shows the empty state with two ways to start', () => {
   render(<Timetable entries={[]} conflicts={[]} newKeys={new Set()} onStartSearch={vi.fn()} onImport={vi.fn()} onToggleLock={vi.fn()} onStatus={vi.fn()} onAttendance={vi.fn()} onRemove={vi.fn()} />);
   expect(screen.getByRole('button', { name: '從搜課開始' })).toBeInTheDocument();
