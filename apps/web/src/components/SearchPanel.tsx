@@ -1,6 +1,6 @@
+import { offeringLine } from './offering.ts';
 import {
   candidateScheduleSummary,
-  formatTargetGroup,
   NCCU_PERIODS,
   offeringDepartments,
   parseTargetGroup,
@@ -30,7 +30,6 @@ type Degree = '' | 'undergrad' | 'graduate';
 
 const gradeLabel = (grade: string) => (/^[一二三四五六七1-7]$/.test(grade) ? `${grade}年級` : grade);
 /** 修課限制的第一句（例「經濟系、地政系學生優先」）。 */
-const firstSentence = (text: string) => text.split(/[。；;\n]/).map((part) => part.trim()).find(Boolean) ?? '';
 const quoteTitles = (titles: readonly string[]) => titles.map((title) => `「${title}」`).join('、');
 
 /** 課表空格帶過來的時段；nonce 每點一次就換，同一格再點也會重新帶入。 */
@@ -97,6 +96,11 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
   // 點課表空格：帶入那一天與那一節，打開多條件搜尋讓學生看得到條件。
   useEffect(() => {
     if (!slot) return;
+    // 從空格找課是一次新的搜尋：清掉關鍵字與其他條件，不然常會因為殘留的課號直接變成「沒有符合的課」。
+    onQuery?.('');
+    setDepartment('');
+    setGeneralEducation('');
+    setEmi(false);
     setWeekdays([slot.day]);
     setSlotPeriods([slot.period]);
     setDayparts([]);
@@ -145,7 +149,6 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
     if (!owners.length) return '';
     return `${owners.slice(0, 2).join('・')}${owners.length > 2 ? '等' : ''} 必修`;
   };
-  const offeringLine = (course: Course) => [formatTargetGroup(course.official.targetGroup), firstSentence(course.restrictionText)].filter(Boolean).join('・');
 
   const resetPaging = () => setPage(0);
 

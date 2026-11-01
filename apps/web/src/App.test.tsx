@@ -155,6 +155,50 @@ describe('searching and adding', () => {
     expect(screen.getByRole('status', { name: '最近的修改' })).toHaveTextContent('已移出候選「合成課程概論」');
   });
 
+  test('removing a candidate that is in the timetable says it also leaves the timetable', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog()} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('searchbox', { name: '搜課' }), '合成課程');
+    await user.click(await screen.findByRole('button', { name: '加入課表：合成課程概論' }));
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '候選' }));
+    await user.click(screen.getByRole('button', { name: /移除.*合成課程概論/ }));
+    expect(screen.getByRole('status', { name: '最近的修改' })).toHaveTextContent(/已移出候選「合成課程概論」，也從目前的課表「主方案」移出/);
+    expect(screen.getByText(/共/)).toHaveTextContent('共 0 學分');
+  });
+
+  test('clicking an empty cell after a keyword search shows that slot instead of an empty result', async () => {
+    const user = userEvent.setup();
+    const rows = [
+      officialRow({ subNum: '900001001', subNam: '統計學', subTime: '一234' }),
+      officialRow({ subNum: '900002001', subNam: '週三下午課', subTime: '三D5' }),
+    ];
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('searchbox', { name: '搜課' }), '統計學');
+    await user.click(await screen.findByRole('button', { name: '加入課表：統計學' }));
+    await user.click(screen.getByRole('button', { name: '找週三 D 節的課' }));
+    expect(screen.getByRole('searchbox', { name: '搜課' })).toHaveValue('');
+    expect(screen.getAllByRole('article').map((item) => within(item).getByRole('heading').textContent)).toEqual(['週三下午課']);
+  });
+
+  test('after swapping to another section, focus lands on the new section\'s panel', async () => {
+    const user = userEvent.setup();
+    const rows = [
+      officialRow({ subNum: '900001001', subNam: '統計學', teaNam: '陳合成', subTime: '一234' }),
+      officialRow({ subNum: '900001011', subNam: '統計學', teaNam: '林合成', subTime: '二D56' }),
+    ];
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('searchbox', { name: '搜課' }), '900001001');
+    await user.click(await screen.findByRole('button', { name: '加入課表：統計學' }));
+    await user.click(within(screen.getByRole('group', { name: '每週課表' })).getByRole('button', { name: /統計學/ }));
+    await user.click(screen.getByRole('button', { name: /^換這班：林合成/ }));
+    expect(screen.getByRole('group', { name: '統計學 的操作' })).toHaveTextContent('林合成');
+    expect(document.activeElement).toHaveTextContent('統計學');
+    expect(document.activeElement?.tagName).toBe('H3');
+  });
+
   test('clicking an empty timetable cell searches that day and period and shows search', async () => {
     const user = userEvent.setup();
     const rows = [
@@ -319,7 +363,7 @@ describe('planner fixes', () => {
     await user.click(within(row).getByRole('button', { name: '加入課表：民法概要' }));
     expect(screen.getByRole('status', { name: '最近的修改' })).toHaveTextContent('已加入「民法概要」，與「臺灣政治」衝堂');
     expect(row).toHaveTextContent('已在課表');
-    await user.click(within(list).getByRole('button', { name: '移除候選：臺灣政治' }));
+    await user.click(within(list).getByRole('button', { name: /^(移除候選|從候選與目前課表移除)：臺灣政治$/ }));
     expect(screen.getByRole('status', { name: '最近的修改' })).toHaveTextContent('已移出候選「臺灣政治」');
     expect(within(list).getAllByRole('article')).toHaveLength(1);
   });
@@ -431,7 +475,9 @@ describe('timetable course panel and the conflict nudge', () => {
     await user.click(within(screen.getByRole('group', { name: '每週課表' })).getByRole('button', { name: /臺灣政治/ }));
     expect(screen.queryByRole('button', { name: nudgeText })).toBeNull();
     await user.click(screen.getByRole('button', { name: '關閉操作' }));
-    expect(screen.getByRole('button', { name: nudgeText })).toBeInTheDocument();
+    // 被蓋過一次就收成小紅點，不再彈回來擋畫面（手機每次換頁都會開「更多」）；報讀器仍念得到。
+    expect(screen.queryByRole('button', { name: nudgeText })).toBeNull();
+    expect(screen.getByRole('button', { name: '小山' })).toHaveAccessibleDescription(nudgeText);
     await user.click(within(screen.getByRole('navigation', { name: '主要分頁' })).getByRole('button', { name: '更多' }));
     expect(screen.queryByRole('button', { name: nudgeText })).toBeNull();
   });

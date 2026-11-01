@@ -199,3 +199,12 @@ describe('copy preview', () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 });
+
+test('the copy preview closes when the student leaves the data page, so it never copies an outdated list', async () => {
+  const props = { entries, data: createEmptyData(), term: '1151', onReplace: vi.fn(), onClear: vi.fn(), onWallpaper: vi.fn(), canRestoreImport: false, onRestoreImport: vi.fn(), planName: '主方案', limits: null, onBackToTimetable: vi.fn(), now: () => new Date('2026-10-28T08:00:00Z') };
+  const { rerender } = render(<DataPanel {...props} visible />);
+  await userEvent.setup().click(screen.getByRole('button', { name: '複製課號清單' }));
+  expect(screen.getByRole('region', { name: /複製課號清單/ })).toBeInTheDocument();
+  rerender(<DataPanel {...props} visible={false} />);
+  expect(screen.queryByRole('region', { name: /複製課號清單/ })).not.toBeInTheDocument();
+});

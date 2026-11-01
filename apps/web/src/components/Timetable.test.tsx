@@ -126,7 +126,7 @@ describe('course actions', () => {
 describe('course panel', () => {
   const statsDetails = rowToCourse(officialRow({ subNum: '900001001', subNam: '統計學', teaNam: '陳合成', subTime: '一234', subClassroom: '綜合210' }), { year: 115, semester: 1 }).course!;
   const otherStats = entry('900001011', '統計學', [{ day: 2, start: 790, end: 960 }]).course;
-  const otherDetails = rowToCourse(officialRow({ subNum: '900001011', subNam: '統計學', teaNam: '林合成', subTime: '二D56', subClassroom: '研究200' }), { year: 115, semester: 1 }).course!;
+  const otherDetails = rowToCourse(officialRow({ subNum: '900001011', subNam: '統計學', teaNam: '林合成', subTime: '二D56', subClassroom: '研究200', subGde: '統計二甲' }), { year: 115, semester: 1 }).course!;
   const withDetails = (props: Partial<TimetableProps> = {}) => setup({
     courseOf: (key) => (key === stats.course.key ? statsDetails : key === otherStats.key ? otherDetails : undefined),
     otherSections: (key) => (key === stats.course.key ? [{ ...otherStats, teacher: '林合成' }] : []),
@@ -153,6 +153,8 @@ describe('course panel', () => {
     expect(swap).toHaveTextContent('林合成');
     expect(swap).toHaveTextContent('週二 D56（13:10–16:00）');
     expect(swap).toHaveTextContent('研究200');
+    // 看得出是給哪個班開的，才不會換到別系或研究所的班。
+    expect(swap).toHaveTextContent('統計二');
     await user.click(within(swap).getByRole('button', { name: '換這班：林合成 週二 D56' }));
     expect(onSwap).toHaveBeenCalledWith(stats.course.key, otherStats.key);
   });

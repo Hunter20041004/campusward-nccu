@@ -94,12 +94,12 @@ describe('findClashes', () => {
 
 describe('findOtherSections', () => {
   const entry = (scheduled: ScheduleCourse) => ({ course: scheduled, item: item(scheduled.key) });
-  const politics = course('1151:042112001', '臺灣政治', [{ day: 3, start: 970, end: 1140 }]);
-  const law = course('1151:000603001', '民法概要', [{ day: 3, start: 970, end: 1080 }]);
-  const lawMonday = course('1151:000603011', '民法概要', [{ day: 1, start: 790, end: 960 }], { teacher: '王老師' });
-  const lawFriday = course('1151:000603021', ' 民法概要 ', [{ day: 5, start: 490, end: 600 }]);
-  const lawSameTime = course('1151:000603031', '民法概要', [{ day: 3, start: 1030, end: 1140 }]);
-  const lawStatsTime = course('1151:000603041', '民法概要', [{ day: 2, start: 490, end: 600 }]);
+  const politics = course('1151:042112001', '臺灣政治', [{ day: 3, start: 970, end: 1140 }], { code: '042112001' });
+  const law = course('1151:000603001', '民法概要', [{ day: 3, start: 970, end: 1080 }], { code: '000603001' });
+  const lawMonday = course('1151:000603011', '民法概要', [{ day: 1, start: 790, end: 960 }], { teacher: '王老師', code: '000603011' });
+  const lawFriday = course('1151:000603021', ' 民法概要 ', [{ day: 5, start: 490, end: 600 }], { code: '000603021' });
+  const lawSameTime = course('1151:000603031', '民法概要', [{ day: 3, start: 1030, end: 1140 }], { code: '000603031' });
+  const lawStatsTime = course('1151:000603041', '民法概要', [{ day: 2, start: 490, end: 600 }], { code: '000603041' });
   const stats = course('1151:000001001', '統計學', [{ day: 2, start: 490, end: 660 }]);
   const other = course('1151:000999001', '刑法概要', [{ day: 4, start: 490, end: 600 }]);
   const catalog = [politics, law, lawSameTime, lawFriday, other, lawMonday, lawStatsTime, stats];
@@ -116,6 +116,22 @@ describe('findOtherSections', () => {
 
   test('returns nothing for a course that is not in the plan', () => {
     expect(findOtherSections([entry(politics)], law.key, catalog)).toEqual([]);
+  });
+
+  test('only offers real sections of the same course: same subject code, credits and term length, with a class time', () => {
+    const calculus = course('1151:000711001', '微積分', [{ day: 1, start: 490, end: 660 }], { code: '000711001', official: { semesterSpan: '單學期科目' } as never });
+    const sibling = course('1151:000711011', '微積分', [{ day: 2, start: 490, end: 660 }], { code: '000711011', official: { semesterSpan: '單學期科目' } as never });
+    const otherSubject = course('1151:000712001', '微積分', [{ day: 3, start: 490, end: 660 }], { code: '000712001', official: { semesterSpan: '單學期科目' } as never });
+    const fullYear = course('1151:701001001', '微積分', [{ day: 4, start: 490, end: 660 }], { code: '701001001', credits: 4, official: { semesterSpan: '全學年科目' } as never });
+    const otherCredits = course('1151:000711021', '微積分', [{ day: 5, start: 490, end: 660 }], { code: '000711021', credits: 2, official: { semesterSpan: '單學期科目' } as never });
+    const noTime = course('1151:000711031', '微積分', [], { code: '000711031', official: { semesterSpan: '單學期科目' } as never });
+    const all = [calculus, sibling, otherSubject, fullYear, otherCredits, noTime];
+    expect(findOtherSections([entry(calculus)], calculus.key, all).map(({ key }) => key)).toEqual([sibling.key]);
+  });
+
+  test('offers nothing for a course added by hand without a course code', () => {
+    const manual = course('manual:1', '民法概要', [{ day: 3, start: 970, end: 1080 }], { source: 'manual' });
+    expect(findOtherSections([entry(manual)], manual.key, catalog)).toEqual([]);
   });
 });
 

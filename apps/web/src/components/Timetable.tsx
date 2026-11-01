@@ -1,3 +1,4 @@
+import { offeringLine } from './offering.ts';
 import {
   NCCU_PERIODS,
   buildScheduleAgenda,
@@ -78,7 +79,7 @@ function layoutBlocks(entries: readonly ScheduleEntry[], periods: readonly strin
 
 const sectionSchedule = (course: ScheduleCourse) => candidateScheduleSummary(course, DAY_LABELS);
 
-function SwapSections({ entry, sections, onSwap, classroomOf }: { entry: ScheduleEntry; sections: readonly ScheduleCourse[]; onSwap: (fromKey: string, toKey: string) => void; classroomOf: (key: string) => string | undefined }) {
+function SwapSections({ entry, sections, onSwap, detailsOf }: { entry: ScheduleEntry; sections: readonly ScheduleCourse[]; onSwap: (fromKey: string, toKey: string) => void; detailsOf: (key: string) => Course | undefined }) {
   return (
     <section aria-labelledby={`swap-${entry.course.key}`} className="space-y-1.5">
       <h4 id={`swap-${entry.course.key}`} className="flex items-center gap-1.5 text-sm font-bold">
@@ -94,12 +95,18 @@ function SwapSections({ entry, sections, onSwap, classroomOf }: { entry: Schedul
               <li key={section.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
                 <div className="min-w-0 flex-1 basis-40 text-sm">
                   <p className="font-bold">{section.teacher || '教師未定'}</p>
+                  {(() => {
+                    // 開課班級與修課限制：看得出是給哪個班開的，才不會換到不能選的班。
+                    const details = detailsOf(section.key);
+                    const offering = details ? offeringLine(details) : '';
+                    return offering && <p className="text-xs text-base-content/75">{offering}</p>;
+                  })()}
                   <p>
                     {candidateScheduleSummary(section, DAY_LABELS, undefined, { clock: true }).split('・').map((part) => {
                       const [codes, clock] = part.split('（');
                       return <span key={part} className="mr-2 inline-block">{codes}{clock && <span className="whitespace-nowrap">（{clock}</span>}</span>;
                     })}
-                    <span className="inline-block text-xs text-base-content/75">{[classroomOf(section.key), section.code].filter(Boolean).join(' · ')}</span>
+                    <span className="inline-block text-xs text-base-content/75">{[detailsOf(section.key)?.classroom, section.code].filter(Boolean).join(' · ')}</span>
                   </p>
                 </div>
                 <button type="button" className="btn btn-sm min-h-11 gap-1" aria-label={`換這班：${label}`} onClick={() => onSwap(entry.course.key, section.key)}>
@@ -114,16 +121,22 @@ function SwapSections({ entry, sections, onSwap, classroomOf }: { entry: Schedul
   );
 }
 
-function CourseActions({ entry, details, sections, onSwap, courseOf, onToggleLock, onStatus, onAttendance, onRemove, onClose }: {
+function CourseActions({ entry, details, sections, onSwap, courseOf, focusTitle = false, onToggleLock, onStatus, onAttendance, onRemove, onClose }: {
   entry: ScheduleEntry;
   details: Course | undefined;
   sections: readonly ScheduleCourse[] | undefined;
   onSwap: TimetableProps['onSwap'];
   courseOf: TimetableProps['courseOf'];
+  /** 剛換班時把焦點放到新面板的標題，鍵盤與報讀器使用者不會掉到頁面最上方。 */
+  focusTitle?: boolean;
   onClose: () => void;
 } & Pick<TimetableProps, 'onToggleLock' | 'onStatus' | 'onAttendance' | 'onRemove'>) {
   const { course, item } = entry;
   const ref = useRef<HTMLDivElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (focusTitle) title.current?.focus();
+  }, [focusTitle]);
   // 點課卡後把面板捲進畫面（手機底部有分頁列和小山，scroll-margin 留出它們的高度）。
   useEffect(() => {
     ref.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
@@ -131,7 +144,7 @@ function CourseActions({ entry, details, sections, onSwap, courseOf, onToggleLoc
   return (
     <div ref={ref} role="group" aria-label={`${course.title} 的操作`} className="raised mt-3 scroll-mt-24 scroll-mb-44 space-y-3 rounded-2xl px-4 py-3 md:scroll-mb-6">
       <div className="flex items-start gap-2">
-        <h3 className="min-w-0 flex-1 break-words pt-2 text-base font-bold leading-snug">{course.title}</h3>
+        <h3 ref={title} tabIndex={-1} className="min-w-0 flex-1 break-words pt-2 text-base font-bold leading-snug outline-none">{course.title}</h3>
         <button type="button" className="btn btn-ghost btn-sm min-h-11 min-w-11" aria-label="關閉操作" onClick={onClose}>
           <X className="size-4" aria-hidden="true" />
         </button>
@@ -158,7 +171,7 @@ function CourseActions({ entry, details, sections, onSwap, courseOf, onToggleLoc
           <button type="button" className="btn btn-danger btn-sm min-h-11" onClick={() => onRemove(course.key)}>移出課表</button>
         )}
       </div>
-      {!item.locked && sections && onSwap && <SwapSections entry={entry} sections={sections} onSwap={onSwap} classroomOf={(key) => courseOf?.(key)?.classroom} />}
+      {!item.locked && sections && onSwap && <SwapSections entry={entry} sections={sections} onSwap={onSwap} detailsOf={(key) => courseOf?.(key)} />}
       {details && <CourseDetails course={details} id={`timetable-details-${course.key}`} withBasics />}
     </div>
   );
@@ -188,6 +201,7 @@ function EmptyState({ onStartSearch, onImport }: Pick<TimetableProps, 'onStartSe
 export function Timetable(props: TimetableProps) {
   const { entries, conflicts, newKeys } = props;
   const [selected, setSelectedState] = useState<string | null>(null);
+  const [swappedTo, setSwappedTo] = useState<string | null>(null);
   const { onSelect } = props;
   const setSelected = (key: string | null) => {
     setSelectedState(key);
@@ -364,7 +378,8 @@ export function Timetable(props: TimetableProps) {
               details={props.courseOf?.(selectedEntry.course.key)}
               courseOf={props.courseOf}
               sections={props.otherSections?.(selectedEntry.course.key)}
-              onSwap={props.onSwap && ((from, to) => { props.onSwap?.(from, to); setSelected(to); })}
+              focusTitle={swappedTo === selectedEntry.course.key}
+              onSwap={props.onSwap && ((from, to) => { props.onSwap?.(from, to); setSwappedTo(to); setSelected(to); })}
               onToggleLock={props.onToggleLock}
               onStatus={props.onStatus}
               onAttendance={props.onAttendance}

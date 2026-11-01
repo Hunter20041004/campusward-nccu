@@ -64,5 +64,16 @@ test('the nudge folds into a small dot on the button after a few seconds, and op
 
 test('the nudge stays hidden while something else is open on top', () => {
   render(<FloatingOrb open={false} onOpen={vi.fn()} onClose={vi.fn()} nudge="提醒" nudgeHidden>內容</FloatingOrb>);
-  expect(screen.queryByText('提醒')).not.toBeInTheDocument();
+  // 泡泡不出現（不擋住上面的東西）；提醒收成按鈕上的小點，報讀器仍念得到。
+  expect(screen.queryByRole('button', { name: '提醒' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '小山' })).toHaveAccessibleDescription('提醒');
+});
+
+test('the nudge does not pop up again after another menu covered it (phones open 更多 on every page switch)', () => {
+  const props = { open: false, onOpen: vi.fn(), onClose: vi.fn(), nudge: '有 1 個衝堂，要我幫忙看看嗎？' };
+  const { rerender } = render(<FloatingOrb {...props}>內容</FloatingOrb>);
+  expect(screen.getByRole('button', { name: '有 1 個衝堂，要我幫忙看看嗎？' })).toBeInTheDocument();
+  rerender(<FloatingOrb {...props} nudgeHidden>內容</FloatingOrb>);
+  rerender(<FloatingOrb {...props} nudgeHidden={false}>內容</FloatingOrb>);
+  expect(screen.queryByRole('button', { name: '有 1 個衝堂，要我幫忙看看嗎？' })).not.toBeInTheDocument();
 });

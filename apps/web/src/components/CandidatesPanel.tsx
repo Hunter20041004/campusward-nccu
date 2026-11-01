@@ -84,7 +84,7 @@ export function CandidatesPanel({ candidates, catalog, scheduledKeys, clashesOf,
                           <Plus className="size-4" aria-hidden="true" />加入課表
                         </button>
                       )}
-                      <button type="button" className="btn btn-sm min-h-11 gap-1" aria-label={`移除候選：${title}`} onClick={() => onRemove(key)}>
+                      <button type="button" className="btn btn-sm min-h-11 gap-1" aria-label={scheduled ? `從候選與目前課表移除：${title}` : `移除候選：${title}`} onClick={() => onRemove(key)}>
                         <Trash2 className="size-4" aria-hidden="true" />移除
                       </button>
                     </span>

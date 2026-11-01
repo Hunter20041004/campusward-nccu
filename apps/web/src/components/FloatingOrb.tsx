@@ -25,7 +25,9 @@ export function FloatingOrb({ open, onOpen, onClose, nudge, onNudge, onDismissNu
 }) {
   const [folded, setFolded] = useState<string | null>(null);
   useEffect(() => {
-    if (!nudge || open || nudgeHidden || folded === nudge) return;
+    if (!nudge || open || folded === nudge) return;
+    // 被別的選單蓋住過就直接收成小點（手機每次換頁都會開「更多」，不收的話會一直重新彈出來）。
+    if (nudgeHidden) { setFolded(nudge); return; }
     const timer = setTimeout(() => setFolded(nudge), NUDGE_FOLD_MS);
     return () => clearTimeout(timer);
   }, [folded, nudge, nudgeHidden, open]);

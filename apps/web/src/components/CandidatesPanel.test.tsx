@@ -64,7 +64,7 @@ test('adds an unscheduled candidate to the timetable and marks the scheduled one
 
 test('removes a candidate', async () => {
   const props = setup();
-  await userEvent.setup().click(screen.getByRole('button', { name: '移除候選：會計學' }));
+  await userEvent.setup().click(screen.getByRole('button', { name: /^(移除候選|從候選與目前課表移除)：會計學$/ }));
   expect(props.onRemove).toHaveBeenCalledWith(accounting.key);
 });
 

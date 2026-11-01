@@ -79,7 +79,12 @@ export interface OfferingUnit {
 // 系所簡稱 + 學制（碩專／碩／博）+ 年級 + 班別（甲乙丙、A/B、地政系的土管／土資／土測組）。
 const UNIT_PATTERN = /(.+?)(?:(碩專|碩|博)?([一二三四五六七1-7])([甲乙丙丁戊己]|[A-Z]|土[管資測])?|(學士|碩士|博士))/y;
 // 官方用很短的簡稱，少數要對回系名才找得到。
-const DEPARTMENT_ALIASES: Readonly<Record<string, string>> = { 地: '地政' };
+const DEPARTMENT_ALIASES: Readonly<Record<string, string>> = { 地: '地政', 外文中: '外文中心' };
+// 同一個系分語別開課（歐文法二、東南越三）：系名合併成一項，語別放進年級標籤（法二、越三），仍可依語別篩選。
+const LANGUAGE_UNITS: Readonly<Record<string, readonly [string, string]>> = {
+  歐文法: ['歐文學', '法'], 歐文德: ['歐文學', '德'], 歐文西: ['歐文學', '西'],
+  東南越: ['東南亞語', '越'], 東南泰: ['東南亞語', '泰'], 東南印: ['東南亞語', '印'],
+};
 const UNDERGRAD_GRADE = /^[一二三四五六七1-7]$/;
 
 const canonicalDepartment = (name: string) => DEPARTMENT_ALIASES[name] ?? name;
@@ -108,7 +113,9 @@ function splitTargetGroup(value: string): OfferingUnit[] {
     const match = UNIT_PATTERN.exec(value);
     if (!match) break;
     const [, department = '', level = '', year = '', , degree = ''] = match;
-    units.push({ department: canonicalDepartment(department), grade: degree || `${level}${year}` });
+    const grade = degree || `${level}${year}`;
+    const language = LANGUAGE_UNITS[department];
+    units.push(language ? { department: language[0], grade: `${language[1]}${grade}` } : { department: canonicalDepartment(department), grade });
   }
   if (UNIT_PATTERN.lastIndex === value.length && units.length) return units;
   // 整段是系所名（「經濟系」「台史所」）或拆不開：去掉結尾的「系」「所」當系所，不分年級。
@@ -177,12 +184,13 @@ function matchesUnit(units: readonly OfferingUnit[], department: string, grade: 
 }
 
 /** 關鍵字的延伸比對：開課班級（含「經濟系」這種寫法）、通識類別與標籤文字。 */
+/**
+ * 關鍵字比對的額外文字：通識類別與標籤。開課班級不放原文（「教務處通識教育中心」會讓「教育」「中心」命中整個中心的課），
+ * 系所改由 departmentWords 做整詞比對。
+ */
 function detailText(course: Course): string {
   const { official } = course;
-  const departments = unitsOf(official.targetGroup).map(({ department }) => `${department} ${department}系`);
   return [
-    official.targetGroup,
-    ...departments,
     official.generalEducation,
     official.generalEducation ? '通識' : '',
     official.emi ? '英語授課 EMI' : '',
@@ -191,6 +199,15 @@ function detailText(course: Course): string {
     official.semesterSpan === '全學年科目' ? '全學年' : '',
     course.delivery.asyncAllowed ? '可非同步' : '',
   ].filter(Boolean).map(normalizeSearchText).join('|');
+}
+
+/** 開課班級裡可以整詞比對的寫法：經濟、經濟系、經濟所、經濟二、經濟碩一；拆不開的整段單位名只認全名。 */
+function departmentWords(course: Course): Set<string> {
+  const words = new Set<string>();
+  for (const { department, grade } of unitsOf(course.official.targetGroup)) {
+    [department, `${department}系`, `${department}所`, grade ? `${department}${grade}` : ''].filter(Boolean).forEach((word) => words.add(normalizeSearchText(word)));
+  }
+  return words;
 }
 
 const degreeMatches = (degreeLevel: string, degree: 'undergrad' | 'graduate') => (
@@ -238,7 +255,8 @@ export function searchCourses(courses: readonly Course[], search: CourseSearch):
     if (words.length) {
       const basic = normalizeSearchText(`${course.title} ${course.teacher} ${course.code}`);
       const haystack = search.matchDetails ? `${basic}|${detailText(course)}` : basic;
-      if (!words.every((word) => haystack.includes(word))) return false;
+      const departments = search.matchDetails ? departmentWords(course) : null;
+      if (!words.every((word) => haystack.includes(word) || departments?.has(word))) return false;
     }
     if (unit && !normalizeSearchText(course.official.targetGroup).includes(unit)) return false;
     if (department && !matchesUnit(unitsOf(course.official.targetGroup), department, grade)) return false;

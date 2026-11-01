@@ -160,6 +160,13 @@ describe('offering groups (開課班級)', () => {
     expect(parseTargetGroup('商院學士')).toEqual([{ department: '商院', grade: '學士' }]);
   });
 
+  test('keeps one entry per unit for the language centres and departments', () => {
+    expect(parseTargetGroup('外文中')).toEqual([{ department: '外文中心', grade: '' }]);
+    expect(parseTargetGroup('歐文法二')).toEqual([{ department: '歐文學', grade: '法二' }]);
+    expect(parseTargetGroup('歐文德一歐文西一')).toEqual([{ department: '歐文學', grade: '德一' }, { department: '歐文學', grade: '西一' }]);
+    expect(parseTargetGroup('東南越三')).toEqual([{ department: '東南亞語', grade: '越三' }]);
+  });
+
   test('reads land economics groups (地一土管) as 地政', () => {
     expect(parseTargetGroup('地一土管地一土資')).toEqual([{ department: '地政', grade: '一' }, { department: '地政', grade: '一' }]);
   });
@@ -222,6 +229,12 @@ describe('searchCourses filters for finding courses', () => {
     expect(wide('英語授課')).toEqual(['900102001']);
     expect(wide('emi')).toEqual(['900102001']);
     expect(codes(searchCourses(courses, { text: '經濟系' }))).toEqual([]);
+  });
+
+  test('a keyword does not pull in every course of a centre just because its name contains the word', () => {
+    const wide = (text: string) => codes(searchCourses(courses, { text, matchDetails: true }));
+    expect(wide('教育')).toEqual([]);
+    expect(wide('中心')).toEqual([]);
   });
 
   test('filters any general education category', () => {

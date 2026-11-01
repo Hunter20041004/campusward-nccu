@@ -160,10 +160,14 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const removeCandidate = (key: string, title: string) => {
     const ownPlans = planner.planner.plans.filter(({ auto }) => !auto);
     const locked = ownPlans.find(({ items }) => items.some((item) => item.key === key && item.locked));
-    const elsewhere = ownPlans.filter(({ id, items }) => id !== planner.planner.activePlanId && items.some((item) => item.key === key));
+    const inPlans = ownPlans.filter(({ items }) => items.some((item) => item.key === key));
+    const current = inPlans.find(({ id }) => id === planner.planner.activePlanId);
+    const others = inPlans.filter(({ id }) => id !== planner.planner.activePlanId);
+    // 引擎會把這門課從所有自己的方案移出，目前這份課表也包括在內：提示要講清楚。
+    const where = [current ? `目前的課表「${current.name}」` : '', others.length ? quoted(others.map(({ name }) => name)) : ''].filter(Boolean).join('和');
     const label = locked
       ? `「${title}」在「${locked.name}」已鎖定，先解鎖才能移出候選`
-      : `已移出候選「${title}」${elsewhere.length ? `，也從${quoted(elsewhere.map(({ name }) => name))}移出` : ''}`;
+      : `已移出候選「${title}」${where ? `，也從${where}移出` : ''}`;
     courseChange('candidate', [{ type: 'removeCandidate', key }], label);
   };
   // 愛心可以切換：已在候選就移出。
@@ -240,7 +244,9 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   // 沒有金鑰時，按衝堂提醒直接打開衝堂那門課的面板（可以「換一班」），不先跳 AI 設定。
   const openClashingCourse = () => {
     const keys = planner.conflicts.flatMap(({ courseKeys }) => courseKeys);
-    const key = keys.find((candidate) => findOtherSections(planner.entries, candidate, planner.catalog.values()).length > 0) ?? keys[0];
+    // 優先打開「沒鎖定、而且有別班可以換」的那門；鎖定的課面板裡不會出現換一班。
+    const unlocked = keys.filter((candidate) => !planner.entries.find(({ course }) => course.key === candidate)?.item.locked);
+    const key = unlocked.find((candidate) => findOtherSections(planner.entries, candidate, planner.catalog.values()).length > 0) ?? unlocked[0] ?? keys[0];
     setDismissedNudge(conflictSignature);
     if (!key) return;
     showTool('timetable');
@@ -399,6 +405,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
               <div hidden={tool !== 'data'}>
                 {ready && (
                   <DataPanel
+                    visible={tool === 'data'}
                     entries={planner.entries}
                     data={planner.data}
                     term={data.term}

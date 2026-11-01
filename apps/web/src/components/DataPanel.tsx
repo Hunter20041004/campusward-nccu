@@ -1,6 +1,6 @@
 import { exportTransfer, previewImport, type ImportPreview, type ScheduleEntry, type StoredData } from '@campusward/engine';
 import { ClipboardCopy, Download, FileUp, History, Image, ShieldCheck, Trash2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CopyListPreview } from './CopyListPreview.tsx';
 
 export interface DataPanelProps {
@@ -19,6 +19,8 @@ export interface DataPanelProps {
   limits: { minimum: number; maximum: number } | null;
   /** 預覽裡按「回課表處理」。 */
   onBackToTimetable: () => void;
+  /** 這一頁是否正顯示（工具面板只隱藏不卸載）。 */
+  visible?: boolean;
   /** 複製課號預覽開關：讓小山的提醒泡泡先讓開。 */
   onCopyPreview?: (open: boolean) => void;
   now?: () => Date;
@@ -37,7 +39,7 @@ function download(name: string, text: string) {
 
 const action = 'btn btn-sm min-h-11 gap-1.5';
 
-export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper, canRestoreImport, onRestoreImport, planName, limits, onBackToTimetable, onCopyPreview, now = () => new Date() }: DataPanelProps) {
+export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper, canRestoreImport, onRestoreImport, planName, limits, onBackToTimetable, onCopyPreview, visible = true, now = () => new Date() }: DataPanelProps) {
   const [message, setMessage] = useState('');
   const [preview, setPreview] = useState<Extract<ImportPreview, { valid: true }> | null>(null);
   const [importError, setImportError] = useState('');
@@ -49,6 +51,11 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
     onCopyPreview?.(open);
   };
   const copyButton = useRef<HTMLButtonElement>(null);
+  // 離開這一頁就收起預覽：勾選只在打開時決定，回來時方案或課表可能已經變了，會漏複製新加的課。
+  useEffect(() => {
+    if (!visible && copyOpen) setCopyOpen(false);
+    // setCopyOpen 每次渲染都是新函式；只看 visible。
+  }, [visible]);
   const closeCopy = () => {
     setCopyOpen(false);
     setTimeout(() => copyButton.current?.focus(), 0);

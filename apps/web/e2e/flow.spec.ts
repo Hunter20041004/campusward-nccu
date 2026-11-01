@@ -373,7 +373,7 @@ test.describe('candidates and copy preview', () => {
     await row.getByRole('button', { name: '加入課表：會計學' }).click();
     await expect(page.getByRole('status', { name: '最近的修改' })).toContainText('已加入「會計學」，與「統計學」衝堂');
     await expect(row).toContainText('已在課表');
-    await list.getByRole('button', { name: '移除候選：會計學' }).click();
+    await list.getByRole('button', { name: /^(移除候選|從候選與目前課表移除)：會計學$/ }).click();
     await expect(page.getByRole('status', { name: '最近的修改' })).toContainText('已移出候選「會計學」');
     await expect(list.getByRole('article')).toHaveCount(1);
   });
@@ -576,7 +576,9 @@ test.describe('the conflict nudge', () => {
       await expect(bubble).toHaveCount(0);
       await expect.poll(() => notCovered(page.getByRole('list', { name: '更多工具' }).getByRole('button', { name: '條件' }))).toBe('ok');
       await nav.getByRole('button', { name: '更多' }).click();
-      await expect(bubble).toBeVisible();
+      // 被選單蓋過一次就收成小點，不再彈回來（手機每次換頁都會開「更多」）。
+      await expect(bubble).toHaveCount(0);
+      await expect(page.locator('[data-nudge-dot]')).toBeVisible();
     }
     // 約 8 秒後收成按鈕上的小點。
     await expect(bubble).toHaveCount(0, { timeout: 12_000 });
