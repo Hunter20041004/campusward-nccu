@@ -93,3 +93,34 @@ test('clearing local data also removes the Gemini key', async () => {
   await user.click(screen.getByRole('button', { name: '確認清除' }));
   expect(ai.removeKey).toHaveBeenCalled();
 });
+
+test('clearing local data resets the AI panel and the graduation gaps', async () => {
+  const user = userEvent.setup();
+  const { createGeminiClient } = await import('./ai/gemini.ts');
+  const ai = createGeminiClient({ fetchImpl: vi.fn(), session: null });
+  ai.setKey(`AIza${'x'.repeat(35)}`, false);
+  render(<App catalog={fakeCatalog()} storage={memoryStorage()} ai={ai} />);
+  const exportJson = (await import('../../../packages/engine/test/fixtures/synthetic/student-export.json')).default;
+  await user.upload(await screen.findByLabelText('上傳全人系統匯出檔'), new File([JSON.stringify(exportJson)], 'e.json', { type: 'application/json' }));
+  expect(await screen.findByText(/學校審查資料日期/)).toBeInTheDocument();
+  const side = screen.getByRole('complementary', { name: '側欄' });
+  await user.click(within(side).getByRole('tab', { name: 'AI' }));
+  await user.click(within(side).getByRole('checkbox', { name: /我已年滿 18 歲/ }));
+  expect(within(side).getByRole('button', { name: '移除金鑰' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '清除本機資料' }));
+  await user.click(screen.getByRole('button', { name: '確認清除' }));
+  expect(screen.queryByText(/學校審查資料日期/)).not.toBeInTheDocument();
+  expect(within(side).queryByRole('button', { name: '移除金鑰' })).not.toBeInTheDocument();
+  expect(within(side).getByRole('checkbox', { name: /我已年滿 18 歲/ })).not.toBeChecked();
+});
+
+test('keeps the AI tab state when switching side tabs', async () => {
+  const user = userEvent.setup();
+  render(<App catalog={fakeCatalog()} storage={memoryStorage()} />);
+  const side = screen.getByRole('complementary', { name: '側欄' });
+  await user.click(within(side).getByRole('tab', { name: 'AI' }));
+  await user.click(within(side).getByRole('checkbox', { name: /我已年滿 18 歲/ }));
+  await user.click(within(side).getByRole('tab', { name: '條件' }));
+  await user.click(within(side).getByRole('tab', { name: 'AI' }));
+  expect(within(side).getByLabelText('Gemini 金鑰')).toBeInTheDocument();
+});

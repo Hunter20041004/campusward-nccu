@@ -82,8 +82,9 @@ export function findBrandViolations(files: SourceFile[]): Violation[] {
 // 手機號碼與電子信箱（計畫 Phase 5）：全人系統匯出檔含導師信箱與聯絡人電話，公開庫一律不出現。
 // 允許：保留給範例的網域、機器人與無回信地址；package-lock 內的套件作者資訊不檢查。
 // 官方課程快照照原文保存（備註裡有承辦的加簽信箱，學校已公開）；課綱語料不在此列，管線本身要移除。
-const PHONE_PATTERN = /(?<![\d-])09\d{2}-?\d{3}-?\d{3}(?![\d-])/g;
-const EMAIL_PATTERN = /(?<![\w.%+-])[\w.%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+// 比對前先 NFKC（全形數字、全形＠變半形）；手機接受 0 或 +886 開頭，中間可用空白、點或連字號分隔。
+const PHONE_PATTERN = /(?<![\d-])(?:\+?886[\s.-]?|0)9\d{2}[\s.-]?\d{3}[\s.-]?\d{3}(?![\d-])/g;
+const EMAIL_PATTERN = /(?<![\w.%+-])[\w.%+-]+(?:@|\s*[[(]\s*at\s*[\])]\s*)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/gi;
 const EMAIL_ALLOWED = /@(?:[\w-]+\.)*example(?:\.(?:com|org|net|test))?$|@users\.noreply\.github\.com$|^noreply@/i;
 const CONTACT_SKIPPED = /(^|\/)package-lock\.json$|\/fixtures\/synthetic\/|^data\/(snapshots|corrections)\//;
 
@@ -92,15 +93,17 @@ export function findPersonalContacts(files: SourceFile[]): Violation[] {
     .filter((file) => !CONTACT_SKIPPED.test(file.path))
     .flatMap((file) => {
       const hits: Violation[] = [];
-      file.text.split('\n').forEach((lineText, index) => {
+      file.text.split('\n').forEach((rawLine, index) => {
+        const lineText = rawLine.normalize('NFKC');
         const found: { at: number; hit: Violation }[] = [];
         for (const match of lineText.matchAll(PHONE_PATTERN)) {
           found.push({ at: match.index, hit: { check: 'phone', path: file.path, line: index + 1, detail: '疑似手機號碼' } });
         }
         for (const match of lineText.matchAll(EMAIL_PATTERN)) {
           // 網址裡的帳密（https://user:pass@host）不算信箱；mailto: 仍要檢查。
-          if (EMAIL_ALLOWED.test(match[0]) || /\/\/[^\s/]*$/.test(lineText.slice(0, match.index))) continue;
-          found.push({ at: match.index, hit: { check: 'email', path: file.path, line: index + 1, detail: `疑似電子信箱 ${match[0].replace(/^[^@]+/, '…')}` } });
+          const address = match[0].replace(/\s*[[(]\s*at\s*[\])]\s*/i, '@');
+          if (EMAIL_ALLOWED.test(address) || /\/\/[^\s/]*$/.test(lineText.slice(0, match.index))) continue;
+          found.push({ at: match.index, hit: { check: 'email', path: file.path, line: index + 1, detail: `疑似電子信箱 ${address.replace(/^[^@]+/, '…')}` } });
         }
         hits.push(...found.sort((a, b) => a.at - b.at).map(({ hit }) => hit));
       });

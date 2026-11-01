@@ -105,3 +105,13 @@ test('hides features that are switched off', async () => {
   expect(screen.queryByRole('heading', { name: '職涯方向找課' })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: '截圖匯入' })).not.toBeInTheDocument();
 });
+
+test('the key field is not a password field, so browsers do not offer to save the key', () => {
+  setup();
+  return userEvent.setup().click(screen.getByRole('checkbox', { name: /我已年滿 18 歲/ })).then(() => {
+    const field = screen.getByLabelText('Gemini 金鑰');
+    expect(field).not.toHaveAttribute('type', 'password');
+    expect(field.closest('form')).toBeNull();
+    expect(field).toHaveAttribute('data-1p-ignore');
+  });
+});

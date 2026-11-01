@@ -150,7 +150,7 @@ describe('applyAiChangeSet', () => {
 
   test('passes through the automatic backup confirmation', () => {
     const result = applyAiChangeSet(seeded([{ type: 'addToSchedule', key: '1151:900004001' }]), [{ type: 'removeFromSchedule', key: '1151:900004001' }], catalog, { profile, autoBackupLimit: 0 });
-    expect(result).toEqual({ status: 'needsConfirmation', reason: 'autoBackupFull', limit: 0 });
+    expect(result).toEqual({ status: 'needsConfirmation', reason: 'autoBackupFull', limit: 0, replace: 1 });
   });
 });
 
@@ -302,4 +302,10 @@ test('checks a plan whose attendance changed before the change set switched away
     { type: 'switchPlan', planId: 'plan-2' },
   ], catalog, { profile });
   expect(codesOf(result)).toEqual(['free-day-occupied']);
+});
+
+test('a lock kept only in an automatic backup does not block removing a candidate', () => {
+  const state = withPlans([item('900001001')]);
+  state.plans.push({ id: 'plan-2', name: '自動備案 1（改動前）', auto: true, items: [item('900001001', true)] });
+  expect(applyAiChangeSet(state, [{ type: 'removeCandidate', key: '1151:900001001' }], catalog, { profile }).status).toBe('applied');
 });

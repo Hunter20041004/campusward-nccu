@@ -39,9 +39,18 @@ if (!result.ok) {
   console.error(result.reason);
   process.exit(1);
 }
+// 不變量：時段切分漏課或官方改了時間寫法時，整次失敗、保留上一版，不悄悄少課。
 const anomalies = scheduleTextAnomalies(rows);
-if (crossCheck.onlyInUnits.length) console.warn(`只有開課單位查得到的課（已併入，時段切分可能沒涵蓋）：${crossCheck.onlyInUnits.join('、')}`);
-if (anomalies.length) console.warn(`上課時間格式不符的課：${anomalies.join('、')}`);
+const unscheduled = rows.filter((row) => String(row.subTime ?? '').trim() === '未定或彈性').length;
+const problems = [
+  crossCheck.onlyInUnits.length ? `只有開課單位查得到的課（時段切分沒涵蓋）：${crossCheck.onlyInUnits.join('、')}` : '',
+  anomalies.length ? `上課時間格式不符的課：${anomalies.join('、')}` : '',
+  unscheduled === 0 ? '「未定或彈性」那格是 0 門（:week=0 可能已失效）' : '',
+].filter(Boolean);
+if (problems.length) {
+  console.error(`${problems.join('\n')}\n保留上一版。`);
+  process.exit(1);
+}
 mkdirSync(dir, { recursive: true });
 writeFileSync(join(dir, 'courses.json'), serializeSnapshot(result.courses));
 const meta = { ...result.meta, crossCheck: { units: units.length, ...crossCheck }, scheduleTextAnomalies: anomalies };

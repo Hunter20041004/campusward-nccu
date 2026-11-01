@@ -69,6 +69,10 @@
     outline: 2px solid var(--color-mist-ink);
     outline-offset: 2px;
   }
+  /* 金鑰輸入框：看起來像密碼欄位，但不是，瀏覽器不會提議儲存。 */
+  .key-mask {
+    -webkit-text-security: disc;
+  }
   .tabular {
     font-variant-numeric: tabular-nums;
   }

@@ -98,3 +98,13 @@ test('sends a screenshot as inline data before the text', async () => {
   const body = JSON.parse(String((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body)) as { contents: { parts: unknown[] }[] };
   expect(body.contents[0]!.parts).toEqual([{ inlineData: { mimeType: 'image/png', data: 'AAAA' } }, { text: '{}' }]);
 });
+
+test.each([
+  [new Response(JSON.stringify({ error: { code: 404, status: 'NOT_FOUND', message: 'models/x is not found' } }), { status: 404 })],
+  [new Response(JSON.stringify({ error: { code: 400, status: 'FAILED_PRECONDITION', message: 'User location is not supported' } }), { status: 400 })],
+])('does not ask the student to rephrase when the model cannot be used', async (response) => {
+  const fetchImpl = vi.fn(async () => response);
+  const gemini = createGeminiClient({ fetchImpl, session: memoryStorage() });
+  gemini.setKey(KEY, false);
+  await expect(gemini.generate(call)).rejects.toMatchObject({ kind: 'unavailable' });
+});

@@ -46,3 +46,17 @@ describe('QaSection', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('這學期的課綱資料還沒整理好');
   });
 });
+
+test('marks course codes in the AI answer that are not in the snapshot', async () => {
+  const generate = vi.fn(async () => JSON.stringify({ answer: '可以看 999999999。', citations: [] }));
+  render(<QaSection source={source} term="1151" courses={courses} client={{ generate }} aiReady />);
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText('想問課程的什麼'), '期末報告');
+  await user.click(screen.getByRole('button', { name: '查課綱' }));
+  expect(await screen.findByText('（快照查無此課號）')).toBeInTheDocument();
+});
+
+test('announces results politely', async () => {
+  await ask('期末報告');
+  expect((await screen.findByRole('list', { name: '找到的課綱段落' })).closest('[aria-live="polite"]')).not.toBeNull();
+});

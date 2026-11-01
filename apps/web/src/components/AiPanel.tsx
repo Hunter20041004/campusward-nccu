@@ -3,6 +3,7 @@ import { KeyRound, Send, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { GeminiClient } from '../ai/gemini.ts';
 import { aiSearch, planWithAi } from '../ai/orb.ts';
+import { AnswerText } from './AnswerText.tsx';
 import { OrbMark } from './OrbMark.tsx';
 import { httpSyllabusSource, type SyllabusSource } from '../qa/syllabusSource.ts';
 import { FEATURES, type Features } from '../features.ts';
@@ -31,30 +32,10 @@ type Outcome =
   | { kind: 'applied'; demo: boolean; answer: string; added: string[]; removed: string[]; corrections: CourseCorrection[]; backups: number }
   | { kind: 'answered'; answer: string }
   | { kind: 'rejected'; answer: string; reasons: string[] }
-  | { kind: 'confirm'; answer: string; changes: Change[]; label: string; corrections: CourseCorrection[]; demo: boolean }
+  | { kind: 'confirm'; answer: string; changes: Change[]; label: string; corrections: CourseCorrection[]; demo: boolean; replace: number }
   | { kind: 'failed'; message: string };
 
 const action = 'btn btn-sm min-h-11 gap-1.5 border border-base-300 bg-base-100';
-const CODE = /([0-9A-Z]{9})/;
-
-/** AI 回覆只當純文字顯示（不渲染 HTML、Markdown 圖片或連結）；文中的課號比對快照，查無者標示。 */
-function AnswerText({ text, catalog }: { text: string; catalog: ReadonlyMap<string, ScheduleCourse> }) {
-  const codes = new Set([...catalog.values()].flatMap(({ code }) => (code ? [code] : [])));
-  return (
-    <>
-      {text.split('\n').filter((line) => line.trim()).map((line, index) => (
-        <p key={index} className="whitespace-pre-wrap break-words">
-          {line.split(CODE).map((part, partIndex) => (
-            CODE.test(part) && part.length === 9 && !codes.has(part)
-              ? <span key={partIndex}>{part}<span className="text-coral-ink">（快照查無此課號）</span></span>
-              : <span key={partIndex}>{part}</span>
-          ))}
-        </p>
-      ))}
-    </>
-  );
-}
-
 export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSource, features = FEATURES, planner, catalog, courses, ready, onApply }: AiPanelProps) {
   const [accepted, setAccepted] = useState(false);
   const [hasKey, setHasKey] = useState(() => client.hasKey());
@@ -65,12 +46,13 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const titleOf = (key: string) => catalog.get(key)?.title ?? key;
+  const knownCodes = new Set(courses.map(({ code }) => code));
 
   const finish = (result: AiApplyResult, answer: string, corrections: CourseCorrection[], changes: Change[], label: string, demo: boolean) => {
     if (result.status === 'applied') {
       setOutcome({ kind: 'applied', demo, answer, added: result.diff.added, removed: result.diff.removed, corrections, backups: result.autoBackupPlanIds.length });
     } else if (result.status === 'needsConfirmation') {
-      setOutcome({ kind: 'confirm', answer, changes, label, corrections, demo });
+      setOutcome({ kind: 'confirm', answer, changes, label, corrections, demo, replace: result.replace });
     } else {
       setOutcome({ kind: 'rejected', answer, reasons: result.violations.map(({ message }) => message) });
     }
@@ -98,6 +80,7 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
     const plan = await planWithAi({ client, request: text, termLabel, planner, catalog, courses });
     setBusy(false);
     if (plan.status === 'failed') {
+      setHasKey(client.hasKey());
       setOutcome({ kind: 'failed', message: plan.message });
       return;
     }
@@ -143,7 +126,8 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
       )}
 
       {accepted && !hasKey && (
-        <form className="space-y-2 rounded-field border border-base-300 px-3 py-2" onSubmit={(event) => { event.preventDefault(); saveKey(); }}>
+        // 不用 <form> 與密碼欄位：瀏覽器會把「送出後消失的密碼表單」當成登入、提議儲存，金鑰就會被長期存下來。
+        <div role="group" aria-label="設定 Gemini 金鑰" className="space-y-2 rounded-field border border-base-300 px-3 py-2">
           <p>
             用你自己的 Gemini 金鑰（免費申請：<a className="link" href={KEY_HELP_URL} target="_blank" rel="noopener noreferrer">Google AI Studio</a>
             ，說明見<a className="link" href="/privacy#gemini">隱私說明</a>）。金鑰只放在這個分頁的記憶體，重新整理就要重貼。
@@ -151,15 +135,28 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
           <label className="input input-sm min-h-11 w-full">
             <KeyRound className="size-4" aria-hidden="true" />
             <span className="sr-only">Gemini 金鑰</span>
-            <input ref={keyInput} type="password" autoComplete="off" spellCheck={false} placeholder="貼上 Gemini 金鑰" />
+            <input
+              ref={keyInput}
+              type="text"
+              className="key-mask"
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-1p-ignore=""
+              data-lpignore="true"
+              data-form-type="other"
+              placeholder="貼上 Gemini 金鑰"
+              onKeyDown={(event) => { if (event.key === 'Enter') saveKey(); }}
+            />
           </label>
           <label className="flex min-h-11 items-center gap-2">
             <input type="checkbox" className="checkbox checkbox-sm" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
             這個分頁記住金鑰（關掉分頁就清除）
           </label>
           {keyError && <p role="alert" className="text-coral-ink">{keyError}</p>}
-          <button type="submit" className={action}>使用這把金鑰</button>
-        </form>
+          <button type="button" className={action} onClick={saveKey}>使用這把金鑰</button>
+        </div>
       )}
 
       {features.orb && accepted && hasKey && (
@@ -212,17 +209,17 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
             )}
             {outcome.kind === 'confirm' && (
               <div className="space-y-2">
-                <p>改動前要另存自動備案，但自動備案已滿。要刪掉最舊的一份再套用嗎？</p>
+                <p>改動前要另存自動備案，但自動備案已滿。要刪掉最舊的 {outcome.replace} 份再套用嗎？</p>
                 <button
                   type="button"
                   className={action}
                   onClick={() => finish(onApply(outcome.changes, outcome.label, true), outcome.answer, outcome.corrections, outcome.changes, outcome.label, outcome.demo)}
                 >
-                  刪掉最舊的並套用
+                  刪掉最舊的 {outcome.replace} 份並套用
                 </button>
               </div>
             )}
-            {outcome.answer && <AnswerText text={outcome.answer} catalog={catalog} />}
+            {outcome.answer && <AnswerText text={outcome.answer} knownCodes={knownCodes} />}
           </div>
         )}
       </div>

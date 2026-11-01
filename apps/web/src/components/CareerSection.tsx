@@ -3,6 +3,7 @@ import { Compass, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { recommendForCareer, type CareerResult } from '../ai/career.ts';
 import type { GeminiClient } from '../ai/gemini.ts';
+import { AnswerText } from './AnswerText.tsx';
 
 export interface CareerSectionProps {
   client: Pick<GeminiClient, 'generate'>;
@@ -37,11 +38,12 @@ export function CareerSection({ client, termLabel, courses, candidateKeys, onAdd
         </label>
         <button type="submit" className={action} disabled={busy || !direction.trim()}>{busy ? '整理中…' : '找相關的課'}</button>
       </form>
+      <div aria-live="polite">
       {result?.status === 'failed' && <p role="alert" className="text-coral-ink">{result.message}</p>}
       {result?.status === 'ok' && (
         <div className="space-y-2">
           <p className="text-xs text-base-content/75">AI 依一般知識整理，未上網查證；職涯資訊請自己再確認。課程是 Campusward 在本學期課程資料裡用關鍵字找到的。</p>
-          <p className="whitespace-pre-wrap">{result.summary}</p>
+          <AnswerText text={result.summary} knownCodes={new Set(courses.map(({ code }) => code))} />
           {result.skills.map((skill) => (
             <div key={skill.name}>
               <p className="font-medium">{skill.name}<span className="font-normal text-base-content/75">{skill.why && ` · ${skill.why}`}</span></p>
@@ -66,6 +68,7 @@ export function CareerSection({ client, termLabel, courses, candidateKeys, onAdd
           ))}
         </div>
       )}
+      </div>
     </section>
   );
 }

@@ -92,6 +92,7 @@ export function ScreenshotImport({ client, termLabel, planner, courses, onAddCan
         <ImageUp className="size-4" aria-hidden="true" />{busy ? '辨識中…' : '選擇截圖'}
         <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="選擇課表截圖" disabled={busy} onChange={(event) => void recognize(event.currentTarget)} />
       </label>
+      <div aria-live="polite">
       {error && <p role="alert" className="text-coral-ink">{error}</p>}
       {result && (
         <div className="space-y-2">
@@ -138,6 +139,7 @@ export function ScreenshotImport({ client, termLabel, planner, courses, onAddCan
           {!result.matched.length && !result.pending.length && <p>截圖裡沒有讀到本學期的課。</p>}
         </div>
       )}
+      </div>
     </section>
   );
 }

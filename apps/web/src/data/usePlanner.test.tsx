@@ -127,3 +127,14 @@ describe('restoring an import', () => {
     expect(result.current.canRestoreImport).toBe(false);
   });
 });
+
+// 獨立審查修正（2026-11-01 第二輪）：AI 回覆前學生自己改的課不能被舊狀態蓋掉。
+test('applies a late AI change set on top of changes made while waiting', () => {
+  const { result } = setup();
+  const staleApplyAi = result.current.applyAi;
+  act(() => { result.current.apply([{ type: 'addToSchedule', key: '1151:900003001' }], '自己加的'); });
+  act(() => { staleApplyAi([{ type: 'addToSchedule', key: '1151:900001001' }], 'AI 已修改課表'); });
+  expect(result.current.entries.map(({ course: c }) => c.code)).toEqual(['900003001', '900001001']);
+  act(() => { result.current.undo(); });
+  expect(result.current.entries.map(({ course: c }) => c.code)).toEqual(['900003001']);
+});

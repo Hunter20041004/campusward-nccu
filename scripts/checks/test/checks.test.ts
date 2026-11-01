@@ -142,3 +142,22 @@ describe('findPersonalContacts', () => {
     expect(findPersonalContacts([file('data/x.json', '"900123001" 2026-10-28 09123456789')])).toEqual([]);
   });
 });
+
+// 獨立審查修正（2026-11-01 第二輪）：常見的其他寫法也要擋。
+test.each([
+  ['spaces', ['0912', '345', '678'].join(' ')],
+  ['dots', ['0912', '345', '678'].join('.')],
+  ['country code', ['+886', '912', '345', '678'].join('-')],
+  ['country code without separators', ['+886', '912345678'].join('')],
+  ['full-width digits', ['０９１２', '３４５６７８'].join('')],
+])('flags a mobile number written with %s', (_, text) => {
+  expect(findPersonalContacts([file('data/syllabi/1151/corpus.jsonl', `助教 ${text}`)]).map(({ check }) => check)).toEqual(['phone']);
+});
+
+test.each([
+  ['a full-width at sign', ['teacher', 'nccu.edu.tw'].join('＠')],
+  ['[at]', ['teacher', 'nccu.edu.tw'].join(' [at] ')],
+  ['(at)', ['teacher', 'nccu.edu.tw'].join('(at)')],
+])('flags an email written with %s', (_, text) => {
+  expect(findPersonalContacts([file('data/syllabi/1151/corpus.jsonl', `信箱 ${text}`)]).map(({ check }) => check)).toEqual(['email']);
+});

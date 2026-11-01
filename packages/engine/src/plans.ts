@@ -70,7 +70,8 @@ export type ApplyResult =
     autoBackupPlanIds: string[];
     changedPlans: PlanChange[];
   }
-  | { status: 'needsConfirmation'; reason: 'autoBackupFull'; limit: number }
+  /** replace：同意後會刪掉幾份最舊的自動備案。 */
+  | { status: 'needsConfirmation'; reason: 'autoBackupFull'; limit: number; replace: number }
   | { status: 'rejected'; errors: string[] };
 
 export interface ApplyOptions {
@@ -103,6 +104,8 @@ function nextPlanId(plans: readonly Plan[]): string {
 
 const activeItems = (state: PlannerState) => state.plans.find(({ id }) => id === state.activePlanId)?.items ?? [];
 const lockedIn = (plans: readonly Plan[], key: string) => plans.some(({ items }) => items.some((item) => item.locked && item.key === key));
+/** 自己的方案（不含自動備案）：自動備案是改動前的快照，移出候選不改它們。 */
+const ownPlans = (plans: readonly Plan[]) => plans.filter(({ auto }) => !auto);
 
 function mutateActive(state: PlannerState, update: (items: PlanItem[]) => PlanItem[]): PlannerState {
   return { ...state, plans: state.plans.map((plan) => (plan.id === state.activePlanId ? { ...plan, items: update(plan.items) } : plan)) };
@@ -126,12 +129,12 @@ function applyOne(state: PlannerState, change: Change, catalog: ReadonlyMap<stri
     case 'addCandidate':
       return state.candidates.includes(change.key) ? state : { ...state, candidates: [...state.candidates, change.key] };
     case 'removeCandidate':
-      // 和移出課表一樣略過鎖定課：任一方案鎖定就不移出候選。
-      if (lockedIn(state.plans, change.key)) return state;
+      // 和移出課表一樣略過鎖定課：任一個自己的方案鎖定就不移出候選。自動備案保持原樣。
+      if (lockedIn(ownPlans(state.plans), change.key)) return state;
       return {
         ...state,
         candidates: state.candidates.filter((key) => key !== change.key),
-        plans: state.plans.map((plan) => ({ ...plan, items: plan.items.filter(({ key }) => key !== change.key) })),
+        plans: state.plans.map((plan) => (plan.auto ? plan : { ...plan, items: plan.items.filter(({ key }) => key !== change.key) })),
       };
     case 'addToSchedule': {
       const withCandidate = applyOne(state, { type: 'addCandidate', key: change.key }, catalog);
@@ -194,7 +197,7 @@ export function lockedRemovals(state: PlannerState, changes: readonly Change[], 
   const keys: string[] = [];
   changes.reduce((current, change) => {
     if (change.type === 'removeFromSchedule' && lockedIn(current.plans.filter(({ id }) => id === current.activePlanId), change.key)) keys.push(change.key);
-    if (change.type === 'removeCandidate' && lockedIn(current.plans, change.key)) keys.push(change.key);
+    if (change.type === 'removeCandidate' && lockedIn(ownPlans(current.plans), change.key)) keys.push(change.key);
     return applyOne(current, change, catalog);
   }, state);
   return keys;
@@ -245,7 +248,7 @@ export function applyChanges(
   const excess = autoPlans.length + needBackup.length - limit;
   let plans = applied.plans;
   if (excess > 0) {
-    if (!options.replaceOldestAutoBackup) return { status: 'needsConfirmation', reason: 'autoBackupFull', limit };
+    if (!options.replaceOldestAutoBackup) return { status: 'needsConfirmation', reason: 'autoBackupFull', limit, replace: excess };
     // 從最舊的開始替換，但跳過學生正在看的方案和這批正在修改的方案。
     const keep = new Set([applied.activePlanId, ...changedPlans.map(({ planId }) => planId)]);
     const replaceable = autoPlans.filter(({ id }) => !keep.has(id)).slice(0, excess).map(({ id }) => id);

@@ -30,8 +30,14 @@ export function SidePanel({ tab, onTab, children, conditions, ai }: { tab: SideT
           </button>
         ))}
       </div>
-      <div role="tabpanel" id={`side-panel-${tab}`} aria-labelledby={`side-tab-${tab}`} className="flex min-h-0 flex-1 flex-col p-4">
-        {tab === 'search' ? children : tab === 'conditions' ? conditions : ai ?? (
+      {/* 三個分頁都保持掛載，只隱藏沒選的：切分頁不會丟掉 AI 結果、輸入到一半的文字。 */}
+      {(['search', 'conditions'] as const).map((id) => (
+        <div key={id} role="tabpanel" id={`side-panel-${id}`} aria-labelledby={`side-tab-${id}`} hidden={tab !== id} className="min-h-0 flex-1 flex-col p-4 [&:not([hidden])]:flex">
+          {id === 'search' ? children : conditions}
+        </div>
+      ))}
+      <div role="tabpanel" id="side-panel-ai" aria-labelledby="side-tab-ai" hidden={tab !== 'ai'} className="min-h-0 flex-1 flex-col p-4 [&:not([hidden])]:flex">
+        {ai ?? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <OrbMark size={56} />
             <p className="font-medium">AI 光球</p>

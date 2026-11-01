@@ -51,11 +51,13 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini }: { cat
   const keyOf = (course: Course) => toScheduleCourse(course).key;
   const reminders = useMemo(() => checkEnrollmentRules(planner.entries, planner.profile, RULES), [planner.entries, planner.profile]);
   const titleOf = (key: string) => planner.catalog.get(key)?.title ?? '課程';
-  const [pendingBackup, setPendingBackup] = useState<{ changes: Change[]; label: string } | null>(null);
+  const [pendingBackup, setPendingBackup] = useState<{ changes: Change[]; label: string; replace: number } | null>(null);
+  // 清除本機資料後換掉這個值，讓 AI 面板與畢業缺口重新掛載（金鑰、勾選、匯入的修課資料都歸零）。
+  const [generation, setGeneration] = useState(0);
   // 大改動前會自動備份；備份滿了先問，不悄悄蓋掉最舊的一份（設計 6.1）。
   const applyChange = (changes: Change[], label: string) => {
     const result = planner.apply(changes, label);
-    if (result.status === 'needsConfirmation') setPendingBackup({ changes, label });
+    if (result.status === 'needsConfirmation') setPendingBackup({ changes, label, replace: result.replace });
     return result;
   };
   const conditionCourses = useMemo(() => {
@@ -137,6 +139,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini }: { cat
                     planner.clearAll();
                     ai.removeKey();
                     void clearBrowserCaches();
+                    setGeneration((value) => value + 1);
                   }}
                   canRestoreImport={planner.canRestoreImport}
                   onRestoreImport={planner.restoreBeforeImport}
@@ -154,6 +157,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini }: { cat
               )}
               {FEATURES.graduation && ready && (
                 <GraduationPanel
+                  key={`graduation-${generation}`}
                   courses={courses}
                   entries={planner.entries}
                   candidateKeys={candidateKeys}
@@ -172,6 +176,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini }: { cat
               onTab={(sideTab) => setView({ sideTab })}
               ai={(
                 <AiPanel
+                  key={`ai-${generation}`}
                   client={ai}
                   term={ready ? data.term : ''}
                   termLabel={ready ? data.label : ''}
@@ -217,8 +222,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini }: { cat
       <ConfirmDialog
         open={pendingBackup !== null}
         title="自動備案已滿"
-        message="改動前會自動備份原本的課表，但自動備案已經有 5 份。要刪掉最舊的一份再繼續嗎？"
-        confirmLabel="刪掉最舊的並繼續"
+        message={`改動前會自動備份原本的課表，但自動備案已經滿了。要刪掉最舊的 ${pendingBackup?.replace ?? 1} 份再繼續嗎？`}
+        confirmLabel={`刪掉最舊的 ${pendingBackup?.replace ?? 1} 份並繼續`}
         onConfirm={() => {
           if (pendingBackup) planner.apply(pendingBackup.changes, pendingBackup.label, { replaceOldestAutoBackup: true });
           setPendingBackup(null);

@@ -2,6 +2,7 @@ import { NCCU_HOSTS, safeExternalUrl, type Course } from '@campusward/engine';
 import { BookOpenText, ExternalLink } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { GeminiClient } from '../ai/gemini.ts';
+import { AnswerText } from './AnswerText.tsx';
 import { askSyllabi, type QaContext, type QaResult } from '../qa/answer.ts';
 import type { SyllabusIndex } from '../qa/syllabusIndex.ts';
 import { searchSyllabi } from '../qa/syllabusSearch.ts';
@@ -87,11 +88,12 @@ export function QaSection({ source, term, courses, client, aiReady }: QaSectionP
         <button type="submit" className="btn btn-sm min-h-11 border border-base-300 bg-base-100" disabled={busy || !question.trim()}>{busy ? '查詢中…' : '查課綱'}</button>
       </form>
       {!aiReady && <p className="text-xs text-base-content/75">沒有金鑰也能查：會列出課綱裡相關的段落；設定金鑰後 AI 會根據這些段落回答。</p>}
+      <div aria-live="polite" className="space-y-2">
       {error && <p role="alert" className="text-coral-ink">{error}</p>}
       {answer?.status === 'failed' && <p role="alert" className="text-coral-ink">{answer.message}</p>}
       {answer?.status === 'ok' && (
         <div className="rounded-field bg-base-200/60 px-3 py-2">
-          <p className="whitespace-pre-wrap break-words">{answer.answer}</p>
+          <AnswerText text={answer.answer} knownCodes={new Set(byCode.keys())} />
           <p className="mt-1 text-xs text-base-content/75">
             AI 只根據下面的課綱段落回答，可能有誤，以官方課綱為準。
             {answer.citations.length > 0 && ` 根據：${answer.citations.map((code) => byCode.get(code)?.title ?? code).join('、')}`}
@@ -112,6 +114,7 @@ export function QaSection({ source, term, courses, client, aiReady }: QaSectionP
           ))}
         </ul>
       )}
+      </div>
     </section>
   );
 }

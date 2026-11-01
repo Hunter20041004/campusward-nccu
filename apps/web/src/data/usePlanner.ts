@@ -87,6 +87,9 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
     return map;
   }, [courses, workspace.manualCourses]);
   const planner = useMemo(() => withRefreshedItems(workspace.planner, catalog), [workspace.planner, catalog]);
+  // 最新的資料：AI 等回覆的幾秒內學生可能自己改了課，晚到的變更要套在最新狀態上，不能用送出當下的舊狀態。
+  const latest = useRef({ data, planner });
+  latest.current = { data, planner };
 
   /** 先寫入、成功才更新畫面；失敗時畫面維持原樣並說明，不假裝已存。 */
   const save = useCallback((next: StoredData): boolean => {
@@ -97,33 +100,37 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
       return false;
     }
     setData(next);
+    latest.current = { ...latest.current, data: next };
     return true;
   }, [storage]);
 
-  const savePlanner = useCallback((next: PlannerState): boolean => (
-    save({ ...data, terms: { ...data.terms, [term]: { ...workspace, planner: next } } })
-  ), [data, save, term, workspace]);
+  const savePlanner = useCallback((next: PlannerState): boolean => {
+    const current = latest.current.data;
+    const saved = save({ ...current, terms: { ...current.terms, [term]: { ...(current.terms[term] ?? emptyWorkspace()), planner: next } } });
+    if (saved) latest.current = { ...latest.current, planner: next };
+    return saved;
+  }, [save, term]);
 
   const apply = useCallback((changes: Change[], label: string, options?: ApplyOptions): ApplyResult => {
     // 學期尚未載入時不寫入，避免以空學期覆蓋資料。
     if (!term) return { status: 'rejected', errors: ['課程資料還沒載入，沒有存檔。'] };
-    const result = applyChanges(planner, changes, catalog, options);
+    const result = applyChanges(latest.current.planner, changes, catalog, options);
     if (result.status !== 'applied') return result;
     if (!savePlanner(result.state)) return { status: 'rejected', errors: ['沒有存檔。'] };
     setUndoEntry({ label, planner: result.undo });
     setNewKeys(new Set(result.diff.added));
     return result;
-  }, [catalog, planner, savePlanner, term]);
+  }, [catalog, savePlanner, term]);
 
   const applyAi = useCallback((changes: Change[], label: string, context: Omit<AiApplyContext, 'profile'> = {}): AiApplyResult => {
     if (!term) return { status: 'rejected', violations: [{ code: 'unknown-course', message: '課程資料還沒載入，沒有存檔。', courseKeys: [] }] };
-    const result = applyAiChangeSet(planner, changes, catalog, { ...context, profile: data.profile });
+    const result = applyAiChangeSet(latest.current.planner, changes, catalog, { ...context, profile: latest.current.data.profile });
     if (result.status !== 'applied') return result;
     if (!savePlanner(result.state)) return { status: 'rejected', violations: [{ code: 'unknown-course', message: '沒有存檔。', courseKeys: [] }] };
     setUndoEntry({ label, planner: result.undo });
     setNewKeys(new Set(result.diff.added));
     return result;
-  }, [catalog, data.profile, planner, savePlanner, term]);
+  }, [catalog, savePlanner, term]);
 
   const clearUndo = useCallback(() => setUndoEntry(null), []);
   const dismissNotice = useCallback(() => setNotice(null), []);

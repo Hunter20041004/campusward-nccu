@@ -8,13 +8,14 @@ const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const KEY_PATTERN = /^[A-Za-z0-9_-]{20,100}$/;
 
 export type GeminiErrorKind =
-  | 'no-key' | 'invalid-key' | 'permission' | 'quota' | 'bad-request' | 'server' | 'network' | 'blocked' | 'truncated' | 'empty';
+  | 'no-key' | 'invalid-key' | 'permission' | 'quota' | 'unavailable' | 'bad-request' | 'server' | 'network' | 'blocked' | 'truncated' | 'empty';
 
 const MESSAGES: Record<GeminiErrorKind, string> = {
   'no-key': '還沒有貼上 Gemini 金鑰。',
   'invalid-key': 'Gemini 說這把金鑰無效，請重新複製金鑰再貼一次。',
   permission: '這把金鑰不能使用 Gemini API，請到 Google AI Studio 確認金鑰的權限。',
   quota: '這把金鑰的免費額度暫時用完了，請稍後再試，或明天再用。',
+  unavailable: '目前使用的 Gemini 模型不能用（可能已停用，或你所在地區、方案不支援），換說法也沒用；請稍後再試，或到 GitHub 回報。',
   'bad-request': 'Gemini 看不懂這次的請求，請換個說法再試一次。',
   server: 'Gemini 暫時沒有回應，請稍後再試。',
   network: '連不上 Gemini，請檢查網路。',
@@ -59,13 +60,15 @@ const BLOCKED_FINISH = new Set(['SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED
 
 // 依 error.details[].reason 分類；狀態碼只在沒有 reason 時當備援（舊程式把 400/401 一律當金鑰無效）。
 function classify(status: number, body: unknown): GeminiErrorKind {
-  const error = (body as { error?: { details?: { reason?: unknown }[] } } | null)?.error;
+  const error = (body as { error?: { status?: unknown; details?: { reason?: unknown }[] } } | null)?.error;
   const reasons = (error?.details ?? []).map(({ reason }) => String(reason ?? ''));
   if (reasons.includes('API_KEY_INVALID')) return 'invalid-key';
   if (reasons.some((reason) => reason === 'RESOURCE_EXHAUSTED' || reason === 'RATE_LIMIT_EXCEEDED') || status === 429) return 'quota';
   if (reasons.some((reason) => reason.startsWith('API_KEY_') || reason === 'SERVICE_DISABLED' || reason === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT') || status === 403) {
     return 'permission';
   }
+  // 模型不存在、退役，或地區／方案不支援：換說法不會好。
+  if (status === 404 || error?.status === 'NOT_FOUND' || error?.status === 'FAILED_PRECONDITION') return 'unavailable';
   return status >= 500 ? 'server' : 'bad-request';
 }
 
