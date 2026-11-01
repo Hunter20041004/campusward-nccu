@@ -174,6 +174,8 @@ test.each([
 // 姓名、加入碼都是虛構的，以拼接產生。
 const MARK = '〔聯絡資訊已移除〕';
 const fakeCode = ['qw3', 'rty7'].join('');
+const fakeHashCode = ['zx9q', 'w8er'].join('');
+const fakeName = ['王', '小明'].join('');
 describe('findSyllabusLeaks', () => {
   test.each([
     ['a TA name before a removed contact', `有問題可以跟助教聯絡: ${['林', '小魚'].join('')}/ ${MARK}`],
@@ -181,6 +183,14 @@ describe('findSyllabusLeaks', () => {
     ['an English TA name', `TA: ${['Amy', 'Test'].join(' ')} (${MARK})`],
     ['a Classroom cjc join code', `https://classroom.google.com/c/QWxQ0zZ9?cjc=${fakeCode}`],
     ['a Classroom code written out', `google classroom 課程網站 (代碼: ${fakeCode})`],
+    // 第四輪審查：TA 後接中文姓名、表格「 | 」分隔、姓名前有年級身分（不需旁邊有標記）、「#」加入碼、沒有區碼的市話。
+    ['a Chinese TA name after "TA:"', `TA: ${fakeName} (${MARK})`],
+    ['a TA name in a table row', `助教 | ${fakeName} | ${MARK}`],
+    ['a TA name after a year of study', `由助教碩二${fakeName}代為播放`],
+    ['a TA name after a doctoral status', `感謝 TA 博班${fakeName}同學`],
+    ['a Classroom code written after #', `Google Classroom Participation #${fakeHashCode}`],
+    ['a bare landline near 研究室', `研究室 ${['27', '77-0001'].join('')}`],
+    ['a bare landline near 影印', `影印店(測試路1號; ${['2777', '0000'].join('')}, 營業到晚上)`],
   ])('flags %s', (_, text) => {
     expect(findSyllabusLeaks([file('data/syllabi/1151/corpus.jsonl', text)]).map(({ check }) => check)).toHaveLength(1);
   });
@@ -191,7 +201,15 @@ describe('findSyllabusLeaks', () => {
     `https://classroom.google.com/c/QWxQ0zZ9?cjc=${MARK}`,
     `google classroom (代碼: ${MARK})`,
     '科目代碼: 000211011',
-  ])('accepts already-scrubbed text: %s', (text) => {
+    '由助教代為播放',
+    `Google Classroom Participation ${MARK}`,
+    `習題 #${fakeHashCode} 是題號`,
+    'TA 時間另行公告',
+    '研究室推薦閱讀 pp. 2289-2301',
+    '研究室報告 2500-3000 字',
+    '聯絡研究的 doi:10.1000/j.2345-6789',
+    'hotel 2345-6789 是房號',
+  ])('accepts already-scrubbed or ordinary text: %s', (text) => {
     expect(findSyllabusLeaks([file('data/syllabi/1151/corpus.jsonl', text)])).toEqual([]);
   });
 

@@ -56,6 +56,19 @@ export const POSITIVE_CASES: readonly (readonly [string, string, string])[] = [
   ['ta_name', '請寄給本課程助教王大明(daming.test@gmail.com)進行報名登記', `請寄給本課程助教${M}進行報名登記`],
   ['ta_name', '教學助理：陳小華，信箱 hua.test@nccu.edu.tw', `教學助理：${M}`],
   ['ta_name', 'TA: Amy Test (amy.test@nccu.edu.tw)', `TA: ${M}`],
+  // 第四輪審查（2026-11-01）：「TA」後面接中文姓名、表格以「 | 」分隔時也要移除。
+  ['ta_name', 'TA: 王小明 (ming.test@nccu.edu.tw)', `TA: ${M}`],
+  ['ta_name', 'T.A.：王小明，ming.test@nccu.edu.tw', `T.A.：${M}`],
+  ['ta_name', 'Teaching Assistant 王小明 ming.test@nccu.edu.tw', `Teaching Assistant ${M}`],
+  ['ta_name', '助教 | 王小明 | ming.test@nccu.edu.tw', `助教 | ${M}`],
+  // 助教（研究生）姓名前面寫了年級或身分（碩二、博班、碩士生），即使旁邊沒有聯絡方式也移除：年級身分連同姓名拿掉，只留「助教」。
+  ['ta_name_status', '由助教碩二王小魚代為播放', '由助教代為播放'],
+  ['ta_name_status', '感謝 TA 博班王大明同學', '感謝 TA 同學'],
+  ['ta_name_status', '教學助理：測試所碩士生陳小華負責批改', '教學助理：負責批改'],
+  ['ta_name_status', '助教博三林明，每週答疑', '助教，每週答疑'],
+  // Classroom 的加入碼只寫成「#」加 6～8 碼英數（沒有「代碼」標籤）：同一段提到 Classroom 時才移除。
+  ['classroom_code', '加入本課程Google Classroom【測試課 2030-31】((#ab12cd34)', `加入本課程Google Classroom【測試課 2030-31】((${M})`],
+  ['classroom_code', 'Google Classroom Participation #zx9qw8er 10%', `Google Classroom Participation ${M} 10%`],
 ];
 
 /** 沒提到學號時，1[01] 開頭的 9 碼數字多半是課號，保留。 */
@@ -91,6 +104,11 @@ export const NEGATIVE_CASES: readonly string[] = [
   '課程代碼: ABC1234',
   // 助教旁邊沒有被移除的聯絡方式時，不動。
   '助教會在課堂上公布分組名單',
+  // 沒有年級或身分詞時，助教後面的一般文字不動；沒提到 Classroom 時，「#」加英數（章節、色碼）保留。
+  '助教碩士論文指導原則',
+  'TA 時間另行公告',
+  '習題 #ab12cd34 與 #x1y2z3',
+  '研究室推薦 Classroom 文化讀本第 #3 章',
 ];
 
 /** 「助教信箱：〔聯絡資訊已移除〕」的「信箱」不是人名，不能被當成姓名移除。 */

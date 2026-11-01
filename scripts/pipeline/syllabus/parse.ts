@@ -75,17 +75,37 @@ const ONE_DATE = String.raw`(?:(?:\d{2,4}${DATE_SEP})?\d{1,2}${DATE_SEP}\d{1,2}(
   + String.raw`(?:\s*[(（][^)）]*[)）])?`;
 const DATE_TAIL = String.raw`(?:\s*(?:[~～\-–—]|to)\s*(?:${ONE_DATE}|\d{1,2}(?:\s*[(（][^)）]*[)）])?))?`;
 const PURE_DATE = new RegExp(String.raw`^\s*${ONE_DATE}${DATE_TAIL}\s*$`, 'i');
+// 主題欄才認的其他日期寫法（第四輪審查 2026-11-01）：日在月前（10 Sep、21-Sep.、24, Sep.）、MMDD（0923）、
+// 整個日期加括號（(12/24)）、年份以空白隔開（2026 09/08），日期後可再接星期或時段括號。
+const MONTH = String.raw`(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?`;
+const PAREN = String.raw`(?:\s*[(（][^)）]*[)）])`;
+const CELL_DATE = String.raw`(?:\d{3,4}\s+)?(?:[(（]${ONE_DATE}[)）]|${ONE_DATE}|\d{1,2}(?:\s*[-,]\s*|\s+)${MONTH}`
+  + String.raw`|(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))${PAREN}*`;
+// 日期後面還可以接：上課時段（16:10~18:00）、以 & , 、 + 相連的第二個日期或日（Sep 07 & 09、9/7, 9）、
+// 以空白並列的另一個日期（09/16 09/23、Dec 15 Dec 22），最後可多一個點（9.8.）。
+const TIME_RANGE = String.raw`\s*[(（]?\d{1,2}:\d{2}\s*(?:[~～\-–—]|to)\s*\d{1,2}:\d{2}[)）]?`;
+const CELL_MORE = String.raw`(?:${TIME_RANGE}|\s*[&,、+]\s*(?:${CELL_DATE}|\d{1,2}${PAREN}*)|\s+${CELL_DATE}|${PAREN})`;
 /** 主題欄要跳過的日期格：上面的日期，前面還可以帶週次（(W1) 9/8）。 */
-const DATE_CELL = new RegExp(String.raw`^\s*(?:[(（]?w\d{1,2}[)）]?\s*)?${ONE_DATE}${DATE_TAIL}\s*$`, 'i');
+const DATE_CELL = new RegExp(String.raw`^\s*(?:[(（]?w\d{1,2}[)）]?\s*)?${CELL_DATE}${DATE_TAIL}${CELL_MORE}*\.?\s*$`, 'i');
 
 /** 只有單元編號的格子（一、二、3）：不是主題。 */
 const UNIT_CELL = /^\s*[一二三四五六七八九十\d]{1,3}\s*$/;
+
+/** 跨度超過 8 週的區間（1-16、1-18）是整學期的說明，不是某一週（第四輪審查 2026-11-01）。 */
+const MAX_RANGE_SPAN = 8;
 
 function weekRange(text: string): number | null {
   const range = WEEK_RANGE.exec(text);
   if (!range) return null;
   const [from, to] = [Number(range[1]), Number(range[2])];
-  return from >= 1 && from <= to && to <= 25 ? from : null;
+  return from >= 1 && from <= to && to <= 25 && to - from <= MAX_RANGE_SPAN ? from : null;
+}
+
+function isWholeTermRange(text: string): boolean {
+  const range = WEEK_RANGE.exec(text);
+  if (!range) return false;
+  const [from, to] = [Number(range[1]), Number(range[2])];
+  return from >= 1 && to <= 25 && to - from > MAX_RANGE_SPAN;
 }
 
 /** 明確寫出的週次（第一週、第1週、Week 2、W.1、Session 3、純數字、週次區間）；日期不算。 */
@@ -106,7 +126,7 @@ const isDate = (text: string) => weekRange(text) === null && (NUMERIC_DATE.test(
 /** 週次欄 → 第幾週；只有日期的列以順序（ordinal）當週次；不是週次回傳 null。 */
 export function weekNumber(cell: string, ordinal: number): number | null {
   const text = cell.normalize('NFKC').trim();
-  if (!text) return null;
+  if (!text || isWholeTermRange(text)) return null;
   return weekLabel(text) ?? (isDate(text) ? ordinal : null);
 }
 
@@ -160,25 +180,36 @@ function tableText(tables: readonly Element[]): string {
     .join('\n');
 }
 
+/** 表頭寫明是授課方式的欄（實體教學、線上）：不是主題，主題欄空白時也不拿來補（第四輪審查 2026-11-01）。 */
+const MODE_HEADER = /授課方式|教學方式|上課方式|授課型態|上課型態|teaching\s*(?:mode|method)|delivery\s*mode/i;
+
+/** 主題欄空白、只是日期或只是單元編號（一、二、3）時，改用後面的欄位（最多看三欄）；授課方式欄跳過。 */
+function topicOf(cells: readonly string[], first: number, skip: ReadonlySet<number>): string {
+  return cells.slice(first, first + 3)
+    .find((text, offset) => text && !skip.has(first + offset) && !DATE_CELL.test(text) && !UNIT_CELL.test(text)) ?? '';
+}
+
 function weekRows(table: Element): WeekTopic[] {
   const rows: WeekTopic[] = [];
-  for (const cells of directRows(table)) {
-    const texts = cells.map((cell) => oneLine(cell).normalize('NFKC'));
+  const all = directRows(table).map((cells) => cells.map((cell) => oneLine(cell).normalize('NFKC')));
+  // 只看表頭列（前兩列裡第一欄不是週次的列）。
+  const headers = all.slice(0, 2).filter((texts) => texts.length && weekNumber(texts[0]!, 1) === null);
+  const skip = new Set(headers.flatMap((texts) => texts.flatMap((text, index) => (MODE_HEADER.test(text) ? [index] : []))));
+  for (const texts of all) {
     if (texts.length < 2) continue;
     let week: number | null;
-    let rest: string[];
+    let first: number;
     const second = weekLabel(texts[1]!);
     if (isDate(texts[0]!) && second !== null && !isDate(texts[1]!)) {
       // 日期欄在前、週次欄在後（Date | WK | Topic）：以週次欄為準。
       week = second;
-      rest = texts.slice(2);
+      first = 2;
     } else {
       week = weekNumber(texts[0]!, rows.length + 1);
-      rest = texts.slice(1);
+      first = 1;
     }
     if (week === null) continue;
-    // 主題欄空白、只是日期或只是單元編號（一、二、3）時，改用後面的欄位（最多看三欄）。
-    const topic = rest.slice(0, 3).find((text) => text && !DATE_CELL.test(text) && !UNIT_CELL.test(text)) ?? '';
+    const topic = topicOf(texts, first, skip);
     if (topic) rows.push({ week, topic });
   }
   return rows;

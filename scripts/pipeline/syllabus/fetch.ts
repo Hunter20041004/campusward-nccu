@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { trustedNccuUrl } from '../../../packages/engine/src/index.ts';
+import { parseSyllabus } from './parse.ts';
 
 export interface Target {
   code: string;
@@ -115,6 +116,8 @@ function readCache(cacheDir: string, target: Target): Cached | null {
 /**
  * 寫入快取前，先把內容不同的舊頁留一份在 <課號>.prev.html／.prev.json：官方站整批回 404 或維護頁時，
  * 語料門檻會擋下寫入，但快取已被換掉；有這份備份，把 .prev 改回原檔名就能離線重建。
+ * 目前快取裡的頁認不出來（維護頁、錯誤頁）而且已有備份時，不拿它蓋掉備份——否則連續兩次壞掉的抓取
+ * （維護頁帶時間、維護頁之後變 404）會把真正的課綱頁擠掉（第四輪審查 2026-11-01）。
  */
 function keepPrevious(cacheDir: string, code: string, newHash?: string) {
   const htmlPath = join(cacheDir, `${code}.html`);
@@ -122,7 +125,9 @@ function keepPrevious(cacheDir: string, code: string, newHash?: string) {
   if (!existsSync(htmlPath) || !existsSync(metaPath)) return;
   const bytes = readFileSync(htmlPath);
   if (newHash && sha256(bytes) === newHash) return;
-  copyFileSync(htmlPath, join(cacheDir, `${code}.prev.html`));
+  const prevPath = join(cacheDir, `${code}.prev.html`);
+  if (existsSync(prevPath) && parseSyllabus(new Uint8Array(bytes)).status === 'unrecognized') return;
+  copyFileSync(htmlPath, prevPath);
   copyFileSync(metaPath, join(cacheDir, `${code}.prev.json`));
 }
 

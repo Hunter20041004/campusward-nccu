@@ -163,6 +163,42 @@ describe('parseSyllabus', () => {
       .toEqual(['導論', '方法', '實作', '討論', '報告', '期中考', '回饋', '總結']);
   });
 
+  // 第四輪審查（2026-11-01）：日期後面接上課時段、兩個日期以 & 或逗號相連、結尾多一個點、日在月前、MMDD、兩個日期並列。
+  test('skips a topic cell that is a date with a class time, a second day or a trailing dot', () => {
+    const rows = [
+      ['1', '2030/09/08(二) 16:10~18:00', '導論'], ['2', '06/30 (二) (14:10~17:00)', '方法'], ['3', '9.8.', '實作'],
+      ['4', 'Sep 07 & 09', '討論'], ['5', '9/7, 9', '報告'], ['6', '10 Sep', '期中考'], ['7', '21-Sep.', '回饋'],
+      ['8', '24, Sep.', '總結'], ['9', '0923', '翻譯'], ['10', '09/16 09/23', '助人'], ['11', 'Dec 15 Dec 22', '期末報告'],
+      ['12', '(12/24)', '發表'], ['13', '2030 09/08', '簡介'],
+    ];
+    expect(parsed({ weekly: weekTable(rows, ['週次', '日期', '主題']) }).weekly.map(({ topic }) => topic))
+      .toEqual(['導論', '方法', '實作', '討論', '報告', '期中考', '回饋', '總結', '翻譯', '助人', '期末報告', '發表', '簡介']);
+  });
+
+  test('a topic that only starts with a date or a number is still a topic', () => {
+    const rows = [['1', '10 Sep 報告', 'x'], ['2', '第 3, 7 章', 'y'], ['3', '2030 年展望', 'z'], ['4', '1300 字心得', 'w']];
+    expect(parsed({ weekly: weekTable(rows, ['週次', '主題', '備註']) }).weekly.map(({ topic }) => topic))
+      .toEqual(['10 Sep 報告', '第 3, 7 章', '2030 年展望', '1300 字心得']);
+  });
+
+  test('an empty topic never falls back to a column headed 授課方式 (teaching mode)', () => {
+    const rows = [['14', '主題十四', '', '實體教學'], ['15', '主題十五', '', '實體教學'], ['16', '主題十六', '', '實體教學'], ['17', '', '', '實體教學']];
+    expect(parsed({ weekly: weekTable(rows, ['週次', '授課內容', '學生指定閱讀資料', '授課方式']) }).weekly.map(({ week }) => week)).toEqual([14, 15, 16]);
+    // 其他欄（教學活動與作業）照舊可以補空白的主題：期末考常只寫在這一欄。
+    const exams = [['14', '主題十四', '', ''], ['15', '主題十五', '', ''], ['16', '', '', '期末考'], ['17', '9/30', '', '期中考']];
+    expect(parsed({ weekly: weekTable(exams) }).weekly.map(({ topic }) => topic)).toEqual(['主題十四', '主題十五', '期末考', '期中考']);
+    // 只有表頭列算：第一週的主題提到「授課方式」不影響主題欄。
+    const intro = [['1', '課程介紹與授課方式說明', ''], ['2', '主題二', ''], ['3', '主題三', '']];
+    expect(parsed({ weekly: weekTable(intro, []) }).weekly.map(({ topic }) => topic)).toEqual(['課程介紹與授課方式說明', '主題二', '主題三']);
+  });
+
+  test('a whole-semester range like 1-16 is not a week', () => {
+    expect(weekNumber('1-16', 4)).toBeNull();
+    expect(weekNumber('1-9', 4)).toBe(1);
+    const fields = parsed({ weekly: weekTable([['一', '導論'], ['二', '方法'], ['三', '實作'], ['1-16', '導論']]) });
+    expect(fields.weekly.map(({ week }) => week)).toEqual([1, 2, 3]);
+  });
+
   test('skips a date and then a unit-number column to reach the topic', () => {
     const rows = [['1', '119/9/10', '一', '導論'], ['2', '119/9/17', '一', '方法'], ['3', '119/9/24', '二', '實作']];
     expect(parsed({ weekly: weekTable(rows, ['週次', '日期', '單元', '主題']) }).weekly.map(({ topic }) => topic)).toEqual(['導論', '方法', '實作']);

@@ -7,7 +7,7 @@
   "missing": 0,
   "failed": 0,
   "scrubHits": {
-    "classroom_code": 3,
+    "classroom_code": 10,
     "email": 79,
     "email_obfuscated": 4,
     "extension": 8,
@@ -21,6 +21,7 @@
     "phone_labelled": 5,
     "social": 5,
     "student_id_context": 9,
-    "ta_name": 2
+    "ta_name": 2,
+    "ta_name_status": 2
   }
 }

@@ -116,22 +116,39 @@ export function findPersonalContacts(files: SourceFile[]): Violation[] {
 // 課綱語料的第二道防線（獨立審查 2026-11-01）：管線去個資只換掉聯絡方式時，助教姓名會留在標記旁邊；
 // Google Classroom 的加入碼（cjc 參數、「代碼：」）等同門禁密碼。這裡獨立比對，不沿用管線的規則。
 const REMOVED = '〔聯絡資訊已移除〕';
+// 第四輪審查（2026-11-01）補：「TA／T.A.」後接中文姓名、表格的「|」分隔；姓名前寫了年級身分（碩二、博班）時，
+// 旁邊沒有標記也算；Classroom 段落裡「#」加 6～8 碼英數的加入碼；前後文提到電話、研究室等字的 8 碼裸市話。
+const TA_WORD = String.raw`(?:助教|教學助理|\bTAs?\b|\bT\.A\.|\bTeaching [Aa]ssistants?)`;
 const TA_NAME_PATTERNS = [
-  new RegExp(String.raw`(?:助教|教學助理)[^\n。；;〔〕"]{0,8}?(?!信箱|郵件|電郵|電話|手機|聯絡|聯繫|辦公室|研究室)\p{Script=Han}{2,4}\s*[/:：,，、(（]?\s*${REMOVED}`, 'gu'),
+  new RegExp(String.raw`(?:助教|教學助理|\bTAs?\b|\bT\.A\.|\bTeaching [Aa]ssistants?)[^\n。；;〔〕"]{0,8}?(?!信箱|郵件|電郵|電話|手機|聯絡|聯繫|辦公室|研究室)\p{Script=Han}{2,4}\s*[/:：,，、|(（]?\s*${REMOVED}`, 'gu'),
   new RegExp(String.raw`\b(?:TA|Teaching [Aa]ssistant)s?\s*[:：]?\s*[A-Z][A-Za-z'\-]+(?:[ \-][A-Z][A-Za-z'\-]+){0,3}\s*[/:,(（]?\s*${REMOVED}`, 'gu'),
 ];
+const TA_STATUS_NAME = new RegExp(
+  String.raw`${TA_WORD}\s*[:：]?\s*(?:\p{Script=Han}{1,8}?[系所]\s*)?(?:碩[一二三四]|博[一二三四五六七]|[碩博]士?班|[碩博]士生)\s*\p{Script=Han}{2}`,
+  'gu',
+);
 const JOIN_CODE_PARAM = /[?&](?:cjc|invite|invite_code)=(?!〔)[A-Za-z0-9]/g;
 const CLASSROOM_MENTION = /classroom|邀請碼|加入碼|class\s*code|join\s*code/i;
 const CLASSROOM_CODE = /(?:代碼|邀請碼|加入碼|課程碼|class\s*code|join\s*code)\s*[:：]?\s*(?!〔)(?=[A-Za-z0-9]{0,7}[A-Za-z])[A-Za-z0-9]{6,8}(?![A-Za-z0-9])/gi;
+const CLASSROOM_HASH_CODE = /(?<![A-Za-z0-9&/])[#＃]\s?(?=[A-Za-z0-9]{0,7}[A-Za-z])(?=[A-Za-z0-9]{0,7}\d)[A-Za-z0-9]{6,8}(?![A-Za-z0-9])/g;
+// 沒有區碼的台北 8 碼市話（2[2-9] 開頭），前面 30 字內要有電話、研究室、影印等字；頁碼（pp.）、字數、DOI 不算。
+const BARE_LANDLINE = new RegExp(
+  String.raw`(?:電話|聯絡|聯繫|研究室|辦公室|影印|傳真|總機|撥打|\b(?:tel|phone|fax|call)\b)[^\n。]{0,30}?`
+  + String.raw`(?<![\d\-./]|pp?\.\s?|doi:\S*)2[2-9]\d{2}[\s\-]?\d{4}(?![\d\-]|\s*(?:字|頁|words?|pages?))`,
+  'giu',
+);
 
 export function findSyllabusLeaks(files: SourceFile[]): Violation[] {
   return files
     .filter((file) => !CONTACT_SKIPPED.test(file.path))
     .flatMap((file) => [
       ...TA_NAME_PATTERNS.flatMap((pattern) => scan(file, pattern, 'ta-name', () => '助教姓名緊接在已移除的聯絡方式旁邊')),
+      ...scan(file, TA_STATUS_NAME, 'ta-name', () => '助教姓名前面寫了年級或身分'),
       ...scan(file, JOIN_CODE_PARAM, 'join-code', () => '網址帶課程空間加入碼'),
       ...file.text.split('\n').flatMap((lineText, index) => (CLASSROOM_MENTION.test(lineText)
-        ? [...lineText.matchAll(CLASSROOM_CODE)].map(() => ({ check: 'join-code', path: file.path, line: index + 1, detail: 'Classroom 加入碼' }))
+        ? [...lineText.matchAll(CLASSROOM_CODE), ...lineText.matchAll(CLASSROOM_HASH_CODE)]
+          .map(() => ({ check: 'join-code', path: file.path, line: index + 1, detail: 'Classroom 加入碼' }))
         : [])),
+      ...scan(file, BARE_LANDLINE, 'landline', () => '疑似沒有區碼的市話'),
     ]);
 }

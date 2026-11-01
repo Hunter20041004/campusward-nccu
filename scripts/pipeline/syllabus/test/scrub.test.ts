@@ -9,7 +9,7 @@ test('rules run in the reference order: links and e-mails before phones', () => 
   ]);
   for (const [, pattern] of RULES) expect(pattern.flags).toBe('giu');
   expect(STUDENT_ID_CONTEXT_RULE).toBe('student_id_context');
-  expect(EXTRA_RULES.map(([name]) => name)).toEqual(['link_key', 'landline_context', 'ta_name']);
+  expect(EXTRA_RULES.map(([name]) => name)).toEqual(['link_key', 'landline_context', 'ta_name', 'ta_name_status']);
 });
 
 describe('each rule removes its kind of contact', () => {
