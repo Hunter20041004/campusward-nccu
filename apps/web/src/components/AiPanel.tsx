@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import type { GeminiClient } from '../ai/gemini.ts';
 import { aiSearch, planWithAi } from '../ai/orb.ts';
 import { OrbMark } from './OrbMark.tsx';
+import { CareerSection } from './CareerSection.tsx';
 import { ScreenshotImport } from './ScreenshotImport.tsx';
 
 export const GEMINI_TERMS_URL = safeExternalUrl('https://ai.google.dev/gemini-api/terms', ['ai.google.dev']);
@@ -178,7 +179,10 @@ export function AiPanel({ client, termLabel, planner, catalog, courses, ready, o
       )}
 
       {accepted && hasKey && ready && (
-        <ScreenshotImport client={client} termLabel={termLabel} planner={planner} courses={courses} onAddCandidates={(changes, label) => { onApply(changes, label); }} />
+        <>
+          <CareerSection client={client} termLabel={termLabel} courses={courses} candidateKeys={new Set(planner.candidates)} onAddCandidates={(changes, label) => { onApply(changes, label); }} />
+          <ScreenshotImport client={client} termLabel={termLabel} planner={planner} courses={courses} onAddCandidates={(changes, label) => { onApply(changes, label); }} />
+        </>
       )}
 
       {!hasKey && (
