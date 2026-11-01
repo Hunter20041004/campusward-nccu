@@ -86,6 +86,7 @@ export function findBrandViolations(files: SourceFile[]): Violation[] {
 const PHONE_PATTERN = /(?<![\d-])(?:\+?886[\s.-]?|0)9\d{2}[\s.-]?\d{3}[\s.-]?\d{3}(?![\d-])/g;
 const EMAIL_PATTERN = /(?<![\w.%+-])[\w.%+-]+(?:@|\s*[[(]\s*at\s*[\])]\s*)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/gi;
 const EMAIL_ALLOWED = /@(?:[\w-]+\.)*example(?:\.(?:com|org|net|test))?$|@users\.noreply\.github\.com$|^noreply@/i;
+const SHA256_HEX = /(?<![0-9A-Za-z])[0-9a-f]{64}(?![0-9A-Za-z])/g;
 const CONTACT_SKIPPED = /(^|\/)package-lock\.json$|\/fixtures\/synthetic\/|^data\/(snapshots|corrections)\//;
 
 export function findPersonalContacts(files: SourceFile[]): Violation[] {
@@ -94,7 +95,8 @@ export function findPersonalContacts(files: SourceFile[]): Violation[] {
     .flatMap((file) => {
       const hits: Violation[] = [];
       file.text.split('\n').forEach((rawLine, index) => {
-        const lineText = rawLine.normalize('NFKC');
+        // 課綱語料每列帶原始頁的 sha256；十六進位雜湊裡的數字段不是電話，比對前以等長空白蓋掉，再 NFKC。
+        const lineText = rawLine.replace(SHA256_HEX, (hash) => ' '.repeat(hash.length)).normalize('NFKC');
         const found: { at: number; hit: Violation }[] = [];
         for (const match of lineText.matchAll(PHONE_PATTERN)) {
           found.push({ at: match.index, hit: { check: 'phone', path: file.path, line: index + 1, detail: '疑似手機號碼' } });

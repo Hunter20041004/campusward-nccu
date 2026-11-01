@@ -1,0 +1,22 @@
+{
+  "term": "1151",
+  "fetchedAt": "2026-11-01T05:29:48.890Z",
+  "pages": 2932,
+  "parsed": 2917,
+  "notUploaded": 15,
+  "missing": 0,
+  "failed": 0,
+  "scrubHits": {
+    "email": 71,
+    "email_obfuscated": 4,
+    "extension": 5,
+    "landline": 1,
+    "line": 1,
+    "link_key": 8,
+    "meeting_link": 4,
+    "nccu_local": 2,
+    "phone_labelled": 1,
+    "social": 2,
+    "student_id_context": 9
+  }
+}

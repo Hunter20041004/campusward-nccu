@@ -19,6 +19,7 @@
     "prepare": "simple-git-hooks",
     "bench": "tsx scripts/bench/catalog.ts",
     "pipeline": "tsx scripts/pipeline/run.ts",
+    "pipeline:syllabi": "tsx scripts/pipeline/syllabus/run.ts",
     "build": "npm run build -w @campusward/web",
     "dev": "npm run dev -w @campusward/web",
     "test:e2e": "playwright test",

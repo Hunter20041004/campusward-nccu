@@ -24,3 +24,5 @@ exportStudentData*.json
 
 # 代理的工作樹（每個是獨立的 git 工作區）
 .claude/worktrees/
+# 課綱原始頁含教師聯絡方式，只放本機快取（計畫 4.5）
+.cache/
