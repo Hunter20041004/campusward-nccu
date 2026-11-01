@@ -106,7 +106,7 @@ export function createGeminiClient({ fetchImpl = fetch, session }: { fetchImpl?:
       key = '';
       forget();
     },
-    async generate({ model, system, user, image, maxOutputTokens = 4096 }) {
+    async generate({ model, system, user, image, maxOutputTokens = 8192 }) {
       if (!key) throw new GeminiError('no-key');
       let response: Response;
       try {
