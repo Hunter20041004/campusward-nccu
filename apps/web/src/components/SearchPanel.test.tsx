@@ -65,6 +65,7 @@ describe('SearchPanel', () => {
   test('filters by weekday', async () => {
     const user = userEvent.setup();
     setup('統計');
+    await user.click(screen.getByRole('button', { name: '多條件搜尋' }));
     await user.click(screen.getByRole('button', { name: '週五' }));
     expect(screen.getByRole('button', { name: '週五' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getAllByRole('article').map((item) => within(item).getByRole('heading').textContent)).toEqual(['統計專題']);
@@ -73,6 +74,7 @@ describe('SearchPanel', () => {
   test('filters by time of day', async () => {
     const user = userEvent.setup();
     setup('統計');
+    await user.click(screen.getByRole('button', { name: '多條件搜尋' }));
     await user.click(screen.getByRole('button', { name: '晚上' }));
     expect(screen.getAllByRole('article')).toHaveLength(1);
   });
@@ -80,15 +82,22 @@ describe('SearchPanel', () => {
   test('filters by general education category without a keyword', async () => {
     const user = userEvent.setup();
     setup();
+    await user.click(screen.getByRole('button', { name: '多條件搜尋' }));
     await user.selectOptions(screen.getByRole('combobox', { name: '通識類別' }), '外文通識');
     expect(screen.getAllByRole('article').map((item) => within(item).getByRole('heading').textContent)).toEqual(['英文（一）']);
   });
 
-  test('shows 50 results first and more on request', async () => {
+  test('shows 25 results per page and pages through the rest', async () => {
     const user = userEvent.setup();
     setup('合成選修');
-    expect(screen.getAllByRole('article')).toHaveLength(50);
-    await user.click(screen.getByRole('button', { name: '再顯示 10 門' }));
+    expect(screen.getAllByRole('article')).toHaveLength(25);
+    expect(screen.getByText('1–25 / 60')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '下一頁' }));
+    await user.click(screen.getByRole('button', { name: '下一頁' }));
+    expect(screen.getAllByRole('article')).toHaveLength(10);
+    expect(screen.getByText('51–60 / 60')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '下一頁' })).toBeDisabled();
+    await user.selectOptions(screen.getByRole('combobox', { name: '每頁筆數' }), '100');
     expect(screen.getAllByRole('article')).toHaveLength(60);
   });
 

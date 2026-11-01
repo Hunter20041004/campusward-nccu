@@ -105,7 +105,7 @@ export function GraduationPanel({ courses, entries, candidateKeys, scheduledKeys
   const titleOf = (key: string) => entries.find(({ course }) => course.key === key)?.course.title ?? key;
 
   return (
-    <section aria-labelledby="graduation-heading" className="relief p-4">
+    <section aria-labelledby="graduation-heading">
       <h2 id="graduation-heading" className="flex items-center gap-2 text-sm font-semibold">
         <GraduationCap className="size-4" aria-hidden="true" />畢業缺口
       </h2>

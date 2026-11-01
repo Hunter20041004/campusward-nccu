@@ -1,35 +1,21 @@
-import { Search } from 'lucide-react';
-import type { RefObject } from 'react';
+import { CircleHelp } from 'lucide-react';
 import { OrbMark } from './OrbMark.tsx';
 
-export function Header({ query, onQuery, searchRef, termLabel }: {
-  query: string;
-  onQuery: (value: string) => void;
-  searchRef: RefObject<HTMLInputElement | null>;
-  termLabel: string;
-}) {
+export function Header({ termLabel, onGuide }: { termLabel: string; onGuide: () => void }) {
   return (
     <header className="sticky top-0 z-20 bg-base-100/90 backdrop-blur-sm">
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 md:gap-x-5 md:px-6">
+      <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 px-4 md:px-6">
         <a href="/" className="flex min-h-11 shrink-0 items-center gap-2 rounded-field text-xl font-bold tracking-tight text-mist-ink">
           <OrbMark />
-          <span>Campusward</span>
+          <span>Campusward 排課</span>
         </a>
-        <span className="raised hidden shrink-0 rounded-full px-3 py-1 text-sm font-bold tabular sm:inline">{termLabel}</span>
-        <label className="input input-bordered flex h-11 min-w-0 flex-1 items-center gap-2 bg-base-100 md:max-w-xl">
-          <Search className="size-4 shrink-0 text-mist-ink" aria-hidden="true" />
-          <span className="sr-only">搜課</span>
-          <input
-            ref={searchRef}
-            type="search"
-            className="min-w-0 grow"
-            placeholder="課名、教師或課號"
-            value={query}
-            onChange={(event) => onQuery(event.target.value)}
-          />
-        </label>
-        <span className="order-last basis-full text-center text-xs text-mist-ink lg:order-none lg:ml-auto lg:basis-auto">非政大官方服務</span>
+        <span className="raised shrink-0 rounded-full px-3 py-1 text-sm font-bold tabular">{termLabel}</span>
+        <span className="ml-auto hidden text-xs text-mist-ink sm:inline">非政大官方服務</span>
+        <button type="button" className="btn btn-ghost min-h-11 min-w-11 px-2" aria-label="使用導覽" title="使用導覽" onClick={onGuide}>
+          <CircleHelp className="size-5 text-mist-ink" aria-hidden="true" />
+        </button>
       </div>
+      <p className="px-4 pb-1 text-center text-xs text-mist-ink sm:hidden">非政大官方服務</p>
     </header>
   );
 }

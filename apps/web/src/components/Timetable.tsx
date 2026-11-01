@@ -140,11 +140,10 @@ export function Timetable(props: TimetableProps) {
   ].filter(Boolean).join('，');
 
   return (
-    <section aria-labelledby="timetable-heading" className="relief flex flex-col rounded-box md:min-h-[28rem]">
-      <div className="flex items-center gap-2 px-5 pt-3 pb-1">
-        <h2 id="timetable-heading" className="flex flex-1 items-center gap-2 py-1 text-xl font-bold text-mist-ink">
-          <LayoutGrid className="size-5" aria-hidden="true" />課表
-        </h2>
+    <section aria-labelledby="timetable-heading" className="flex flex-col">
+      <div className="flex items-center gap-2">
+        <h2 id="timetable-heading" className="sr-only">課表</h2>
+        <span className="flex-1" />
         {entries.length > 0 && (
           <div className="well flex rounded-full p-1 md:hidden" role="group" aria-label="課表檢視">
             <button type="button" aria-pressed={mobileMode === 'agenda'} className={`flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold ${mobileMode === 'agenda' ? 'tab-selected text-mist-ink' : 'text-base-content/80'}`} onClick={() => setMobileMode('agenda')}>
@@ -159,11 +158,11 @@ export function Timetable(props: TimetableProps) {
 
       {entries.length === 0 ? <EmptyState onStartSearch={props.onStartSearch} onImport={props.onImport} /> : (
         <>
-          <div className={`${mobileMode === 'grid' ? '' : 'hidden md:block'} well m-3 overflow-x-auto p-2`}>
+          <div className={`${mobileMode === 'grid' ? '' : 'hidden md:block'} well mt-2 overflow-x-auto rounded-2xl p-2`}>
             <div
               role="group"
               aria-label="每週課表"
-              className="grid min-w-[34rem] gap-px"
+              className="grid min-w-[22rem] gap-px"
               style={{ gridTemplateColumns: `2.5rem repeat(${days.length}, minmax(0, 1fr))`, gridTemplateRows: `auto repeat(${periods.length}, minmax(2.75rem, auto))` }}
             >
               {days.map((day, index) => (

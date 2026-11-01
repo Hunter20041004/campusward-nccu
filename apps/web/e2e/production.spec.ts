@@ -4,10 +4,13 @@ import { expect, test, type Page } from '@playwright/test';
 const ALLOWED_ORIGINS = ['http://localhost:5175', 'https://generativelanguage.googleapis.com', 'https://es.nccu.edu.tw'];
 const FAKE_KEY = 'AIzaSyE2E-fake-key-0000000000000000000';
 
+const openTool = (page: Page, name: string) => page.getByRole('navigation', { name: '工具' }).getByRole('button', { name }).click();
+
 async function watch(page: Page) {
   const requests: string[] = [];
   page.on('request', (request) => requests.push(request.url()));
   await page.addInitScript(() => {
+    localStorage.setItem('campusward:guide', 'seen');
     (window as unknown as { cspViolations: string[] }).cspViolations = [];
     document.addEventListener('securitypolicyviolation', (event) => {
       (window as unknown as { cspViolations: string[] }).cspViolations.push(`${event.violatedDirective} ${event.blockedURI}`);
@@ -51,13 +54,15 @@ test('runs the main flows without CSP violations or unexpected connections', asy
   await expect(page.getByText(/政大課程查詢目前查不到這門課/)).toBeVisible();
 
   const download = page.waitForEvent('download');
+  await openTool(page, '匯出與資料');
   await page.getByRole('button', { name: '手機桌布' }).click();
   expect((await download).suggestedFilename()).toMatch(/課表\.png$/);
 
+  await openTool(page, '畢業缺口');
   await page.getByLabel('上傳全人系統匯出檔').setInputFiles('packages/engine/test/fixtures/synthetic/student-export.json');
   await expect(page.getByText(/學校審查資料日期/)).toBeVisible();
 
-  await page.getByRole('tab', { name: 'AI' }).click();
+  await openTool(page, 'AI 光球');
   // 課綱問答：沒有金鑰也能查本機索引（延遲載入的程式包，CSP 下也要能跑）。
   await page.getByLabel('想問課程的什麼').fill('期末報告');
   await page.getByRole('button', { name: '查課綱' }).click();

@@ -67,7 +67,7 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
   };
 
   return (
-    <section aria-labelledby="data-heading" className="relief p-4">
+    <section aria-labelledby="data-heading">
       <h2 id="data-heading" className="text-sm font-semibold">匯出與資料</h2>
       <div className="mt-2 flex flex-wrap gap-2">
         <button type="button" className={action} onClick={copyCodes}>

@@ -8,6 +8,14 @@ async function addCourse(page: Page, title: string) {
   await page.getByRole('button', { name: `加入課表：${title}` }).click();
 }
 
+// 使用導覽只在第一次進站出現；其他流程先標記看過（導覽本身另有一個流程測）。
+test.beforeEach(async ({ page }, testInfo) => {
+  if (!testInfo.title.includes('usage guide')) await page.addInitScript(() => localStorage.setItem('campusward:guide', 'seen'));
+});
+
+/** 桌機右側圖示列切換工具。 */
+const openTool = (page: Page, name: string) => page.getByRole('navigation', { name: '工具' }).getByRole('button', { name }).click();
+
 async function expectNoAxeViolations(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
   expect(results.violations.map(({ id, nodes }) => `${id}: ${nodes.map((node) => node.target.join(' ')).join(', ')}`)).toEqual([]);
@@ -54,6 +62,7 @@ test.describe('desktop', () => {
     await page.getByRole('status', { name: '最近的修改' }).getByRole('button', { name: '復原' }).click();
     await expect(page.getByText('共 6 學分')).toBeVisible();
 
+    await openTool(page, '匯出與資料');
     await page.getByRole('button', { name: '複製課號清單' }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('900001001\n900002001');
 
@@ -61,6 +70,7 @@ test.describe('desktop', () => {
     await page.getByRole('button', { name: '匯出資料' }).click();
     expect((await download).suggestedFilename()).toMatch(/^campusward-\d{4}-\d{2}-\d{2}\.json$/);
 
+    await openTool(page, '模擬課表');
     await page.getByRole('button', { name: '另存為新備案' }).click();
     await expect(page.getByRole('group', { name: '方案' }).getByRole('button', { name: '備案 1' })).toHaveAttribute('aria-pressed', 'true');
 
@@ -125,6 +135,7 @@ test.describe('graduation gaps', () => {
     page.on('request', (request) => requests.push(request.url()));
     await page.goto('/');
     await expect(page.getByRole('banner')).toContainText('115-1');
+    await openTool(page, '畢業缺口');
     await page.getByLabel('上傳全人系統匯出檔').setInputFiles('packages/engine/test/fixtures/synthetic/student-export.json');
     await expect(page.getByText(/學校審查資料日期 2026-10-26/)).toBeVisible();
     await expect(page.getByText(/體育欠 1 門/)).toBeVisible();
@@ -159,7 +170,7 @@ for (const viewport of ['desktop', 'mobile'] as const) {
       await page.goto('/');
       await expect(page.getByRole('banner')).toContainText('115-1');
       if (viewport === 'mobile') await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: 'AI' }).click();
-      else await page.getByRole('tab', { name: 'AI' }).click();
+      else await openTool(page, 'AI 光球');
 
       await page.getByRole('checkbox', { name: /我已年滿 18 歲/ }).click();
       await page.getByLabel('Gemini 金鑰').fill(FAKE_KEY);
@@ -180,7 +191,28 @@ for (const viewport of ['desktop', 'mobile'] as const) {
 
       await page.getByRole('status', { name: '最近的修改' }).getByRole('button', { name: '復原' }).click();
       if (viewport === 'mobile') await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '課表' }).click();
+      else await openTool(page, '模擬課表');
       await expect(page.getByText('從搜課開始')).toBeVisible();
     });
   });
 }
+
+test.describe('usage guide', () => {
+  test.skip(({ isMobile }) => isMobile, 'desktop only');
+
+  test('shows the usage guide on the first visit, can be skipped, and reopens from the help button', async ({ page }) => {
+    await page.goto('/');
+    const guide = page.getByRole('dialog');
+    await expect(guide.getByRole('heading', { name: '搜課、加入課表' })).toBeVisible();
+    await expectNoAxeViolations(page);
+    await guide.getByRole('button', { name: '下一步' }).click();
+    await expect(guide.getByRole('heading', { name: '衝堂與選課規則' })).toBeVisible();
+    await guide.getByRole('button', { name: '略過教學' }).click();
+    await expect(guide).toBeHidden();
+    await page.reload();
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await page.getByRole('button', { name: '使用導覽' }).click();
+    await expect(page.getByRole('dialog').getByRole('heading', { name: '搜課、加入課表' })).toBeVisible();
+  });
+});
