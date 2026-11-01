@@ -127,6 +127,13 @@ describe('findPersonalContacts', () => {
     expect(findPersonalContacts([file('data/syllabi/1151/x.json', fakeEmail)]).map(({ check }) => check)).toEqual(['email']);
   });
 
+  test('digits inside a sha256 hash are not a phone number, but a number next to one still is', () => {
+    const hash = `28063326f0b4e8eb54fc69ff5d1dcc06b32469b1577c29ca${['09', '54205040'].join('')}cc4f77`;
+    expect(hash).toHaveLength(64);
+    expect(findPersonalContacts([file('data/syllabi/1151/corpus.jsonl', `{"hash":"${hash}"}`)])).toEqual([]);
+    expect(findPersonalContacts([file('data/syllabi/1151/corpus.jsonl', `{"a":"${fakeMobile}","hash":"${hash}"}`)]).map(({ check }) => check)).toEqual(['phone']);
+  });
+
   test('still flags an address in a mailto link', () => {
     expect(findPersonalContacts([file('README.md', `[寫信](mailto:${fakeEmail})`)]).map(({ check }) => check)).toEqual(['email']);
   });
