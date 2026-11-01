@@ -13,6 +13,23 @@ async function expectNoAxeViolations(page: Page) {
   expect(results.violations.map(({ id, nodes }) => `${id}: ${nodes.map((node) => node.target.join(' ')).join(', ')}`)).toEqual([]);
 }
 
+
+/** 看得到的按鈕、連結與輸入框中，寬或高小於 44px 的（包在外框 label 裡的輸入框以外框計算）。 */
+async function smallTargets(page: Page) {
+  return page.evaluate(() => [...document.querySelectorAll('button, a, input, select, textarea, label[class*="btn"]')]
+    .filter((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && !element.classList.contains('sr-only');
+    })
+    .map((element) => ((element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') && element.closest('label') ? element.closest('label')! : element))
+    .filter((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.height < 44 || rect.width < 44;
+    })
+    .map((element) => `${element.tagName} ${element.getAttribute('aria-label') ?? element.textContent?.trim().slice(0, 20)} ${Math.round(element.getBoundingClientRect().width)}x${Math.round(element.getBoundingClientRect().height)}`));
+}
+
 test.describe('desktop', () => {
   test.skip(({ isMobile }) => isMobile, 'desktop only');
 
@@ -93,20 +110,7 @@ test.describe('mobile', () => {
     await summary.click();
     await expect(page.getByRole('list', { name: '提醒' })).toBeVisible();
 
-    const small = await page.evaluate(() => [...document.querySelectorAll('button, a, input, select, label[class*="btn"]')]
-      .filter((element) => {
-        const rect = element.getBoundingClientRect();
-        const style = getComputedStyle(element);
-        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && !element.classList.contains('sr-only');
-      })
-      // 包在外框（label）裡的輸入框，可點範圍是整個外框。
-      .map((element) => (element.tagName === 'INPUT' && element.closest('label') ? element.closest('label')! : element))
-      .filter((element) => {
-        const rect = element.getBoundingClientRect();
-        return rect.height < 44 || rect.width < 44;
-      })
-      .map((element) => `${element.tagName} ${element.getAttribute('aria-label') ?? element.textContent?.trim().slice(0, 20)} ${Math.round(element.getBoundingClientRect().width)}x${Math.round(element.getBoundingClientRect().height)}`));
-    expect(small).toEqual([]);
+    expect(await smallTargets(page)).toEqual([]);
 
     await expectNoAxeViolations(page);
     await page.screenshot({ path: '.impeccable/review/mobile.png', fullPage: true });
@@ -164,6 +168,7 @@ for (const viewport of ['desktop', 'mobile'] as const) {
       await page.getByRole('button', { name: '送出' }).click();
       await expect(page.getByText(/已幫你加入 1 門課/)).toBeVisible();
       await expectNoAxeViolations(page);
+      if (viewport === 'mobile') expect(await smallTargets(page)).toEqual([]);
 
       expect(calls).toHaveLength(1);
       expect(calls[0]!.key).toBe(FAKE_KEY);
