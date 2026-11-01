@@ -225,3 +225,33 @@ test.describe('usage guide', () => {
     await expect(page.getByRole('dialog').getByRole('heading', { name: '搜課與多條件搜尋' })).toBeVisible();
   });
 });
+
+// 2026-11-01：外觀改版曾只改到第一頁（使用者發現）。逐頁檢查每個選單、輸入框、按鈕真的是柔浮雕樣式。
+test.describe('soft relief on every page', () => {
+  test.skip(({ isMobile }) => isMobile, 'desktop only');
+
+  test('every select, input and button on every tool page uses the soft-relief style', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    await page.getByRole('searchbox', { name: '搜課' }).fill('統計');
+    await page.getByRole('button', { name: '多條件搜尋' }).click();
+    await page.getByRole('button', { name: 'AI 光球' }).click();
+    for (const name of ['模擬課表', '條件', '匯出與資料', '畢業缺口']) {
+      await openTool(page, name);
+      const offenders = await page.evaluate(() => [...document.querySelectorAll('select, input:not([type=file]):not([type=checkbox]):not([type=radio]), textarea, .btn')]
+        .filter((element) => !element.closest('[hidden]') && element.getBoundingClientRect().width > 0)
+        .flatMap((element) => {
+          const style = getComputedStyle(element);
+          const field = element.closest('.input') ?? element;
+          const fieldStyle = getComputedStyle(field);
+          const isButton = element.classList.contains('btn');
+          const rounded = parseFloat((isButton ? style : fieldStyle).borderTopLeftRadius) >= 16;
+          const shadowed = isButton
+            ? element.classList.contains('btn-ghost') || (element as HTMLButtonElement).disabled || style.boxShadow !== 'none'
+            : fieldStyle.boxShadow.includes('inset');
+          return rounded && shadowed ? [] : [`${element.tagName} ${element.getAttribute('aria-label') ?? element.textContent?.trim().slice(0, 16)} radius=${(isButton ? style : fieldStyle).borderTopLeftRadius}`];
+        }));
+      expect(offenders, name).toEqual([]);
+    }
+  });
+});
