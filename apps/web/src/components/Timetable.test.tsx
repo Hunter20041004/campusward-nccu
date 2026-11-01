@@ -204,3 +204,15 @@ test('shows the empty state with two ways to start', () => {
   render(<Timetable entries={[]} conflicts={[]} newKeys={new Set()} onStartSearch={vi.fn()} onImport={vi.fn()} onToggleLock={vi.fn()} onStatus={vi.fn()} onAttendance={vi.fn()} onRemove={vi.fn()} />);
   expect(screen.getByRole('button', { name: '從搜課開始' })).toBeInTheDocument();
 });
+
+// 易用性審查第 3 名（2026-11-01）：空課表照樣畫格子，第一門課之前就能點空堂找課；說明縮成一行。
+test('an empty timetable still draws the grid, so a free cell can be clicked before the first course', async () => {
+  const onFindSlot = vi.fn();
+  render(<Timetable entries={[]} conflicts={[]} newKeys={new Set()} onStartSearch={vi.fn()} onFindSlot={onFindSlot} onImport={vi.fn()} onToggleLock={vi.fn()} onStatus={vi.fn()} onAttendance={vi.fn()} onRemove={vi.fn()} />);
+  const grid = screen.getByRole('group', { name: '每週課表' });
+  await userEvent.setup().click(within(grid).getByRole('button', { name: '找週一 D 節的課' }));
+  expect(onFindSlot).toHaveBeenCalledWith(1, 'D');
+  expect(screen.getByText(/點空格找那段時間排得進去的課/)).toBeInTheDocument();
+  // 手機預設的行程檢視在沒有課時是空的：直接顯示方格，不用先切換。
+  expect(screen.queryByRole('group', { name: '課表檢視' })).toBeNull();
+});

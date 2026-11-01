@@ -258,3 +258,24 @@ export function passedAs(record: StudentRecord, course: ScheduleEntry['course'])
   const item = { key: course.key, attendance: 'sync' as const, status: 'planned' as const, locked: false };
   return findRetakes(record, [{ course, item }])[0]?.passedTitle ?? null;
 }
+
+const GENERAL_AREAS = ['跨領域', '人文', '社會', '自然', '資訊', '書院'];
+const isLanguageCategory = (category: string) => category.startsWith('中文') || category.startsWith('外文');
+
+/**
+ * 學校審查的通識缺口 → 本學期有的通識類別（空堂找課把這些排前面）。
+ * 中文、外文通識各自對應；一般通識或通識總計有寫領域（人文、社會、跨領域…）就只取那些，沒寫就是所有非語文的通識。
+ */
+export function gapGeneralEducation(gaps: readonly AuditGap[], categories: readonly string[]): string[] {
+  const wanted = new Set<string>();
+  gaps.forEach(({ area, text }) => {
+    if (area === 'chinese') categories.filter((category) => category.startsWith('中文')).forEach((category) => wanted.add(category));
+    if (area === 'english') categories.filter((category) => category.startsWith('外文')).forEach((category) => wanted.add(category));
+    if (area !== 'general' && area !== 'liberal') return;
+    const named = GENERAL_AREAS.filter((name) => text.includes(name));
+    categories
+      .filter((category) => !isLanguageCategory(category) && (!named.length || named.some((name) => category.includes(name))))
+      .forEach((category) => wanted.add(category));
+  });
+  return categories.filter((category) => wanted.has(category));
+}

@@ -327,3 +327,24 @@ describe('restoring data from before an import', () => {
     expect(readPreImportCopy(memoryStorage({ [PRE_IMPORT_KEY]: '{bad' }))).toBeNull();
   });
 });
+
+// 本班必修與偏好（2026-11-01 易用性審查第 1、2 名）：系級與「不要早八」存在本機，舊資料沒有這兩欄照樣讀得回來。
+describe('class name and the no-early preference', () => {
+  test('round-trips the class name and noEarly', () => {
+    const storage = memoryStorage();
+    const data = sampleData();
+    data.profile = { ...data.profile, className: '會計二甲' };
+    data.terms['1151']!.planner.preferences.noEarly = true;
+    saveStoredData(storage, data);
+    const loaded = loadStoredData(storage).data;
+    expect(loaded.profile.className).toBe('會計二甲');
+    expect(loaded.terms['1151']!.planner.preferences.noEarly).toBe(true);
+  });
+
+  test('rejects a class name that is not short Chinese text', () => {
+    const storage = memoryStorage();
+    const data = sampleData();
+    data.profile = { ...data.profile, className: '<script>' };
+    expect(() => saveStoredData(storage, data)).toThrow();
+  });
+});

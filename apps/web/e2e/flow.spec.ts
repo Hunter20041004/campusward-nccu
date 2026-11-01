@@ -412,15 +412,14 @@ test.describe('candidates and copy preview', () => {
     await expect(page.getByRole('status', { name: '資料操作結果' })).toContainText('已複製 1 個課號（主方案）');
   });
 
-  test('asks for the year next to the credits and opens the identity settings', async ({ page, isMobile }) => {
+  // 易用性審查第 1 名：年級改在課表上方的系級列，按一下年級按鈕就有學分範圍。
+  test('asks for the year next to the credits and goes to the class bar above the timetable', async ({ page, isMobile }) => {
     await page.goto('/');
     await expect(page.getByRole('banner')).toContainText('115-1');
     if (isMobile) await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '課表' }).click();
     await page.getByRole('button', { name: '設定年級後可檢查學分上下限' }).click();
-    const year = page.getByRole('combobox', { name: '年級' });
-    await expect(year).toBeFocused();
-    await year.selectOption('2');
-    if (isMobile) await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '課表' }).click();
+    await expect(page.getByRole('combobox', { name: '系級' })).toBeFocused();
+    await page.getByRole('radiogroup', { name: '年級' }).getByRole('radio', { name: '大二' }).click();
     await expect(page.getByText('共 0 學分（12–25）')).toBeVisible();
   });
 });

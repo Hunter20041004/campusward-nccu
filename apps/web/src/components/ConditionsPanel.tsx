@@ -22,7 +22,7 @@ export interface ConditionsPanelProps {
   entries: readonly ScheduleEntry[];
   preferences: Preferences;
   onProfile: (profile: IdentityProfile) => void;
-  onPreferences: (change: { freeDays?: number[]; internship?: InternshipSettings }) => void;
+  onPreferences: (change: { freeDays?: number[]; internship?: InternshipSettings; noEarly?: boolean }) => void;
   record?: StudentRecord | null;
   onRecord?: (record: StudentRecord | null) => void;
   /** 本學期所有課程（擋修條件比對用）。 */
@@ -71,22 +71,8 @@ export function ConditionsPanel({ profile, courses, entries, preferences, onProf
         </Section>
       )}
       <Section title="我的身分" note="只有你自己能改；AI 不會改這些設定。">
+        <p className="text-sm">系級與年級在課表上方的「我的系級」設定（學分上下限、本班必修都依它）。</p>
         <div className="grid grid-cols-2 gap-2 text-sm">
-          <label className="flex flex-col gap-1">
-            <span>學制</span>
-            <select className="select select-sm min-h-11" value={profile.level ?? ''} onChange={(event) => onProfile({ ...profile, ...(event.target.value ? { level: event.target.value as 'undergrad' | 'graduate' } : { level: undefined }) })}>
-              <option value="">未設定</option>
-              <option value="undergrad">大學部</option>
-              <option value="graduate">研究所</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span>年級</span>
-            <select id="identity-year" className="select select-sm min-h-11" value={profile.year ?? ''} onChange={(event) => onProfile({ ...profile, ...(event.target.value ? { year: Number(event.target.value) } : { year: undefined }) })}>
-              <option value="">未設定</option>
-              {[1, 2, 3, 4, 5, 6, 7].map((year) => <option key={year} value={year}>{year} 年級</option>)}
-            </select>
-          </label>
           <label className="col-span-2 flex flex-col gap-1">
             <span>加修學系</span>
             <select className="select select-sm min-h-11" value={profile.additionalMajor ?? 'none'} onChange={(event) => onProfile({ ...profile, additionalMajor: event.target.value as 'none' | 'minor' | 'double' })}>
@@ -123,7 +109,7 @@ export function ConditionsPanel({ profile, courses, entries, preferences, onProf
         )}
       </Section>
 
-      <Section title="偏好" note="AI 排課時會照這些偏好；你也可以隨時改。">
+      <Section title="偏好" note="設一次就好：搜課、點空堂找課與本班必修挑班都會套用，AI 排課也照這些偏好。">
         <div role="group" aria-label="想空下來的日子" className="flex flex-wrap gap-1.5">
           {[1, 2, 3, 4, 5, 6, 7].map((day) => {
             const pressed = preferences.freeDays.includes(day);
@@ -141,6 +127,14 @@ export function ConditionsPanel({ profile, courses, entries, preferences, onProf
             );
           })}
         </div>
+        <button
+          type="button"
+          aria-pressed={Boolean(preferences.noEarly)}
+          onClick={() => onPreferences({ noEarly: !preferences.noEarly })}
+          className={`btn btn-sm min-h-11 px-3 ${preferences.noEarly ? 'tab-selected text-mist-ink' : ''}`}
+        >
+          不要早八（A、B、1 節）
+        </button>
         <label className="flex items-center gap-2 text-sm">
           <span>每週實習天數</span>
           <input

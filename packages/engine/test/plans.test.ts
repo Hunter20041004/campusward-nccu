@@ -462,3 +462,19 @@ describe('automatic backups only for AI changes and big changes', () => {
     expect(applyChanges(state, changes, catalog, { autoBackupLimit: 1 })).toEqual({ status: 'needsConfirmation', reason: 'autoBackupFull', limit: 1, replace: 1 });
   });
 });
+
+describe('the no-early preference', () => {
+  test('setPreference turns noEarly on and off without touching free days', () => {
+    const state = createPlannerState();
+    state.preferences.freeDays = [5];
+    const on = applyChanges(state, [{ type: 'setPreference', noEarly: true }], catalog);
+    if (on.status !== 'applied') throw new Error(on.status);
+    expect(on.state.preferences).toMatchObject({ freeDays: [5], noEarly: true });
+    const off = applyChanges(on.state, [{ type: 'setPreference', noEarly: false }], catalog);
+    if (off.status !== 'applied') throw new Error(off.status);
+    expect(off.state.preferences.noEarly).toBe(false);
+    const days = applyChanges(on.state, [{ type: 'setPreference', freeDays: [1] }], catalog);
+    if (days.status !== 'applied') throw new Error(days.status);
+    expect(days.state.preferences.noEarly).toBe(true);
+  });
+});

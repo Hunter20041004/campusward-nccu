@@ -26,12 +26,14 @@ function setup(overrides: Partial<ConditionsPanelProps> = {}) {
 }
 
 describe('identity', () => {
-  test('lets the student set year and additional major, and says AI cannot', async () => {
+  // 易用性審查（2026-11-01）：學制與年級改在課表上方的系級列一次點選，這裡只留加修學系這類少用的設定。
+  test('lets the student set the additional major, points to the class bar for class and year, and says AI cannot', async () => {
     const user = userEvent.setup();
     const props = setup({ profile: { level: 'undergrad' } });
     expect(screen.getByText(/AI 不會改這些設定/)).toBeInTheDocument();
-    await user.selectOptions(screen.getByRole('combobox', { name: '年級' }), '3');
-    expect(props.onProfile).toHaveBeenLastCalledWith({ level: 'undergrad', year: 3 });
+    expect(screen.queryByRole('combobox', { name: '年級' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: '學制' })).toBeNull();
+    expect(screen.getByText(/系級與年級在課表上方/)).toBeInTheDocument();
     await user.selectOptions(screen.getByRole('combobox', { name: '加修學系' }), 'double');
     expect(props.onProfile).toHaveBeenLastCalledWith({ level: 'undergrad', additionalMajor: 'double' });
   });
@@ -66,6 +68,16 @@ describe('preferences', () => {
     const props = setup();
     await user.click(screen.getByRole('button', { name: '週五空下來' }));
     expect(props.onPreferences).toHaveBeenLastCalledWith({ freeDays: [5] });
+  });
+
+  test('toggles the no-early preference that every search uses', async () => {
+    const user = userEvent.setup();
+    const props = setup();
+    const noEarly = screen.getByRole('button', { name: /不要早八/ });
+    expect(noEarly).toHaveAttribute('aria-pressed', 'false');
+    await user.click(noEarly);
+    expect(props.onPreferences).toHaveBeenLastCalledWith({ noEarly: true });
+    expect(screen.getByText(/搜課、點空堂找課與本班必修挑班都會套用/)).toBeInTheDocument();
   });
 
   test('shows how many internship days the timetable leaves', () => {

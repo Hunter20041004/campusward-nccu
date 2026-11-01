@@ -28,3 +28,4 @@ export * from './storage.ts';
 export * from './studentExport.ts';
 export * from './studentRecordStorage.ts';
 export * from './syllabus.ts';
+export * from './schedule/classPlan.ts';

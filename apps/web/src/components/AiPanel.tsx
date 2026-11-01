@@ -1,5 +1,5 @@
 import { safeExternalUrl, type AiApplyResult, type Change, type Course, type CourseCorrection, type PlannerState, type ScheduleCourse } from '@campusward/engine';
-import { BookOpenText, CalendarDays, Compass, ImageUp, KeyRound, Send, Sparkles, Trash2, Undo2 } from 'lucide-react';
+import { ArrowLeftRight, BookOpenText, CalendarDays, Compass, ImageUp, KeyRound, Send, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { GeminiClient } from '../ai/gemini.ts';
 import { planWithAi } from '../ai/orb.ts';
@@ -8,6 +8,7 @@ import { AnswerText } from './AnswerText.tsx';
 import { httpSyllabusSource, type SyllabusSource } from '../qa/syllabusSource.ts';
 import { FEATURES, type Features } from '../features.ts';
 import type { Briefing } from '../ai/briefing.ts';
+import type { ClashFix } from './ClashFix.ts';
 import { CareerSection } from './CareerSection.tsx';
 import { useBuddyHub } from '../buddy/BuddyContext.tsx';
 import { Xiaoshan } from '../buddy/Xiaoshan.tsx';
@@ -31,6 +32,8 @@ export interface AiPanelProps {
   onApply: (changes: Change[], label: string, replaceOldestAutoBackup?: boolean) => AiApplyResult;
   /** 打開時先給的今日重點（本機算出，不呼叫 AI）。 */
   briefing?: Briefing;
+  /** 衝堂的本機解法（換到不衝堂的班）：放在今日重點，不用金鑰、不呼叫 AI。 */
+  clashFix?: ClashFix | null;
   /** 回覆卡上的「看課表」。 */
   onShowTimetable?: () => void;
   /** 回覆卡上的「復原」：只在這次修改還能復原時出現（undoLabel 與這次的標籤相同）。 */
@@ -64,7 +67,7 @@ const action = 'btn btn-sm min-h-11 gap-1.5';
  * 上方一排模式（排課／問課綱／職涯／截圖），中間是對話紀錄，底部一個輸入框；
  * 年齡確認與金鑰不再擋在最上面，第一次真的要用 AI 時才在對話裡問，設定好就把剛才那句送出。
  */
-export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSource, features = FEATURES, planner, catalog, courses, ready, onApply, briefing, onShowTimetable, onUndo, undoLabel, undone, visible = true }: AiPanelProps) {
+export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSource, features = FEATURES, planner, catalog, courses, ready, onApply, briefing, clashFix, onShowTimetable, onUndo, undoLabel, undone, visible = true }: AiPanelProps) {
   const [accepted, setAccepted] = useState(false);
   const [hasKey, setHasKey] = useState(() => client.hasKey());
   const [keyError, setKeyError] = useState('');
@@ -400,6 +403,13 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
                     <ul className="mt-1 space-y-0.5">{briefing.lines.map((line) => <li key={line}>{line}</li>)}</ul>
                   </div>
                 </div>
+                {clashFix && (
+                  <div className="mt-2 pl-10">
+                    <button type="button" className="btn btn-primary btn-sm h-auto min-h-11 gap-1 whitespace-normal py-1 text-left text-xs" aria-label={clashFix.description} onClick={clashFix.onClick}>
+                      <ArrowLeftRight className="size-4 shrink-0" aria-hidden="true" />{clashFix.description}
+                    </button>
+                  </div>
+                )}
                 <div className="mt-2 flex flex-wrap gap-1.5 pl-10" role="group" aria-label="可以這樣問">
                   {briefing.suggestions.map((suggestion) => (
                     <button key={suggestion} type="button" className="btn btn-sm min-h-11 text-xs" onClick={() => { setRequest(suggestion); composer.current?.focus(); }}>

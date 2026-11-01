@@ -6,6 +6,8 @@ export interface IdentityProfile {
   year?: number;
   /** 加修學系：影響學分上限（選課須知）。 */
   additionalMajor?: 'none' | 'minor' | 'double';
+  /** 系級，例「資訊二」「會計二甲」（官方開課班級的寫法）；本班必修、搜課「本系」與學分上下限都依它。 */
+  className?: string;
   programs?: readonly string[];
   prerequisites?: readonly string[];
   conditionIds?: readonly string[];

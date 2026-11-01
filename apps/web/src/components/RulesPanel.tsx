@@ -1,6 +1,7 @@
 import type { Conflict, RuleReminder } from '@campusward/engine';
-import { AlertTriangle, ChevronDown, Info } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, ChevronDown, Info } from 'lucide-react';
 import { useState } from 'react';
+import type { ClashFix } from './ClashFix.ts';
 
 interface Item {
   key: string;
@@ -8,18 +9,21 @@ interface Item {
   tag: string;
   message: string;
   source?: string;
+  fix?: ClashFix | null;
 }
 
 /** 衝堂與選課規則提醒：只提醒、不阻擋，每則附出處（設計第 5 節）。 */
-export function RulesPanel({ conflicts, reminders, retakes = [] }: {
+export function RulesPanel({ conflicts, reminders, retakes = [], fixFor }: {
   conflicts: readonly Conflict[];
+  /** 衝堂那一列的換班按鈕（和加課提示同一套）。 */
+  fixFor?: (conflict: Conflict) => ClashFix | null;
   reminders: readonly RuleReminder[];
   /** 全人系統資料比對出的可能重修（同名或課號前六碼相同）。 */
   retakes?: readonly { key: string; message: string }[];
 }) {
   const [open, setOpen] = useState(false);
   const items: Item[] = [
-    ...conflicts.map((conflict, index): Item => ({ key: `conflict-${index}`, severity: 'warn', tag: '衝堂', message: conflict.message })),
+    ...conflicts.map((conflict, index): Item => ({ key: `conflict-${index}`, severity: 'warn', tag: '衝堂', message: conflict.message, fix: fixFor?.(conflict) ?? null })),
     ...reminders.map((reminder, index): Item => ({ key: `${reminder.id}-${index}`, severity: reminder.severity, tag: reminder.severity === 'warn' ? '注意' : '提示', message: reminder.message, source: reminder.source })),
     ...retakes.map(({ key, message }): Item => ({ key: `retake-${key}`, severity: 'warn', tag: '重修', message, source: '你匯入的全人系統資料（只比對同名或課號前六碼）' })),
   ].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'warn' ? -1 : 1));
@@ -50,12 +54,17 @@ export function RulesPanel({ conflicts, reminders, retakes = [] }: {
                   {item.severity === 'warn'
                     ? <AlertTriangle className="mt-0.5 size-4 shrink-0 text-coral-ink" aria-hidden="true" />
                     : <Info className="mt-0.5 size-4 shrink-0 text-mist-ink" aria-hidden="true" />}
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p>
                       <span className={`mr-1.5 font-medium ${item.severity === 'warn' ? 'text-coral-ink' : 'text-mist-ink'}`}>{item.tag}</span>
                       {item.message}
                     </p>
                     {item.source && <p className="mt-0.5 text-xs text-base-content/75">出處：{item.source}</p>}
+                    {item.fix && (
+                      <button type="button" aria-label={item.fix.description} onClick={item.fix.onClick} className="btn btn-sm mt-1.5 h-auto min-h-11 gap-1 whitespace-normal py-1 text-left">
+                        <ArrowLeftRight className="size-4 shrink-0" aria-hidden="true" />{item.fix.description}
+                      </button>
+                    )}
                   </div>
                 </li>
               ))}

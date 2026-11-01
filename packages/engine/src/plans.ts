@@ -8,6 +8,8 @@ export interface Preferences {
   /** 希望空下來的星期（1–7）。 */
   freeDays: number[];
   internship: InternshipSettings;
+  /** 不要早八（清晨 A、B 與第 1 節）：搜課、空堂找課與本班必修挑班都會套用。 */
+  noEarly?: boolean;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = Object.freeze({ freeDays: [], internship: DEFAULT_INTERNSHIP_SETTINGS }) as Preferences;
@@ -36,7 +38,7 @@ export type Change =
   | { type: 'setAttendance'; key: string; attendance: Attendance }
   | { type: 'createPlan'; name: string }
   | { type: 'switchPlan'; planId: string }
-  | { type: 'setPreference'; freeDays?: number[]; internship?: InternshipSettings }
+  | { type: 'setPreference'; freeDays?: number[]; internship?: InternshipSettings; noEarly?: boolean }
   // 以下只供畫面使用，AI 動作清單（ai/changeSet）不會產生。
   | { type: 'setLock'; key: string; locked: boolean }
   | { type: 'setStatus'; key: string; status: PlanItemStatus };
@@ -166,6 +168,7 @@ function applyOne(state: PlannerState, change: Change, catalog: ReadonlyMap<stri
         preferences: {
           freeDays: change.freeDays ? [...new Set(change.freeDays)].sort() : state.preferences.freeDays,
           internship: change.internship ?? state.preferences.internship,
+          ...((change.noEarly ?? state.preferences.noEarly) !== undefined ? { noEarly: change.noEarly ?? state.preferences.noEarly } : {}),
         },
       };
   }

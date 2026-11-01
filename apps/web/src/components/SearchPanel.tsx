@@ -1,6 +1,7 @@
 import { offeringLine } from './offering.ts';
 import {
   candidateScheduleSummary,
+  formatClock,
   NCCU_PERIODS,
   offeringDepartments,
   parseTargetGroup,
@@ -32,12 +33,31 @@ const gradeLabel = (grade: string) => (/^[一二三四五六七1-7]$/.test(grade
 /** 修課限制的第一句（例「經濟系、地政系學生優先」）。 */
 const quoteTitles = (titles: readonly string[]) => titles.map((title) => `「${title}」`).join('、');
 
-/** 課表空格帶過來的時段；nonce 每點一次就換，同一格再點也會重新帶入。 */
+/**
+ * 課表空格帶過來的時段；nonce 每點一次就換，同一格再點也會重新帶入。
+ * start／end／codes 是點到的那一格延伸出的整段連續空堂（引擎 freeStretch）；沒給就只看那一節。
+ */
 export interface SearchSlot {
   day: number;
   period: string;
   nonce: number;
+  start?: number;
+  end?: number;
+  codes?: readonly string[];
 }
+
+/** 偏好（條件裡設一次）：每次搜課與空堂找課都自動套用。 */
+export interface SearchPreferences {
+  freeDays: readonly number[];
+  noEarly?: boolean;
+}
+
+type SlotScope = 'ge' | 'department' | 'all';
+const SLOT_SCOPES: readonly { id: SlotScope; label: string }[] = [
+  { id: 'ge', label: '通識' },
+  { id: 'department', label: '本系' },
+  { id: 'all', label: '全部' },
+];
 
 export interface SearchPanelProps {
   courses: readonly Course[];
@@ -57,6 +77,12 @@ export interface SearchPanelProps {
   defaultDegree?: 'undergrad' | 'graduate';
   /** 點課表空格帶入的星期與節次。 */
   slot?: SearchSlot | null;
+  /** 偏好的空堂日與不要早八：自動套用，結果上方寫藏了幾門，可以一鍵顯示全部。 */
+  preferences?: SearchPreferences;
+  /** 學生系級的系所（例「資訊」）：空堂找課的「本系」。 */
+  identityDepartment?: string;
+  /** 畢業缺口還缺的通識類別：排在前面。 */
+  priorityCategories?: readonly string[];
 }
 
 function Chip({ pressed, onClick, children, label }: { pressed: boolean; onClick: () => void; children: React.ReactNode; label?: string }) {
@@ -75,17 +101,19 @@ function Chip({ pressed, onClick, children, label }: { pressed: boolean; onClick
 
 const toggle = <T,>(values: T[], value: T) => (values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
 
-export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys, candidateKeys, onAdd, onRemove, onCandidate, passedAs, clashesOf, defaultDegree, slot }: SearchPanelProps) {
+export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys, candidateKeys, onAdd, onRemove, onCandidate, passedAs, clashesOf, defaultDegree, slot, preferences, identityDepartment, priorityCategories }: SearchPanelProps) {
   const [weekdays, setWeekdays] = useState<number[]>([]);
   const [dayparts, setDayparts] = useState<string[]>([]);
-  const [slotPeriods, setSlotPeriods] = useState<string[]>([]);
+  const [within, setWithin] = useState<SearchSlot | null>(null);
+  const [scope, setScope] = useState<SlotScope>('ge');
   const [generalEducation, setGeneralEducation] = useState('');
   const [department, setDepartment] = useState('');
   const [grade, setGrade] = useState('');
   const [degree, setDegree] = useState<Degree>(defaultDegree ?? '');
   const [emi, setEmi] = useState(false);
-  const [noEarly, setNoEarly] = useState(false);
-  const [hideClashes, setHideClashes] = useState(false);
+  // 偏好藏起來的課與會衝堂的課：預設收起，學生想看再展開（只在這次搜尋有效，不改偏好）。
+  const [ignorePreferences, setIgnorePreferences] = useState(false);
+  const [showClashes, setShowClashes] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [pageSize, setPageSize] = useState(PAGE_SIZES[0]!);
   const [page, setPage] = useState(0);
@@ -93,20 +121,44 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
 
   // 條件裡改了學制就跟著換預設。
   useEffect(() => setDegree(defaultDegree ?? ''), [defaultDegree]);
-  // 點課表空格：帶入那一天與那一節，打開多條件搜尋讓學生看得到條件。
+  // 點課表空格：列出整段空堂裡排得進去的課，預設先看通識（最常用來補空堂）。
   useEffect(() => {
     if (!slot) return;
     // 從空格找課是一次新的搜尋：清掉關鍵字與其他條件，不然常會因為殘留的課號直接變成「沒有符合的課」。
     onQuery?.('');
     setDepartment('');
-    setGeneralEducation('');
+    setGrade('');
+    setGeneralEducation(ALL_GENERAL_EDUCATION);
+    setScope('ge');
     setEmi(false);
-    setWeekdays([slot.day]);
-    setSlotPeriods([slot.period]);
+    setWeekdays([]);
+    setWithin(slot);
     setDayparts([]);
-    setFiltersOpen(true);
+    setShowClashes(false);
     setPage(0);
   }, [slot]);
+  const chooseScope = (next: SlotScope) => {
+    setScope(next);
+    setGeneralEducation(next === 'ge' ? ALL_GENERAL_EDUCATION : '');
+    setDepartment(next === 'department' ? identityDepartment ?? '' : '');
+    setGrade('');
+    setPage(0);
+  };
+  const clearWithin = () => {
+    setWithin(null);
+    setGeneralEducation('');
+    setDepartment('');
+    setPage(0);
+  };
+  const stretch = useMemo(() => {
+    if (!within) return null;
+    const clicked = NCCU_PERIODS.find(({ code }) => code === within.period);
+    const codes = within.codes?.length ? within.codes : [within.period];
+    const start = within.start ?? clicked?.start ?? 0;
+    const end = within.end ?? clicked?.end ?? 0;
+    const span = codes.length > 1 ? `${codes[0]}–${codes.at(-1)}` : codes[0];
+    return { day: within.day, period: within.period, start, end, label: `${DAY_LABELS[within.day]} ${span} 節` };
+  }, [within]);
 
   const categories = useMemo(
     () => [...new Set(courses.map(({ official }) => official.generalEducation).filter(Boolean))].sort(),
@@ -118,25 +170,45 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
   );
   const departmentLabels = useMemo(() => new Map(departments.map(({ department: key, label }) => [key, label])), [departments]);
   const grades = departments.find(({ department: key }) => key === department)?.grades ?? [];
-  const filterCount = weekdays.length + dayparts.length + slotPeriods.length
-    + [generalEducation, department, degree, emi, noEarly, hideClashes].filter(Boolean).length;
-  // 學制、排除早八、隱藏衝堂只是縮小範圍，單獨開著不列出全校的課。
-  const filtering = Boolean(query.trim() || weekdays.length || dayparts.length || slotPeriods.length || generalEducation || department || emi);
-  const results = useMemo(() => {
-    if (!filtering) return [];
+  const filterCount = weekdays.length + dayparts.length + (stretch ? 1 : 0)
+    + [generalEducation, department, degree, emi].filter(Boolean).length;
+  // 學制只是縮小範圍，單獨開著不列出全校的課。
+  const filtering = Boolean(query.trim() || weekdays.length || dayparts.length || stretch || generalEducation || department || emi);
+  const freeDays = preferences?.freeDays ?? [];
+  const noEarly = Boolean(preferences?.noEarly);
+  const hasPreferences = freeDays.length > 0 || noEarly;
+  const { results, hiddenCount, clashCount } = useMemo(() => {
+    if (!filtering) return { results: [], hiddenCount: 0, clashCount: 0 };
     const found = searchCourses(courses, {
       text: query,
       matchDetails: true,
       weekdays,
-      periods: [...DAYPARTS.filter(({ id }) => dayparts.includes(id)).flatMap(({ periods }) => periods), ...slotPeriods],
+      periods: DAYPARTS.filter(({ id }) => dayparts.includes(id)).flatMap(({ periods }) => periods),
       ...(generalEducation === ALL_GENERAL_EDUCATION ? { anyGeneralEducation: true } : generalEducation ? { generalEducation: [generalEducation] } : {}),
       ...(department ? { department, grade } : {}),
       ...(degree ? { degree } : {}),
       ...(emi ? { emi } : {}),
-      ...(noEarly ? { excludePeriods: EARLY_PERIODS } : {}),
+      ...(stretch ? { within: { day: stretch.day, start: stretch.start, end: stretch.end, period: stretch.period } } : {}),
     });
-    return hideClashes && clashesOf ? found.filter((course) => !clashesOf(course).length) : found;
-  }, [clashesOf, courses, dayparts, degree, department, emi, filtering, generalEducation, grade, hideClashes, noEarly, query, slotPeriods, weekdays]);
+    const preferred = hasPreferences
+      ? searchCourses(found, { ...(freeDays.length ? { excludeDays: freeDays } : {}), ...(noEarly ? { excludePeriods: EARLY_PERIODS } : {}) })
+      : found;
+    const visible = ignorePreferences ? found : preferred;
+    // 畢業缺口的通識類別排前面（同一組內維持原本順序）。
+    const priority = new Set(priorityCategories ?? []);
+    const ranked = priority.size
+      ? [...visible].sort((first, second) => Number(priority.has(second.official.generalEducation)) - Number(priority.has(first.official.generalEducation)))
+      : visible;
+    const fits = clashesOf ? ranked.filter((course) => !clashesOf(course).length) : ranked;
+    const clashing = clashesOf ? ranked.filter((course) => clashesOf(course).length > 0) : [];
+    // 全部都會衝堂（例如用課號找一門課）時直接列出來，不收成一個空清單。
+    const allClash = fits.length === 0;
+    return {
+      results: showClashes || allClash ? [...fits, ...clashing] : fits,
+      hiddenCount: found.length - preferred.length,
+      clashCount: allClash ? 0 : clashing.length,
+    };
+  }, [clashesOf, courses, dayparts, degree, department, emi, filtering, freeDays, generalEducation, grade, hasPreferences, ignorePreferences, noEarly, priorityCategories, query, showClashes, stretch, weekdays]);
   const pages = Math.max(1, Math.ceil(results.length / pageSize));
   const current = Math.min(page, pages - 1);
   const shown = results.slice(current * pageSize, (current + 1) * pageSize);
@@ -193,19 +265,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
         </div>
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="時段">
           {DAYPARTS.map(({ id, label }) => (
-            <Chip key={id} pressed={dayparts.includes(id)} onClick={() => { setDayparts(toggle(dayparts, id)); setSlotPeriods([]); resetPaging(); }}>{label}</Chip>
-          ))}
-          {slotPeriods.map((code) => (
-            <button
-              key={code}
-              type="button"
-              aria-label={`清除節次：${code} 節`}
-              className="btn btn-sm tab-selected min-h-11 gap-1 px-3 text-mist-ink"
-              onClick={() => { setSlotPeriods(slotPeriods.filter((item) => item !== code)); resetPaging(); }}
-            >
-              {code} 節<span className="tabular text-xs font-normal">（{NCCU_PERIODS.find((period) => period.code === code)?.time}）</span>
-              <X className="size-4" aria-hidden="true" />
-            </button>
+            <Chip key={id} pressed={dayparts.includes(id)} onClick={() => { setDayparts(toggle(dayparts, id)); resetPaging(); }}>{label}</Chip>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -261,18 +321,68 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
         </div>
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="其他條件">
           <Chip pressed={emi} onClick={() => { setEmi(!emi); resetPaging(); }}>英語授課</Chip>
-          <Chip pressed={noEarly} onClick={() => { setNoEarly(!noEarly); resetPaging(); }}>排除早八（A、B、1 節）</Chip>
-          {clashesOf && <Chip pressed={hideClashes} onClick={() => { setHideClashes(!hideClashes); resetPaging(); }}>隱藏會衝堂的課</Chip>}
         </div>
       </fieldset>
+
+      {stretch && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            aria-label={`清除空堂：${stretch.label}`}
+            className="btn btn-sm tab-selected min-h-11 gap-1 px-3 text-mist-ink"
+            onClick={clearWithin}
+          >
+            <span className="tabular">{`${stretch.label}空堂（${formatClock(stretch.start)}–${formatClock(stretch.end)}）`}</span>
+            <X className="size-4" aria-hidden="true" />
+          </button>
+          <div role="group" aria-label="空堂找課範圍" className="well flex rounded-full p-1">
+            {SLOT_SCOPES.filter(({ id }) => id !== 'department' || identityDepartment).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={scope === id}
+                onClick={() => chooseScope(id)}
+                className={`flex min-h-11 min-w-11 items-center rounded-full px-3 text-sm font-bold ${scope === id ? 'tab-selected text-mist-ink' : 'text-base-content/80'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="well flex min-h-48 flex-1 flex-col overflow-hidden rounded-2xl">
         {!filtering ? (
           <p className="p-4 text-sm text-base-content/80">輸入課名、教師或課號開始搜課，也可以打系所（例「經濟系」）；或只用星期、時段、通識類別、開課系級篩選。</p>
-        ) : results.length === 0 ? (
-          <p className="p-4 text-sm text-base-content/80">沒有符合的課。試試別的關鍵字，或放寬星期與時段。</p>
         ) : (
           <>
+            {(hiddenCount > 0 || clashCount > 0 || (ignorePreferences && hasPreferences)) && (
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-base-300 px-4 py-1.5 text-xs text-base-content/80">
+                {hasPreferences && !ignorePreferences && hiddenCount > 0 && (
+                  <span className="flex items-center gap-1">
+                    依偏好隱藏 {hiddenCount} 門（{[freeDays.length ? `週${freeDays.map((day) => DAY_LABELS[day]!.slice(1)).join('、')}空下來` : '', noEarly ? '不要早八' : ''].filter(Boolean).join('、')}）
+                    <button type="button" className="btn btn-ghost btn-xs min-h-11 px-2 text-mist-ink underline" onClick={() => { setIgnorePreferences(true); resetPaging(); }}>顯示全部</button>
+                  </span>
+                )}
+                {hasPreferences && ignorePreferences && (
+                  <span className="flex items-center gap-1">
+                    已顯示全部（含偏好會藏起來的課）
+                    <button type="button" className="btn btn-ghost btn-xs min-h-11 px-2 text-mist-ink underline" onClick={() => { setIgnorePreferences(false); resetPaging(); }}>套用偏好</button>
+                  </span>
+                )}
+                {clashCount > 0 && (
+                  <button type="button" aria-expanded={showClashes} className="btn btn-ghost btn-xs min-h-11 px-2 text-coral-ink" onClick={() => setShowClashes(!showClashes)}>
+                    {showClashes ? `收起會衝堂的 ${clashCount} 門` : `另有 ${clashCount} 門會衝堂（展開）`}
+                  </button>
+                )}
+              </p>
+            )}
+            {results.length === 0 ? (
+              <p className="p-4 text-sm text-base-content/80">
+                {hiddenCount > 0 || clashCount > 0 ? '符合的課都被偏好藏起來或會衝堂，可以用上面的按鈕看看。' : stretch ? '這段空堂沒有排得進去的課，試試「全部」或別的時段。' : '沒有符合的課。試試別的關鍵字，或放寬星期與時段。'}
+              </p>
+            ) : (
+            <>
             <p className="sr-only" aria-live="polite">找到 {results.length} 門</p>
             <div aria-hidden="true" className={`hidden gap-3 border-b border-base-300 px-4 py-2 text-xs font-bold text-base-content/70 @4xl:grid ${COLUMNS}`}>
               <span className="pl-2">課程名稱</span><span>教師</span><span>課程編號</span><span>類型</span><span>時間／地點</span><span className="w-32 text-right">收藏・加入</span>
@@ -368,6 +478,8 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
                 );
               })}
             </ul>
+            </>
+            )}
           </>
         )}
         <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-base-300 px-4 py-2 text-sm">

@@ -177,19 +177,20 @@ function CourseActions({ entry, details, sections, onSwap, courseOf, focusTitle 
   );
 }
 
-function EmptyState({ onStartSearch, onImport }: Pick<TimetableProps, 'onStartSearch' | 'onImport'>) {
+/** 空課表的一行說明：格子照樣畫出來，點空格就能找課（易用性審查第 3 名）。 */
+function EmptyHint({ onStartSearch, onImport, canFindSlot }: Pick<TimetableProps, 'onStartSearch' | 'onImport'> & { canFindSlot: boolean }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-10 text-center">
-      <div>
-        <p className="text-lg font-semibold">還沒有排任何課</p>
-        <p className="mt-1 max-w-[34ch] text-sm text-base-content/80">搜到想修的課就能加進課表，衝堂與選課規則會自動提醒。</p>
-      </div>
-      <div className="flex flex-wrap justify-center gap-2">
-        <button type="button" className="btn btn-primary min-h-11 gap-2" onClick={onStartSearch}>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-sm">
+      <p className="min-w-0 flex-1 basis-56 text-base-content/80">
+        <span className="font-semibold text-base-content">還沒有排任何課</span>
+        {canFindSlot ? '：點空格找那段時間排得進去的課，或' : '：'}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        <button type="button" className="btn btn-primary btn-sm min-h-11 gap-1.5" onClick={onStartSearch}>
           <Search className="size-4" aria-hidden="true" />
           從搜課開始
         </button>
-        <button type="button" className="btn btn-ghost min-h-11 gap-2" onClick={onImport}>
+        <button type="button" className="btn btn-ghost btn-sm min-h-11 gap-1.5" onClick={onImport}>
           <FileUp className="size-4" aria-hidden="true" />
           匯入舊站資料
         </button>
@@ -218,7 +219,9 @@ export function Timetable(props: TimetableProps) {
   useEffect(() => {
     if (selected && !selectedEntry) onSelect?.(null);
   }, [onSelect, selected, selectedEntry]);
-  const [mobileMode, setMobileMode] = useState<'agenda' | 'grid'>('agenda');
+  const [chosenMode, setMobileMode] = useState<'agenda' | 'grid'>('agenda');
+  // 沒有課時行程是空的：手機也直接顯示方格，才點得到空格。
+  const mobileMode = entries.length === 0 ? 'grid' : chosenMode;
   const periods = useMemo(() => visiblePeriods(entries), [entries]);
   const blocks = useMemo(() => layoutBlocks(entries, periods), [entries, periods]);
   const days = useMemo(() => {
@@ -253,7 +256,7 @@ export function Timetable(props: TimetableProps) {
         )}
       </div>
 
-      {entries.length === 0 ? <EmptyState onStartSearch={props.onStartSearch} onImport={props.onImport} /> : (
+      {entries.length === 0 && <EmptyHint onStartSearch={props.onStartSearch} onImport={props.onImport} canFindSlot={Boolean(props.onFindSlot)} />}
         <>
           <div className={`${mobileMode === 'grid' ? '' : 'hidden md:block'} well mt-2 overflow-x-auto rounded-2xl p-2`}>
             <div
@@ -388,7 +391,6 @@ export function Timetable(props: TimetableProps) {
             />
           )}
         </>
-      )}
     </section>
   );
 }

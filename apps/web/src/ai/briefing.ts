@@ -12,6 +12,8 @@ export interface BriefingInput {
   warnings: number;
   freeDays: readonly number[];
   unscheduledCandidates: number;
+  /** 衝堂可以用本機「換到不衝堂的班」解決：面板直接放那顆按鈕，不再建議送 AI。 */
+  localClashFix?: boolean;
 }
 
 export interface Briefing {
@@ -20,7 +22,7 @@ export interface Briefing {
   mood: BuddyMood;
 }
 
-export function buildBriefing({ courses, credits, conflicts, warnings, freeDays, unscheduledCandidates }: BriefingInput): Briefing {
+export function buildBriefing({ courses, credits, conflicts, warnings, freeDays, unscheduledCandidates, localClashFix = false }: BriefingInput): Briefing {
   if (courses === 0) {
     return { lines: ['課表還是空的。'], suggestions: ['幫我找週三下午的通識', '幫我排一份 15 學分左右、不要早八的課表'], mood: 'idle' };
   }
@@ -29,10 +31,10 @@ export function buildBriefing({ courses, credits, conflicts, warnings, freeDays,
   const [first] = conflicts;
   if (conflicts.length === 1 && first) {
     lines.push(`${first[0]}和${first[1]}衝堂。`);
-    suggestions.push(`幫我解決${first[0]}和${first[1]}的衝堂`);
+    if (!localClashFix) suggestions.push(`幫我解決${first[0]}和${first[1]}的衝堂`);
   } else if (conflicts.length > 1) {
     lines.push(`有 ${conflicts.length} 組衝堂。`);
-    suggestions.push('幫我解決衝堂');
+    if (!localClashFix) suggestions.push('幫我解決衝堂');
   }
   if (warnings > 0) lines.push(`另有 ${warnings} 則選課規則提醒。`);
   if (freeDays.length) lines.push(`你希望週${freeDays.map((day) => DAYS[day]).join('、')}空下來。`);

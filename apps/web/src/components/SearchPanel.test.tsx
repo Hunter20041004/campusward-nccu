@@ -212,7 +212,7 @@ describe('finding the right section', () => {
     expect(titles()).toEqual(['個體經濟學', '經濟學', '計量經濟']);
   });
 
-  test('switches for English-taught courses and no early classes', async () => {
+  test('switches for English-taught courses', async () => {
     const user = userEvent.setup();
     panel();
     await openFilters(user);
@@ -221,28 +221,46 @@ describe('finding the right section', () => {
     await user.click(screen.getByRole('button', { name: '英語授課' }));
     await user.click(screen.getByRole('button', { name: '週四' }));
     expect(titles()).toEqual(['線性代數']);
-    await user.click(screen.getByRole('button', { name: /排除早八/ }));
-    expect(screen.getByRole('button', { name: /排除早八/ })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.queryAllByRole('article')).toHaveLength(0);
   });
 
-  test('marks and can hide courses that clash with the timetable', async () => {
+  // 易用性審查第 2 名（2026-11-01）：偏好只設一次，每次搜課自動套用；暫時的「排除早八」「隱藏衝堂」開關收成一個入口。
+  test('applies the saved free days and no-early preference to every search, and can show everything', async () => {
+    const user = userEvent.setup();
+    panel('經濟', { preferences: { freeDays: [2], noEarly: true } });
+    expect(titles()).toEqual(['個體經濟學']);
+    expect(screen.queryByRole('button', { name: /排除早八/ })).toBeNull();
+    expect(screen.getByText(/依偏好隱藏 2 門/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '顯示全部' }));
+    expect(titles()).toEqual(['個體經濟學', '經濟學', '計量經濟']);
+    await user.click(screen.getByRole('button', { name: '套用偏好' }));
+    expect(titles()).toEqual(['個體經濟學']);
+  });
+
+  test('without preferences nothing is hidden and no note is shown', () => {
+    panel('經濟');
+    expect(titles()).toEqual(['個體經濟學', '經濟學', '計量經濟']);
+    expect(screen.queryByText(/依偏好隱藏/)).toBeNull();
+  });
+
+  test('when every match clashes, shows them right away instead of an empty list', () => {
+    panel('個體經濟學', { clashesOf: () => ['臺灣政治'] });
+    expect(titles()).toEqual(['個體經濟學']);
+    expect(screen.getByRole('article')).toHaveTextContent('與「臺灣政治」衝堂');
+    expect(screen.queryByRole('button', { name: /會衝堂（展開）/ })).toBeNull();
+  });
+
+  test('collapses courses that clash with the timetable to the end, still marked', async () => {
     const user = userEvent.setup();
     panel('經濟', { clashesOf: (course: Course) => (course.code === '900201001' ? ['臺灣政治'] : []) });
-    const [clashing, fine] = screen.getAllByRole('article');
+    expect(titles()).toEqual(['經濟學', '計量經濟']);
+    expect(screen.queryByRole('button', { name: '隱藏會衝堂的課' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: '另有 1 門會衝堂（展開）' }));
+    expect(titles()).toEqual(['經濟學', '計量經濟', '個體經濟學']);
+    const clashing = screen.getAllByRole('article')[2]!;
     expect(clashing).toHaveTextContent('與「臺灣政治」衝堂');
     expect(clashing).toHaveAttribute('data-clash', 'true');
-    expect(fine).not.toHaveTextContent('衝堂');
-    await openFilters(user);
-    await user.click(screen.getByRole('button', { name: '隱藏會衝堂的課' }));
+    await user.click(screen.getByRole('button', { name: '收起會衝堂的 1 門' }));
     expect(titles()).toEqual(['經濟學', '計量經濟']);
-  });
-
-  test('puts a requested timetable slot into the filters', () => {
-    panel('', { slot: { day: 1, period: 'D', nonce: 1 } });
-    expect(screen.getByRole('button', { name: '週一' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: '清除節次：D 節' })).toBeInTheDocument();
-    expect(titles()).toEqual(['個體經濟學']);
   });
 
   test('the heart reflects whether the course is already a candidate', () => {
@@ -250,5 +268,54 @@ describe('finding the right section', () => {
     const heart = screen.getByRole('button', { name: '加入候選：經濟學' });
     expect(heart).toHaveAttribute('aria-pressed', 'true');
     expect(heart).toHaveAttribute('title', '已在候選，再按一次移出');
+  });
+});
+
+// 易用性審查第 3 名（2026-11-01）：點空堂直接列出填得進去的課，預設通識，可切本系／全部；有畢業缺口的通識類別排前面。
+describe('finding courses for a free stretch', () => {
+  const free = [
+    make('900301001', { subNam: '通識早上', subGde: '教務處通識教育中心', subKind: '', subTime: '五34', lmtKind: '人文通識' }),
+    make('900302001', { subNam: '本系課', subGde: '會計二', subTime: '五34' }),
+    make('900303001', { subNam: '別系課', subGde: '經濟二', subTime: '五4' }),
+    make('900304001', { subNam: '中文通識課', subGde: '教務處通識教育中心', subKind: '', subTime: '五34', lmtKind: '中文通識' }),
+    make('900305001', { subNam: '超出空堂', subGde: '教務處通識教育中心', subKind: '', subTime: '五45', lmtKind: '人文通識' }),
+    make('900306001', { subNam: '沒碰到那一節', subGde: '教務處通識教育中心', subKind: '', subTime: '五12', lmtKind: '人文通識' }),
+  ];
+  const titles = () => screen.getAllByRole('article').map((item) => within(item).getByRole('heading').textContent);
+  const slot = { day: 5, period: '4', start: 490, end: 720, codes: ['1', '2', '3', '4'], nonce: 1 };
+
+  test('lists only courses that fit the stretch and touch the clicked period, 通識 first by default', () => {
+    setup('', { courses: free, slot });
+    expect(screen.getByText('週五 1–4 節空堂（08:10–12:00）')).toBeInTheDocument();
+    const scope = screen.getByRole('group', { name: '空堂找課範圍' });
+    expect(within(scope).getByRole('button', { name: '通識' })).toHaveAttribute('aria-pressed', 'true');
+    expect(titles()).toEqual(['通識早上', '中文通識課']);
+  });
+
+  test('本系 uses the student\'s department and 全部 drops the category', async () => {
+    const user = userEvent.setup();
+    setup('', { courses: free, slot, identityDepartment: '會計' });
+    const scope = screen.getByRole('group', { name: '空堂找課範圍' });
+    await user.click(within(scope).getByRole('button', { name: '本系' }));
+    expect(titles()).toEqual(['本系課']);
+    await user.click(within(scope).getByRole('button', { name: '全部' }));
+    expect(titles()).toEqual(['通識早上', '本系課', '別系課', '中文通識課']);
+  });
+
+  test('without a class there is no 本系 tab', () => {
+    setup('', { courses: free, slot });
+    expect(within(screen.getByRole('group', { name: '空堂找課範圍' })).queryByRole('button', { name: '本系' })).toBeNull();
+  });
+
+  test('categories the graduation audit says are missing come first', () => {
+    setup('', { courses: free, slot, priorityCategories: ['中文通識'] });
+    expect(titles()).toEqual(['中文通識課', '通識早上']);
+  });
+
+  test('clearing the stretch goes back to a normal search', async () => {
+    const user = userEvent.setup();
+    setup('', { courses: free, slot });
+    await user.click(screen.getByRole('button', { name: '清除空堂：週五 1–4 節' }));
+    expect(screen.queryByRole('group', { name: '空堂找課範圍' })).toBeNull();
   });
 });

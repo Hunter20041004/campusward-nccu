@@ -28,4 +28,12 @@ describe('buildBriefing', () => {
     expect(briefing.lines[1]).toBe('有 2 組衝堂。');
     expect(briefing.suggestions[0]).toBe('幫我解決衝堂');
   });
+
+  // 易用性審查第 4 名：衝堂有本機換班解法時，不再建議送 AI（沒有金鑰的學生會卡在設定）。
+  test('leaves the clash suggestion out when a local section swap can fix it', () => {
+    const briefing = buildBriefing({ courses: 3, credits: 9, conflicts: [['統計學', '會計學']], warnings: 0, freeDays: [], unscheduledCandidates: 0, localClashFix: true });
+    expect(briefing.lines[1]).toBe('統計學和會計學衝堂。');
+    expect(briefing.suggestions.join('')).not.toContain('衝堂」');
+    expect(briefing.suggestions.some((suggestion) => suggestion.includes('解決'))).toBe(false);
+  });
 });

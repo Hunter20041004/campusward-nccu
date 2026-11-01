@@ -1,7 +1,7 @@
 // 搜課：候選清單篩選（移植自舊 catalog-filters）與全校課程快照搜尋（新增）。
 
 import type { Course } from './official/course.ts';
-import { periodsForRange, type Meeting } from './periods.ts';
+import { NCCU_PERIODS, periodsForRange, type Meeting } from './periods.ts';
 import type { Attendance, ScheduleCourse } from './schedule/selection.ts';
 
 export const CATALOG_DAYPARTS = Object.freeze({
@@ -92,11 +92,28 @@ const canonicalDepartment = (name: string) => DEPARTMENT_ALIASES[name] ?? name;
 // 全校約 600 種開課班級寫法，搜尋每打一個字都要比對，記下解析結果。
 const parsedGroups = new Map<string, readonly OfferingUnit[]>();
 
+/** 開課班級的一個單位，保留班別（甲乙、A/B、土管）；本班必修要分得出甲班乙班。 */
+export interface ClassUnit extends OfferingUnit {
+  /** 班別，例「甲」；沒有分班為空字串。 */
+  section: string;
+}
+
+const parsedClassUnits = new Map<string, readonly ClassUnit[]>();
+
+function classUnitsOf(text: string): readonly ClassUnit[] {
+  const value = text.trim();
+  const cached = parsedClassUnits.get(value);
+  if (cached) return cached;
+  const units = Object.freeze(splitTargetGroup(value).map((unit) => Object.freeze(unit)));
+  if (parsedClassUnits.size < 5000) parsedClassUnits.set(value, units);
+  return units;
+}
+
 function unitsOf(text: string): readonly OfferingUnit[] {
   const value = text.trim();
   const cached = parsedGroups.get(value);
   if (cached) return cached;
-  const units = Object.freeze(splitTargetGroup(value).map((unit) => Object.freeze(unit)));
+  const units = Object.freeze(classUnitsOf(value).map(({ department, grade }) => Object.freeze({ department, grade })));
   if (parsedGroups.size < 5000) parsedGroups.set(value, units);
   return units;
 }
@@ -105,21 +122,28 @@ export function parseTargetGroup(text: string): OfferingUnit[] {
   return unitsOf(text).map((unit) => ({ ...unit }));
 }
 
-function splitTargetGroup(value: string): OfferingUnit[] {
+/** 和 parseTargetGroup 相同，但保留班別（「會計二甲」→ 會計／二／甲）。 */
+export function parseClassUnits(text: string): ClassUnit[] {
+  return classUnitsOf(text).map((unit) => ({ ...unit }));
+}
+
+function splitTargetGroup(value: string): ClassUnit[] {
   if (!value) return [];
-  const units: OfferingUnit[] = [];
+  const units: ClassUnit[] = [];
   UNIT_PATTERN.lastIndex = 0;
   while (UNIT_PATTERN.lastIndex < value.length) {
     const match = UNIT_PATTERN.exec(value);
     if (!match) break;
-    const [, department = '', level = '', year = '', , degree = ''] = match;
+    const [, department = '', level = '', year = '', section = '', degree = ''] = match;
     const grade = degree || `${level}${year}`;
     const language = LANGUAGE_UNITS[department];
-    units.push(language ? { department: language[0], grade: `${language[1]}${grade}` } : { department: canonicalDepartment(department), grade });
+    units.push(language
+      ? { department: language[0], grade: `${language[1]}${grade}`, section }
+      : { department: canonicalDepartment(department), grade, section });
   }
   if (UNIT_PATTERN.lastIndex === value.length && units.length) return units;
   // 整段是系所名（「經濟系」「台史所」）或拆不開：去掉結尾的「系」「所」當系所，不分年級。
-  return [{ department: canonicalDepartment(value.replace(/(?<=..)[系所]$/, '')), grade: '' }];
+  return [{ department: canonicalDepartment(value.replace(/(?<=..)[系所]$/, '')), grade: '', section: '' }];
 }
 
 /** 搜尋結果列用的簡短開課班級，例「經濟二、三」「法律碩一、博一」；整段系所名照原文。 */
@@ -239,6 +263,13 @@ export interface CourseSearch {
   excludePeriods?: readonly string[];
   /** 沒有固定時間的課也列入（即使有星期／節次條件）。 */
   includeUnscheduled?: boolean;
+  /** 任一段上課時間在這些星期就排除（偏好的空堂日）。 */
+  excludeDays?: readonly number[];
+  /**
+   * 空堂找課：那一天有一段上課時間碰到 period 那一節，而且整段落在 start–end（分鐘）之內。
+   * 其他天的時間不在這裡判斷（衝堂另外算）。
+   */
+  within?: { day: number; start: number; end: number; period?: string };
 }
 
 export function searchCourses(courses: readonly Course[], search: CourseSearch): Course[] {
@@ -250,6 +281,9 @@ export function searchCourses(courses: readonly Course[], search: CourseSearch):
   const weekdays = new Set(search.weekdays ?? []);
   const periods = new Set(search.periods ?? []);
   const excluded = new Set(search.excludePeriods ?? []);
+  const excludedDays = new Set(search.excludeDays ?? []);
+  const within = search.within;
+  const touched = within?.period ? NCCU_PERIODS.find(({ code }) => code === within.period) : undefined;
   const timeFiltered = weekdays.size > 0 || periods.size > 0;
   return courses.filter((course) => {
     if (words.length) {
@@ -265,6 +299,10 @@ export function searchCourses(courses: readonly Course[], search: CourseSearch):
     if (search.degree && !degreeMatches(course.official.degreeLevel, search.degree)) return false;
     if (search.emi && !course.official.emi) return false;
     if (excluded.size && course.meetings.some((meeting) => periodsForRange(meeting.start, meeting.end).some(({ code }) => excluded.has(code)))) return false;
+    if (excludedDays.size && course.meetings.some(({ day }) => excludedDays.has(day))) return false;
+    if (within && !course.meetings.some((meeting) => meeting.day === within.day
+      && meeting.start >= within.start && meeting.end <= within.end
+      && (!touched || (meeting.start < touched.end && touched.start < meeting.end)))) return false;
     if (!timeFiltered) return true;
     if (!course.meetings.length) return Boolean(search.includeUnscheduled);
     return course.meetings.some((meeting) => (

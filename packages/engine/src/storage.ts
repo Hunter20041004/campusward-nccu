@@ -120,6 +120,7 @@ const PlannerSchema = z.object({
   preferences: z.object({
     freeDays: z.array(z.number().int().min(1).max(7)).max(7),
     internship: InternshipSchema,
+    noEarly: z.boolean().optional(),
   }).strict(),
 }).strict().refine((planner) => planner.plans.some(({ id }) => id === planner.activePlanId));
 
@@ -134,6 +135,8 @@ const ProfileSchema = z.object({
   level: z.enum(['undergrad', 'graduate']).optional(),
   year: z.number().int().min(1).max(7).optional(),
   additionalMajor: z.enum(['none', 'minor', 'double']).optional(),
+  /** 系級，例「會計二甲」：只收中文與英文字母（地政系的「土管」、英文班別）。 */
+  className: z.string().regex(/^[\p{Script=Han}A-Za-z]{2,20}$/u).optional(),
   programs: IdList.optional(),
   prerequisites: IdList.optional(),
   conditionIds: IdList.optional(),
@@ -192,6 +195,7 @@ function pickData(data: StoredData): StoredData {
       level: profile.level,
       year: profile.year,
       additionalMajor: profile.additionalMajor,
+      className: profile.className,
       programs: profile.programs ? [...profile.programs] : undefined,
       prerequisites: profile.prerequisites ? [...profile.prerequisites] : undefined,
       conditionIds: profile.conditionIds ? [...profile.conditionIds] : undefined,
@@ -206,6 +210,7 @@ function pickData(data: StoredData): StoredData {
         preferences: {
           freeDays: [...workspace.planner.preferences.freeDays],
           internship: pickInternship(workspace.planner.preferences.internship),
+          ...(workspace.planner.preferences.noEarly !== undefined ? { noEarly: workspace.planner.preferences.noEarly } : {}),
         },
       },
       manualCourses: workspace.manualCourses.map(pickManual),

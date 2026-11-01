@@ -179,7 +179,8 @@ describe('searching and adding', () => {
     const user = userEvent.setup();
     const rows = [
       officialRow({ subNum: '900001001', subNam: '統計學', subTime: '一234' }),
-      officialRow({ subNum: '900002001', subNam: '週三下午課', subTime: '三D5' }),
+      // 點空堂預設先看通識（易用性審查第 3 名）。
+      officialRow({ subNum: '900002001', subNam: '週三下午課', subTime: '三D5', lmtKind: '人文通識' }),
     ];
     render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
     await screen.findByText('115-1');
@@ -207,12 +208,14 @@ describe('searching and adding', () => {
     expect(document.activeElement?.tagName).toBe('H3');
   });
 
-  test('clicking an empty timetable cell searches that day and period and shows search', async () => {
+  // 易用性審查第 3 名（2026-11-01）：點空格列出整段空堂裡排得進去、碰到那一節的課，預設通識，可以切「全部」。
+  test('clicking an empty timetable cell lists courses that fit that free stretch and shows search', async () => {
     const user = userEvent.setup();
     const rows = [
       officialRow({ subNum: '900001001', subNam: '統計學', subTime: '一234' }),
-      officialRow({ subNum: '900002001', subNam: '週三下午課', subTime: '三D5' }),
-      officialRow({ subNum: '900003001', subNam: '週三早上課', subTime: '三12' }),
+      officialRow({ subNum: '900002001', subNam: '週三下午課', subTime: '三D5', lmtKind: '人文通識' }),
+      officialRow({ subNum: '900003001', subNam: '週三早上課', subTime: '三12', lmtKind: '人文通識' }),
+      officialRow({ subNum: '900004001', subNam: '週三下午專業課', subTime: '三D' }),
     ];
     render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
     await screen.findByText('115-1');
@@ -221,8 +224,11 @@ describe('searching and adding', () => {
     await user.clear(screen.getByRole('searchbox', { name: '搜課' }));
     await user.click(screen.getByRole('button', { name: '找週三 D 節的課' }));
     expect(document.querySelector('[data-mobile-view="search"]')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '週三' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getAllByRole('article').map((item) => within(item).getByRole('heading').textContent)).toEqual(['週三下午課']);
+    expect(screen.getByRole('button', { name: /^清除空堂：週三/ })).toBeInTheDocument();
+    const titles = () => screen.getAllByRole('article').map((item) => within(item).getByRole('heading').textContent);
+    expect(titles()).toEqual(['週三下午課']);
+    await user.click(within(screen.getByRole('group', { name: '空堂找課範圍' })).getByRole('button', { name: '全部' }));
+    expect(titles()).toEqual(['週三下午課', '週三下午專業課']);
   });
 
   test('keeps the timetable after a reload', async () => {
@@ -406,14 +412,14 @@ describe('planner fixes', () => {
     expect(screen.getByRole('heading', { level: 2, name: /候選/ })).toBeInTheDocument();
   });
 
-  test('without a year the credits ask for one, and the button opens the identity settings; with a year they show the range', async () => {
+  // 易用性審查第 1 名：年級改在課表上方的系級列（一排年級按鈕），條件頁不再有年級選單。
+  test('without a year the credits ask for one, and the button goes to the class bar; with a year they show the range', async () => {
     const user = userEvent.setup();
     render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
     await screen.findByText('115-1');
     await user.click(screen.getByRole('button', { name: '設定年級後可檢查學分上下限' }));
-    const year = screen.getByRole('combobox', { name: '年級' });
-    expect(year).toHaveFocus();
-    await user.selectOptions(year, '2');
+    expect(screen.getByRole('combobox', { name: '系級' })).toHaveFocus();
+    await user.click(within(screen.getByRole('radiogroup', { name: '年級' })).getByRole('radio', { name: '大二' }));
     expect(shown(screen.getAllByText(/共/))).toHaveTextContent('共 0 學分（12–25）');
     expect(screen.queryByRole('button', { name: '設定年級後可檢查學分上下限' })).toBeNull();
   });
@@ -494,6 +500,38 @@ describe('timetable course panel and the conflict nudge', () => {
     expect(ai.generate).not.toHaveBeenCalled();
   });
 
+  // 易用性審查第 4 名（2026-11-01）：加入會衝堂的課時，提示條直接附換班；規則提醒的衝堂列也有同一顆按鈕。
+  test('the add toast offers the one clash-free section, and one click swaps to it', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await addClash(user);
+    const toast = screen.getByRole('status', { name: '最近的修改' });
+    expect(toast).toHaveTextContent('已加入「民法概要」，與「臺灣政治」衝堂');
+    await user.click(within(toast).getByRole('button', { name: '把「民法概要」換到週一 D56 那班' }));
+    expect(toast).toHaveTextContent('已把「民法概要」換成吳合成 週一 D56 那一班');
+    expect(within(screen.getByRole('group', { name: '每週課表' })).queryByRole('button', { name: /衝堂/ })).toBeNull();
+  });
+
+  test('the clash row in the reminders has the same swap button', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await addClash(user);
+    const reminders = screen.getByRole('list', { name: '提醒' });
+    await user.click(within(reminders).getByRole('button', { name: '把「民法概要」換到週一 D56 那班' }));
+    expect(screen.queryByRole('list', { name: '提醒' })?.textContent ?? '').not.toContain('每週時段重疊');
+  });
+
+  test('even with a Gemini key, the nudge solves the clash locally and never calls the AI', async () => {
+    const user = userEvent.setup();
+    const ai = { hasKey: () => true, setKey: vi.fn(), removeKey: vi.fn(), generate: vi.fn() };
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} ai={ai} guide={false} />);
+    await addClash(user);
+    await user.click(screen.getByRole('button', { name: nudgeText }));
+    expect(screen.getByRole('button', { name: '小山' })).toHaveAttribute('aria-expanded', 'false');
+    expect(within(screen.getByRole('group', { name: '民法概要 的操作' })).getByRole('region', { name: '換一班' })).toHaveTextContent('吳合成');
+    expect(ai.generate).not.toHaveBeenCalled();
+  });
+
   test('the nudge steps aside while a course panel or the phone menu is open', async () => {
     const user = userEvent.setup();
     render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
@@ -531,5 +569,54 @@ describe('timetable course panel and the conflict nudge', () => {
     await user.click(screen.getByRole('button', { name: '確認清除' }));
     expect(storage.getItem('campusward:v1:nudge-dismissed') ?? '').toBe('');
     second.unmount();
+  });
+});
+
+// 易用性審查第 1、2 名（2026-11-01，使用者核可）：系級一次設定，本班必修一鍵排入；偏好設一次，搜課自動套用。
+describe('class and preferences set once', () => {
+  const rows = [
+    officialRow({ subNum: '703007001', subNam: '離散數學', subGde: '資訊二', subTime: '二234' }),
+    officialRow({ subNum: '703008001', subNam: '資料結構', subGde: '資訊二', subTime: '四234' }),
+    officialRow({ subNum: '703017001', subNam: '機率論', subGde: '資訊二', subTime: '三D56' }),
+    officialRow({ subNum: '703017011', subNam: '機率論', subGde: '資訊二', subTime: '五D56' }),
+    officialRow({ subNum: '703813001', subNam: '人工智慧導論', subGde: '資訊二', subKind: '選修', subTime: '一D56' }),
+    officialRow({ subNum: '900501001', subNam: '週五通識', subGde: '教務處通識教育中心', subKind: '', subTime: '五34', lmtKind: '人文通識' }),
+    officialRow({ subNum: '900502001', subNam: '週二通識', subGde: '教務處通識教育中心', subKind: '', subTime: '二D5', lmtKind: '人文通識' }),
+  ];
+
+  test('choosing 資訊二 lists its required courses, avoids the free day, and adds them in one undoable change', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '條件' }));
+    await user.click(screen.getByRole('button', { name: '週三空下來' }));
+    await user.type(screen.getByRole('combobox', { name: '系級' }), '資訊二');
+    const region = screen.getByRole('region', { name: '資訊二 本學期必修' });
+    expect(region).toHaveTextContent('本學期必修 3 門');
+    expect(region).toHaveTextContent('週五 D56');
+    await user.click(within(region).getByRole('button', { name: '全部排入' }));
+    const toast = screen.getByRole('status', { name: '最近的修改' });
+    expect(toast).toHaveTextContent('已排入資訊二必修 3 門');
+    // 只是加課（沒有拿掉任何課）：靠「復原」就好，不另存一份空的自動備案。
+    expect(within(screen.getByRole('group', { name: '方案' })).getAllByRole('button').map((button) => button.textContent)).toEqual(['主方案', '備案']);
+    expect(shown(screen.getAllByText(/共/))).toHaveTextContent('共 9 學分（12–25）');
+    expect(screen.getByRole('region', { name: '資訊二 本學期必修' })).toHaveTextContent('3 門都在課表上');
+    await user.click(within(toast).getByRole('button', { name: '復原' }));
+    expect(shown(screen.getAllByText(/共/))).toHaveTextContent('共 0 學分');
+  });
+
+  test('free days and 不要早八 set once in 條件 apply to every search, with a way to see everything', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '條件' }));
+    await user.click(screen.getByRole('button', { name: '週五空下來' }));
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '課程搜尋' }));
+    await user.type(screen.getByRole('searchbox', { name: '搜課' }), '通識');
+    const titles = () => screen.getAllByRole('article').map((item) => within(item).getByRole('heading').textContent);
+    expect(titles()).toEqual(['週二通識']);
+    expect(screen.getByText(/依偏好隱藏 1 門/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '顯示全部' }));
+    expect(titles()).toEqual(['週五通識', '週二通識']);
   });
 });

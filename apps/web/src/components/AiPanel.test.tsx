@@ -325,3 +325,13 @@ describe('fixes from the review', () => {
     for (const chip of within(screen.getByRole('group', { name: '小山能幫的事' })).getAllByRole('button')) expect(chip).toBeDisabled();
   });
 });
+
+// 易用性審查第 4 名（2026-11-01）：小山的衝堂建議走本機換班，不用金鑰、不呼叫 AI。
+test('the briefing offers the local section swap for a clash, without a key or an AI call', async () => {
+  const onClick = vi.fn();
+  const briefing = { lines: ['目前 2 門、6 學分。', '統計學和會計學衝堂。'], suggestions: ['幫我補一門不衝堂的通識'], mood: 'worried' as const };
+  const { user, fetchImpl } = setup([], { briefing, clashFix: { label: '換到週二 D56 那班', description: '把「會計學」換到週二 D56 那班', onClick } });
+  await user.click(screen.getByRole('button', { name: '把「會計學」換到週二 D56 那班' }));
+  expect(onClick).toHaveBeenCalled();
+  expect(fetchImpl).not.toHaveBeenCalled();
+});

@@ -6,13 +6,19 @@ import {
   findClashes,
   findOtherSections,
   findRetakes,
+  formatClassName,
+  freeStretch,
+  gapGeneralEducation,
   loadStudentRecord,
+  parseClassName,
+  suggestSectionSwap,
   passedAs as passedCourseTitle,
   RECORD_KEY,
   STORAGE_KEY,
   parseEnrollmentRules,
   saveStudentRecord,
   toScheduleCourse,
+  type ApplyOptions,
   type Change,
   type Course,
   type ScheduleCourse,
@@ -41,6 +47,8 @@ import { createBuddyHub, type BuddyHub, type CourseChange } from './buddy/hub.ts
 import { loadOrbPosition, ORB_POSITION_KEY, saveOrbPosition, type OrbPosition } from './buddy/orbPosition.ts';
 import { buildBriefing } from './ai/briefing.ts';
 import { Timetable } from './components/Timetable.tsx';
+import { ClassBar } from './components/ClassBar.tsx';
+import type { ClashFix } from './components/ClashFix.ts';
 import { UndoToast } from './components/UndoToast.tsx';
 import { gemini } from './ai/session.ts';
 import { FEATURES } from './features.ts';
@@ -157,12 +165,42 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     const when = to.meetings.length ? candidateScheduleSummary(to, DAY_LABELS) : '時間未定';
     courseChange('add', [{ type: 'removeFromSchedule', key: fromKey }, { type: 'addToSchedule', key: toKey }], `已把「${titleOf(fromKey)}」換成${to.teacher ?? ''} ${when} 那一班`);
   };
+  // 衝堂的本機解法（易用性審查第 4 名）：只有一班可換就直接換，好幾班就打開課卡讓學生挑；不用金鑰、不經 AI。
+  const openCourseCard = (key: string) => {
+    showTimetable();
+    setCardFocus((previous) => ({ key, nonce: (previous?.nonce ?? 0) + 1 }));
+  };
+  const clashFixFor = (keys: readonly string[]): ClashFix | null => {
+    const swap = suggestSectionSwap(planner.entries, keys, planner.catalog.values());
+    if (!swap) return null;
+    const title = titleOf(swap.key);
+    const [only] = swap.sections;
+    if (swap.sections.length === 1 && only) {
+      const when = only.meetings.length ? candidateScheduleSummary(only, DAY_LABELS) : '時間未定';
+      return { label: `換到${when} 那班`, description: `把「${title}」換到${when} 那班`, onClick: () => swapSection(swap.key, only.key) };
+    }
+    return { label: `換一班（${swap.sections.length}）`, description: `看「${title}」可以換的 ${swap.sections.length} 班`, onClick: () => openCourseCard(swap.key) };
+  };
+  const otherKeys = (key: string) => [...new Set(planner.conflicts
+    .filter(({ courseKeys }) => courseKeys.includes(key))
+    .flatMap(({ courseKeys }) => courseKeys)
+    .filter((other) => other !== key))];
+  // 加入會衝堂的課：提示條旁放換班按鈕；提示換成別的修改就不再顯示。
+  const [addedClash, setAddedClash] = useState<{ key: string; label: string } | null>(null);
+  const toastClashKeys = addedClash && planner.undoLabel === addedClash.label ? otherKeys(addedClash.key) : [];
+  const toastAction = addedClash && toastClashKeys.length ? clashFixFor([addedClash.key, ...toastClashKeys]) : null;
   const quoted = (titles: readonly string[]) => titles.map((title) => `「${title}」`).join('、');
   const addLabelFor = (course: ScheduleCourse) => {
     const clashes = clashesOfCourse(course);
     return `已加入「${course.title}」${clashes.length ? `，與${quoted(clashes)}衝堂` : ''}`;
   };
-  const addLabel = (course: Course) => addLabelFor(planner.catalog.get(keyOf(course)) ?? toScheduleCourse(course));
+  const addOne = (key: string) => {
+    const course = planner.catalog.get(key);
+    if (!course) return;
+    const label = addLabelFor(course);
+    setAddedClash(clashesOfCourse(course).length ? { key, label } : null);
+    courseChange('add', [{ type: 'addToSchedule', key }], label);
+  };
   // 移出候選也會從自己的其他方案移出（與引擎 removeCandidate 一致）；鎖定的課不移。
   const removeCandidate = (key: string, title: string) => {
     const ownPlans = planner.planner.plans.filter(({ auto }) => !auto);
@@ -191,8 +229,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   // 清除本機資料後換掉這個值，讓 AI 面板與畢業缺口重新掛載（金鑰、勾選、匯入的修課資料都歸零）。
   const [generation, setGeneration] = useState(0);
   // 大改動前會自動備份；備份滿了先問，不悄悄蓋掉最舊的一份（設計 6.1）。
-  const applyChange = (changes: Change[], label: string) => {
-    const result = planner.apply(changes, label);
+  const applyChange = (changes: Change[], label: string, options?: ApplyOptions) => {
+    const result = planner.apply(changes, label, options);
     if (result.status === 'needsConfirmation') setPendingBackup({ changes, label, replace: result.replace });
     return result;
   };
@@ -204,9 +242,9 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     buddyHub.changed('undo');
     if (label) setUndone((previous) => ({ label, count: (previous?.count ?? 0) + 1 }));
   };
-  const courseChange = (kind: CourseChange, changes: Change[], label: string) => {
+  const courseChange = (kind: CourseChange, changes: Change[], label: string, options?: ApplyOptions) => {
     const before = planner.conflicts.length;
-    if (applyChange(changes, label).status !== 'applied') return;
+    if (applyChange(changes, label, options).status !== 'applied') return;
     if (kind === 'add') conflictsBeforeAdd.current = before;
     else buddyHub.changed(kind);
   };
@@ -249,16 +287,17 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const [copyPreviewOpen, setCopyPreviewOpen] = useState(false);
   const [cardFocus, setCardFocus] = useState<{ key: string; nonce: number } | null>(null);
   // 沒有金鑰時，按衝堂提醒直接打開衝堂那門課的面板（可以「換一班」），不先跳 AI 設定。
+  // 衝堂的鍵：後加入的那門排前面（通常是學生想換的那門）。
+  const conflictKeys = [...new Set(planner.conflicts.flatMap(({ courseKeys }) => [courseKeys[1], courseKeys[0]]))];
   const openClashingCourse = () => {
-    const keys = planner.conflicts.flatMap(({ courseKeys }) => courseKeys);
     // 優先打開「沒鎖定、而且有別班可以換」的那門；鎖定的課面板裡不會出現換一班。
-    const unlocked = keys.filter((candidate) => !planner.entries.find(({ course }) => course.key === candidate)?.item.locked);
-    const key = unlocked.find((candidate) => findOtherSections(planner.entries, candidate, planner.catalog.values()).length > 0) ?? unlocked[0] ?? keys[0];
+    const unlocked = conflictKeys.filter((candidate) => !planner.entries.find(({ course }) => course.key === candidate)?.item.locked);
+    const key = suggestSectionSwap(planner.entries, conflictKeys, planner.catalog.values())?.key ?? unlocked[0] ?? conflictKeys[0];
     setDismissedNudge(conflictSignature);
     if (!key) return;
-    showTimetable();
-    setCardFocus((previous) => ({ key, nonce: (previous?.nonce ?? 0) + 1 }));
+    openCourseCard(key);
   };
+  const conflictFix = conflictKeys.length ? clashFixFor(conflictKeys) : null;
   const nudgeHidden = cardOpen || menuOpen || copyPreviewOpen || guideOpen || pendingBackup !== null;
   const nudge = conflictSignature && dismissedNudge !== conflictSignature
     ? `有 ${planner.conflicts.length} 個衝堂，要我幫忙看看嗎？`
@@ -270,6 +309,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     warnings: reminders.filter(({ severity }) => severity === 'warn').length + retakes.length,
     freeDays: planner.planner.preferences.freeDays,
     unscheduledCandidates: planner.planner.candidates.filter((key) => !scheduledKeys.has(key)).length,
+    localClashFix: conflictFix !== null,
   });
   const showTool = (next: Tool) => {
     setTool(next);
@@ -281,15 +321,21 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     showTool('search');
     setTimeout(() => searchRef.current?.focus(), 0);
   };
-  // 「設定年級後可檢查學分上下限」：打開條件並把焦點放到年級。
+  // 「設定年級後可檢查學分上下限」：把焦點放到課表上方的系級。
+  const classRef = useRef<HTMLInputElement>(null);
   const openIdentity = () => {
-    showTool('conditions');
+    showTimetable();
     setTimeout(() => {
-      const year = document.getElementById('identity-year');
-      year?.scrollIntoView?.({ block: 'center' });
-      year?.focus();
+      classRef.current?.scrollIntoView?.({ block: 'center' });
+      classRef.current?.focus();
     }, 0);
   };
+  // 系級（易用性審查第 1 名）：本班必修、空堂找課的「本系」、學分上下限都依它；全人系統匯出檔讀到的系級按一次確認就帶入。
+  const identityClass = planner.profile.className ? parseClassName(planner.profile.className) : null;
+  const recordClass = record ? parseClassName(record.enrollment.className) : null;
+  const suggestedClass = record && recordClass ? { className: formatClassName(recordClass), profile: record.suggestedProfile } : null;
+  const categories = useMemo(() => [...new Set(courses.map(({ official }) => official.generalEducation).filter(Boolean))], [courses]);
+  const gapCategories = useMemo(() => (record ? gapGeneralEducation(record.audit.gaps, categories) : []), [categories, record]);
   const current = TOOLS.find(({ id }) => id === tool)!;
 
   return (
@@ -317,6 +363,26 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
               <CalendarDays className="size-5" aria-hidden="true" />模擬課表<span aria-hidden="true" className="h-5 w-0.5 rounded bg-mist-ink/50" />
             </h2>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+              {ready && (
+                <ClassBar
+                  courses={courses}
+                  profile={planner.profile}
+                  onProfile={planner.setProfile}
+                  entries={planner.entries}
+                  preferences={planner.planner.preferences}
+                  suggested={suggestedClass}
+                  inputRef={classRef}
+                  onAddCourses={(keys, label) => {
+                    if (keys.length === 1) addOne(keys[0]!);
+                    // 只加課、不拿掉任何課：一筆可復原的修改，不另存自動備案（設計 6.1 的備份是給會替換課表的改動）。
+                    else courseChange('add', keys.map((key) => ({ type: 'addToSchedule', key })), label, { autoBackup: false });
+                  }}
+                  onSearch={(text) => {
+                    setQuery(text);
+                    startSearch();
+                  }}
+                />
+              )}
               <PlanBar
                 plans={planner.planner.plans}
                 activePlanId={planner.planner.activePlanId}
@@ -336,8 +402,17 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                 newKeys={planner.newKeys}
                 onStartSearch={startSearch}
                 onFindSlot={(day, period) => {
-                  setSlot((previous) => ({ day, period, nonce: (previous?.nonce ?? 0) + 1 }));
+                  // 點到的空格延伸成整段連續空堂，只列完全排得進去的課。
+                  const stretch = freeStretch(planner.entries, day, period);
+                  setSlot((previous) => ({
+                    day,
+                    period,
+                    nonce: (previous?.nonce ?? 0) + 1,
+                    ...(stretch ? { start: stretch.start, end: stretch.end, codes: stretch.codes } : {}),
+                  }));
                   showTool('search');
+                  // 手機換到搜課頁時從頂端開始，先看到空堂和「通識／本系／全部」，不停在課表捲到的位置。
+                  if (typeof matchMedia === 'function' && !matchMedia('(min-width: 768px)').matches) window.scrollTo?.({ top: 0 });
                 }}
                 onImport={() => {
                   showTool('data');
@@ -356,7 +431,14 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                 onSelect={setCardOpenFor}
                 focus={cardFocus}
               />
-              {planner.entries.length > 0 && <RulesPanel conflicts={planner.conflicts} reminders={reminders} retakes={retakes} />}
+              {planner.entries.length > 0 && (
+                <RulesPanel
+                  conflicts={planner.conflicts}
+                  reminders={reminders}
+                  retakes={retakes}
+                  fixFor={({ courseKeys }) => clashFixFor([courseKeys[1], courseKeys[0]])}
+                />
+              )}
             </div>
           </section>
 
@@ -375,12 +457,15 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   searchRef={searchRef}
                   scheduledKeys={scheduledKeys}
                   candidateKeys={candidateKeys}
-                  onAdd={(course) => courseChange('add', [{ type: 'addToSchedule', key: keyOf(course) }], addLabel(course))}
+                  onAdd={(course) => addOne(keyOf(course))}
                   onRemove={(course) => courseChange('remove', [{ type: 'removeFromSchedule', key: keyOf(course) }], `已移出「${course.title}」`)}
                   onCandidate={toggleCandidate}
                   clashesOf={clashesOf}
                   slot={slot}
                   {...(planner.profile.level ? { defaultDegree: planner.profile.level } : {})}
+                  preferences={planner.planner.preferences}
+                  {...(identityClass ? { identityDepartment: identityClass.department } : {})}
+                  {...(gapCategories.length ? { priorityCategories: gapCategories } : {})}
                   {...(passedAs ? { passedAs } : {})}
                 />
               ) : (
@@ -393,10 +478,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   catalog={planner.catalog}
                   scheduledKeys={scheduledKeys}
                   clashesOf={clashesOfCourse}
-                  onAdd={(key) => {
-                    const course = planner.catalog.get(key);
-                    if (course) courseChange('add', [{ type: 'addToSchedule', key }], addLabelFor(course));
-                  }}
+                  onAdd={addOne}
                   onRemove={(key) => removeCandidate(key, titleOf(key))}
                   onStartSearch={startSearch}
                 />
@@ -487,7 +569,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
         }}
         onCancel={() => setPendingBackup(null)}
       />
-      <UndoToast label={planner.undoLabel} onUndo={undoLast} onExpire={planner.clearUndo} />
+      <UndoToast label={planner.undoLabel} onUndo={undoLast} onExpire={planner.clearUndo} action={toastAction} />
       <MobileNav view={mobileView} tools={tools} onMenu={setMenuOpen} onView={(next) => (next === 'timetable' ? showTimetable() : showTool(next))} />
       {aiEnabled && (
         <FloatingOrb
@@ -496,7 +578,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
           onClose={() => setAiOpen(false)}
           nudge={nudge}
           onDismissNudge={() => setDismissedNudge(conflictSignature)}
-          {...(ai.hasKey() ? {} : { onNudge: openClashingCourse })}
+          onNudge={openClashingCourse}
           nudgeHidden={nudgeHidden}
           position={orbPosition}
           onPosition={moveOrb}
@@ -511,6 +593,14 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                     courses={courses}
                     ready={ready}
                     briefing={briefing}
+                    clashFix={conflictFix && {
+                      ...conflictFix,
+                      onClick: () => {
+                        conflictFix.onClick();
+                        // 手機上面板蓋住整個畫面：換完或要挑班時先收起來，看得到課表。
+                        if (typeof matchMedia === 'function' && !matchMedia('(min-width: 768px)').matches) setAiOpen(false);
+                      },
+                    }}
                     onShowTimetable={() => {
                       showTimetable();
                       // 手機上面板蓋住整個畫面，看課表就先收起來（對話內容保留）。
