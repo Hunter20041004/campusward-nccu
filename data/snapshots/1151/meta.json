@@ -1,0 +1,36 @@
+{
+  "term": "1151",
+  "fetchedAt": "2026-11-01T04:51:58.668Z",
+  "count": 2932,
+  "queries": 36,
+  "rowIssues": 0,
+  "issueSamples": [
+    "045065001: 不受信任的網址欄位 subLocUrl",
+    "070395001: 不受信任的網址欄位 subLocUrl",
+    "070401001: 不受信任的網址欄位 subLocUrl",
+    "070421001: 不受信任的網址欄位 subLocUrl",
+    "070424001: 不受信任的網址欄位 subLocUrl",
+    "070426001: 不受信任的網址欄位 subLocUrl",
+    "070427001: 不受信任的網址欄位 subLocUrl",
+    "100734001: 不受信任的網址欄位 subLocUrl",
+    "100735001: 不受信任的網址欄位 subLocUrl",
+    "151489001: 不受信任的網址欄位 subLocUrl",
+    "156608001: 不受信任的網址欄位 subLocUrl",
+    "207723001: 不受信任的網址欄位 subLocUrl",
+    "257702001: 不受信任的網址欄位 subLocUrl",
+    "355104001: 不受信任的網址欄位 subLocUrl",
+    "355519001: 不受信任的網址欄位 subLocUrl",
+    "356104001: 不受信任的網址欄位 subLocUrl",
+    "356366001: 不受信任的網址欄位 subLocUrl",
+    "363001001: 不受信任的網址欄位 subLocUrl",
+    "363002011: 不受信任的網址欄位 subLocUrl",
+    "363931001: 不受信任的網址欄位 subLocUrl"
+  ],
+  "crossCheck": {
+    "units": 16,
+    "unitQueries": 16,
+    "onlyInUnits": [],
+    "onlyInTimes": 14
+  },
+  "scheduleTextAnomalies": []
+}

@@ -21,7 +21,8 @@
     "pipeline": "tsx scripts/pipeline/run.ts",
     "build": "npm run build -w @campusward/web",
     "dev": "npm run dev -w @campusward/web",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "pipeline:spotcheck": "tsx scripts/pipeline/spotcheck.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

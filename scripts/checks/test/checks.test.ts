@@ -122,6 +122,11 @@ describe('findPersonalContacts', () => {
     ])).toEqual([]);
   });
 
+  test('keeps official course snapshots as published but checks the syllabus corpus', () => {
+    expect(findPersonalContacts([file('data/snapshots/1151/courses.json', fakeEmail)])).toEqual([]);
+    expect(findPersonalContacts([file('data/syllabi/1151/x.json', fakeEmail)]).map(({ check }) => check)).toEqual(['email']);
+  });
+
   test('still flags an address in a mailto link', () => {
     expect(findPersonalContacts([file('README.md', `[寫信](mailto:${fakeEmail})`)]).map(({ check }) => check)).toEqual(['email']);
   });

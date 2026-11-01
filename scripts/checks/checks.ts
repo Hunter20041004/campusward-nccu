@@ -81,10 +81,11 @@ export function findBrandViolations(files: SourceFile[]): Violation[] {
 
 // 手機號碼與電子信箱（計畫 Phase 5）：全人系統匯出檔含導師信箱與聯絡人電話，公開庫一律不出現。
 // 允許：保留給範例的網域、機器人與無回信地址；package-lock 內的套件作者資訊不檢查。
+// 官方課程快照照原文保存（備註裡有承辦的加簽信箱，學校已公開）；課綱語料不在此列，管線本身要移除。
 const PHONE_PATTERN = /(?<![\d-])09\d{2}-?\d{3}-?\d{3}(?![\d-])/g;
 const EMAIL_PATTERN = /(?<![\w.%+-])[\w.%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 const EMAIL_ALLOWED = /@(?:[\w-]+\.)*example(?:\.(?:com|org|net|test))?$|@users\.noreply\.github\.com$|^noreply@/i;
-const CONTACT_SKIPPED = /(^|\/)package-lock\.json$|\/fixtures\/synthetic\//;
+const CONTACT_SKIPPED = /(^|\/)package-lock\.json$|\/fixtures\/synthetic\/|^data\/(snapshots|corrections)\//;
 
 export function findPersonalContacts(files: SourceFile[]): Violation[] {
   return files
