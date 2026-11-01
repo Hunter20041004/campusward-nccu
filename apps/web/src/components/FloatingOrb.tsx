@@ -4,8 +4,8 @@ import { useBuddyHub } from '../buddy/BuddyContext.tsx';
 import { Xiaoshan } from '../buddy/Xiaoshan.tsx';
 
 /**
- * AI 光球（2026-11-01 使用者要求）：右下角浮動按鈕，任何畫面都能叫出；面板關掉時只隱藏，AI 結果與輸入保留。
- * 光球裡是小助手「小山」：面板關著時右下角那隻跟著你的操作反應，打開後換面板標題那隻；
+ * 小山（2026-11-01 使用者要求，原名「AI 光球」，同日改名統一叫小山）：右下角浮動按鈕，任何畫面都能叫出；
+ * 面板關掉時只隱藏，AI 結果與輸入保留。面板關著時右下角那隻跟著你的操作反應，打開後換面板標題那隻；
  * 有值得注意的事（例如衝堂）時，在旁邊冒一句提醒，可以按掉（參考 Claude Duet 的主動提醒）。
  */
 export function FloatingOrb({ open, onOpen, onClose, nudge, onDismissNudge, children }: {
@@ -33,21 +33,21 @@ export function FloatingOrb({ open, onOpen, onClose, nudge, onDismissNudge, chil
       <section
         ref={panel}
         id="ai-orb-panel"
-        aria-label="AI 光球"
+        aria-label="小山"
         tabIndex={-1}
         hidden={!open}
         onKeyDown={(event) => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) close(); }}
         className="relief fixed inset-x-3 top-20 bottom-36 z-30 flex-col overflow-hidden outline-none md:inset-x-auto md:top-auto md:right-24 md:bottom-6 md:h-[min(42rem,calc(100dvh-9rem))] md:w-[28rem] [&:not([hidden])]:flex"
       >
         <div className="flex items-center gap-2 px-4 pt-3">
-          <h2 className="flex flex-1 items-center gap-2 text-lg font-bold text-mist-ink"><Xiaoshan size={40} role="panel" seed={1} />AI 光球</h2>
+          <h2 className="flex flex-1 items-center gap-2 text-lg font-bold text-mist-ink"><Xiaoshan size={40} role="panel" seed={1} />小山</h2>
           {hub && (
             // 小山一直在動，讀課綱時可能分心：可以讓它停下來（只存在這台裝置）。
             <button type="button" className="btn btn-ghost btn-sm min-h-11 min-w-11 px-2" aria-label="讓小山安靜" aria-pressed={quiet} title={quiet ? '讓小山動起來' : '讓小山安靜'} onClick={() => hub.setQuiet(!quiet)}>
               {quiet ? <Play className="size-5" aria-hidden="true" /> : <Pause className="size-5" aria-hidden="true" />}
             </button>
           )}
-          <button type="button" className="btn btn-ghost btn-sm min-h-11 min-w-11 px-2" aria-label="關閉 AI 光球" onClick={close}>
+          <button type="button" className="btn btn-ghost btn-sm min-h-11 min-w-11 px-2" aria-label="關閉小山" onClick={close}>
             <X className="size-5" aria-hidden="true" />
           </button>
         </div>
@@ -64,7 +64,7 @@ export function FloatingOrb({ open, onOpen, onClose, nudge, onDismissNudge, chil
       <button
         ref={button}
         type="button"
-        aria-label="AI 光球"
+        aria-label="小山"
         aria-expanded={open}
         aria-controls="ai-orb-panel"
         onClick={open ? close : onOpen}

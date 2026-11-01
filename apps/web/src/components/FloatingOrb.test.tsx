@@ -20,7 +20,7 @@ test('shows a dismissible nudge next to the closed orb and opens the assistant f
 test('hides the nudge while the assistant is open', () => {
   render(<FloatingOrb open onOpen={vi.fn()} onClose={vi.fn()} nudge="提醒">內容</FloatingOrb>);
   expect(screen.queryByText('提醒')).not.toBeInTheDocument();
-  expect(screen.getByRole('region', { name: 'AI 光球' })).toHaveTextContent('內容');
+  expect(screen.getByRole('region', { name: '小山' })).toHaveTextContent('內容');
 });
 
 test('lets the student make the buddy hold still, and remembers it', async () => {

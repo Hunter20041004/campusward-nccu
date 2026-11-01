@@ -153,7 +153,7 @@ test.describe('graduation gaps', () => {
   });
 });
 
-// AI 光球：Gemini 以固定回應取代（不連外）；檢查金鑰只出現在請求標頭。
+// 小山的 AI 排課：Gemini 以固定回應取代（不連外）；檢查金鑰只出現在請求標頭。
 const FAKE_KEY = 'AIzaSyE2E-fake-key-0000000000000000000';
 async function fakeGemini(page: Page) {
   const calls: { url: string; key: string | null; body: string }[] = [];
@@ -176,7 +176,7 @@ for (const viewport of ['desktop', 'mobile'] as const) {
       const calls = await fakeGemini(page);
       await page.goto('/');
       await expect(page.getByRole('banner')).toContainText('115-1');
-      await page.getByRole('button', { name: 'AI 光球' }).click();
+      await page.getByRole('button', { name: '小山', exact: true }).click();
 
       // 先說需求，小山才在對話裡問年齡與金鑰；設定好就自動把剛才那句送出。
       await page.getByLabel('想怎麼排').fill('幫我加英文');
@@ -186,7 +186,7 @@ for (const viewport of ['desktop', 'mobile'] as const) {
       await page.getByLabel('Gemini 金鑰').fill(FAKE_KEY);
       await page.getByRole('button', { name: '使用這把金鑰' }).click();
       await expect(page.getByText(/已幫你加入 1 門課/)).toBeVisible();
-      await expect(page.getByRole('region', { name: 'AI 光球' }).getByRole('button', { name: '看課表' })).toBeVisible();
+      await expect(page.getByRole('region', { name: '小山', exact: true }).getByRole('button', { name: '看課表' })).toBeVisible();
       await expectNoAxeViolations(page);
       if (viewport === 'mobile') expect(await smallTargets(page)).toEqual([]);
 
@@ -238,7 +238,7 @@ test.describe('soft relief on every page', () => {
     await expect(page.getByRole('banner')).toContainText('115-1');
     await page.getByRole('searchbox', { name: '搜課' }).fill('統計');
     await page.getByRole('button', { name: '多條件搜尋' }).click();
-    await page.getByRole('button', { name: 'AI 光球' }).click();
+    await page.getByRole('button', { name: '小山', exact: true }).click();
     for (const name of ['模擬課表', '條件', '匯出與資料', '畢業缺口']) {
       await openTool(page, name);
       const offenders = await page.evaluate(() => [...document.querySelectorAll('select, input:not([type=file]):not([type=checkbox]):not([type=radio]), textarea, .btn')]
@@ -259,7 +259,7 @@ test.describe('soft relief on every page', () => {
   });
 });
 
-// 第五輪審查：光球、AI 面板不能蓋住「復原」與「更多」選單。用座標實際點點看。
+// 第五輪審查：小山按鈕與面板不能蓋住「復原」與「更多」選單。用座標實際點點看。
 async function topElementIsUndo(page: Page) {
   return page.evaluate(() => {
     const undo = [...document.querySelectorAll('[aria-label="最近的修改"] button')].find((button) => button.textContent?.includes('復原'));
@@ -289,7 +289,7 @@ test.describe('nothing covers the undo button', () => {
     test.skip(isMobile, 'desktop project only');
     await page.setViewportSize({ width: 900, height: 800 });
     await page.goto('/');
-    await page.getByRole('button', { name: 'AI 光球' }).click();
+    await page.getByRole('button', { name: '小山', exact: true }).click();
     await page.getByRole('searchbox', { name: '搜課' }).fill('統計');
     await page.getByRole('button', { name: '加入課表：統計學' }).click({ force: true });
     expect(await topElementIsUndo(page)).toBe('ok');
@@ -308,17 +308,17 @@ test('buttons respond to hover and the tool rail keeps its rounded squares', asy
 });
 
 test.describe('the buddy (小山)', () => {
-  const orbEyes = (page: Page) => page.getByRole('button', { name: 'AI 光球' }).locator('.eyeR').getAttribute('d');
-  const orbBody = (page: Page) => page.getByRole('button', { name: 'AI 光球' }).locator('.body').getAttribute('transform');
+  const orbEyes = (page: Page) => page.getByRole('button', { name: '小山', exact: true }).locator('.eyeR').getAttribute('d');
+  const orbBody = (page: Page) => page.getByRole('button', { name: '小山', exact: true }).locator('.body').getAttribute('transform');
 
   test('moves on its own and holds still when asked (remembered after a reload)', async ({ page }) => {
     await page.goto('/');
     const first = await orbBody(page);
     await page.waitForTimeout(400);
     expect(await orbBody(page)).not.toBe(first);
-    await page.getByRole('button', { name: 'AI 光球' }).click();
+    await page.getByRole('button', { name: '小山', exact: true }).click();
     await page.getByRole('button', { name: '讓小山安靜' }).click();
-    await page.getByRole('button', { name: '關閉 AI 光球' }).click();
+    await page.getByRole('button', { name: '關閉小山' }).click();
     const frozen = await orbBody(page);
     await page.waitForTimeout(400);
     expect(await orbBody(page)).toBe(frozen);

@@ -1,5 +1,5 @@
 // 小山的事件中樞（2026-11-01 使用者要求：反應要跟著常發生的事，不是排好了、有衝堂這種少見結果）。
-// 決定「現在誰在反應」：面板關著是右下角光球，開著是面板裡那隻；結果卡等小頭像只顯示靜態表情。
+// 決定「現在誰在反應」：面板關著是右下角按鈕那隻，開著是面板裡那隻；結果卡等小頭像只顯示靜態表情。
 import type { StorageLike } from '@campusward/engine';
 import type { BuddyMood, BuddyReaction } from './motion.ts';
 

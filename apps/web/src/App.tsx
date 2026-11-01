@@ -60,7 +60,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const courses = ready ? data.courses : NO_COURSES;
   // 載入前以空學期代碼呼叫：不讀寫任何學期，版面只有一份，載入前後不會重建。
   const planner = usePlanner({ term: ready ? data.term : '', courses, storage: storageRef.current });
-  // 小山（AI 光球）跟著常發生的事反應：加課、移出、候選、復原、打字、等 AI（docs/design 小助手一節）。
+  // 小山（AI 小助手）跟著常發生的事反應：加課、移出、候選、復原、打字、等 AI（docs/design 小助手一節）。
   const [buddyHub] = useState(() => givenHub ?? createBuddyHub({ storage: storageRef.current! }));
   // 加課要等課表更新後才知道有沒有衝堂：記下加之前的衝堂數，課表變了再告訴小山。
   const conflictsBeforeAdd = useRef<number | null>(null);

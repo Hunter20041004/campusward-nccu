@@ -29,14 +29,14 @@ describe('app shell', () => {
   test('opens the AI orb from anywhere and keeps the timetable visible', async () => {
     const user = userEvent.setup();
     render(<App catalog={fakeCatalog()} storage={memoryStorage()} guide={false} />);
-    const orb = screen.getByRole('button', { name: 'AI 光球' });
+    const orb = screen.getByRole('button', { name: '小山' });
     expect(orb).toHaveAttribute('aria-expanded', 'false');
     await user.click(orb);
     expect(orb).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('region', { name: 'AI 光球' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '小山' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: /模擬課表/ })).toBeInTheDocument();
     await user.keyboard('{Escape}');
-    expect(screen.queryByRole('region', { name: 'AI 光球' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '小山' })).not.toBeInTheDocument();
     expect(orb).toHaveFocus();
   });
 
@@ -114,7 +114,7 @@ describe('searching and adding', () => {
     await waitFor(() => expect(changed).toHaveBeenCalledWith('add', { conflict: false }));
     await user.click(within(screen.getByRole('status', { name: '最近的修改' })).getByRole('button', { name: '復原' }));
     expect(changed).toHaveBeenCalledWith('undo');
-    await user.click(screen.getByRole('button', { name: 'AI 光球' }));
+    await user.click(screen.getByRole('button', { name: '小山' }));
     expect(panel).toHaveBeenLastCalledWith(true);
     await user.keyboard('{Escape}');
     expect(panel).toHaveBeenLastCalledWith(false);
@@ -159,18 +159,18 @@ test('clearing local data resets the AI panel and the graduation gaps', async ()
   await user.click(within(rail).getByRole('button', { name: '畢業缺口' }));
   await user.upload(shown(screen.getAllByLabelText('上傳全人系統匯出檔')), new File([JSON.stringify(exportJson)], 'e.json', { type: 'application/json' }));
   expect(shown(await screen.findAllByText(/學校審查資料日期/))).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'AI 光球' }));
+  await user.click(screen.getByRole('button', { name: '小山' }));
   await user.click(screen.getByRole('button', { name: '設定 AI' }));
   await user.click(screen.getByRole('checkbox', { name: /我已年滿 18 歲/ }));
   expect(screen.getByRole('button', { name: '移除金鑰' })).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: '關閉 AI 光球' }));
+  await user.click(screen.getByRole('button', { name: '關閉小山' }));
   await user.click(within(rail).getByRole('button', { name: '匯出與資料' }));
   await user.click(screen.getByRole('button', { name: '清除本機資料' }));
   await user.click(screen.getByRole('button', { name: '確認清除' }));
   await user.click(within(rail).getByRole('button', { name: '畢業缺口' }));
   expect(screen.queryByText(/學校審查資料日期/)).not.toBeInTheDocument();
   expect(screen.queryByText(/已通過 \d+ 門/)).not.toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'AI 光球' }));
+  await user.click(screen.getByRole('button', { name: '小山' }));
   expect(screen.queryByRole('button', { name: '移除金鑰' })).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: '設定 AI' }));
   expect(screen.getByRole('checkbox', { name: /我已年滿 18 歲/ })).not.toBeChecked();
@@ -180,12 +180,12 @@ test('keeps the AI orb state after closing and reopening it', async () => {
   const user = userEvent.setup();
   render(<App catalog={fakeCatalog()} storage={memoryStorage()} guide={false} />);
   const rail = screen.getByRole('navigation', { name: '工具' });
-  await user.click(screen.getByRole('button', { name: 'AI 光球' }));
+  await user.click(screen.getByRole('button', { name: '小山' }));
   await user.click(screen.getByRole('button', { name: '設定 AI' }));
   await user.click(screen.getByRole('checkbox', { name: /我已年滿 18 歲/ }));
-  await user.click(screen.getByRole('button', { name: '關閉 AI 光球' }));
+  await user.click(screen.getByRole('button', { name: '關閉小山' }));
   await user.click(within(rail).getByRole('button', { name: '條件' }));
-  await user.click(screen.getByRole('button', { name: 'AI 光球' }));
+  await user.click(screen.getByRole('button', { name: '小山' }));
   expect(screen.getByLabelText('Gemini 金鑰')).toBeInTheDocument();
 });
 

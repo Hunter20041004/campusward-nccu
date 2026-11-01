@@ -62,7 +62,7 @@ test('runs the main flows without CSP violations or unexpected connections', asy
   await page.getByLabel('上傳全人系統匯出檔').filter({ visible: true }).setInputFiles('packages/engine/test/fixtures/synthetic/student-export.json');
   await expect(page.getByText(/學校審查資料日期/).filter({ visible: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'AI 光球' }).click();
+  await page.getByRole('button', { name: '小山', exact: true }).click();
   // 課綱問答：沒有金鑰也能查本機索引（延遲載入的程式包，CSP 下也要能跑）。
   await page.getByRole('group', { name: '小山能幫的事' }).getByRole('button', { name: '問課綱' }).click();
   await page.getByLabel('想問課程的什麼').fill('期末報告');

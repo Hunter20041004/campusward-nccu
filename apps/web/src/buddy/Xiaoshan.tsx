@@ -8,7 +8,7 @@ const reducedMotion = () => typeof matchMedia !== 'function' || matchMedia('(pre
 const canAnimate = () => typeof requestAnimationFrame === 'function' && !reducedMotion();
 
 /**
- * 小山。有 role 的（右下角光球、面板標題）交給事件中樞驅動；沒有 role 的（結果卡、今日重點旁的小頭像）
+ * 小山。有 role 的（右下角按鈕、面板標題）交給事件中樞驅動；沒有 role 的（結果卡、今日重點旁的小頭像）
  * 只顯示 mood 指定的靜態表情。系統開了「減少動態」或使用者按了「讓小山安靜」就不動。
  * 旁邊都有文字說明，所以一律對報讀器隱藏，不重複唸「小山」。
  */

@@ -4,7 +4,7 @@ import { TOOLS, type Tool } from './ToolRail.tsx';
 
 export type MobileView = 'search' | Tool;
 
-/** 手機底部分頁：搜課、課表，其他工具收在「更多」；AI 光球是浮在右下角的按鈕。 */
+/** 手機底部分頁：搜課、課表，其他工具收在「更多」；小山（AI 小助手）是浮在右下角的按鈕。 */
 export function MobileNav({ view, tools, onView }: { view: MobileView; tools: readonly Tool[]; onView: (view: MobileView) => void }) {
   const [more, setMore] = useState(false);
   const others = TOOLS.filter(({ id }) => id !== 'timetable' && tools.includes(id));
