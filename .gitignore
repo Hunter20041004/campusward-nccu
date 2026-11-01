@@ -21,3 +21,6 @@ playwright-report/
 
 # 全人系統匯出檔含大量個資，絕不進版控
 exportStudentData*.json
+
+# 課綱原始頁含教師聯絡方式，只放本機快取（計畫 4.5）
+.cache/
