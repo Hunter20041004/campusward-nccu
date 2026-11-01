@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { FloatingOrb } from './FloatingOrb.tsx';
@@ -33,4 +33,13 @@ test('lets the student make the buddy hold still, and remembers it', async () =>
   expect(hub.quiet).toBe(true);
   expect(screen.getByRole('button', { name: '讓小山安靜' })).toHaveAttribute('aria-pressed', 'true');
   hub.destroy();
+});
+
+test('Escape while picking a character with the input method does not close the panel', () => {
+  const onClose = vi.fn();
+  render(<FloatingOrb open onOpen={vi.fn()} onClose={onClose}><input aria-label="輸入" /></FloatingOrb>);
+  fireEvent.keyDown(screen.getByLabelText('輸入'), { key: 'Escape', isComposing: true });
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent.keyDown(screen.getByLabelText('輸入'), { key: 'Escape' });
+  expect(onClose).toHaveBeenCalled();
 });

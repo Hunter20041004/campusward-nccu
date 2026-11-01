@@ -62,7 +62,6 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const planner = usePlanner({ term: ready ? data.term : '', courses, storage: storageRef.current });
   // 小山（AI 光球）跟著常發生的事反應：加課、移出、候選、復原、打字、等 AI（docs/design 小助手一節）。
   const [buddyHub] = useState(() => givenHub ?? createBuddyHub({ storage: storageRef.current! }));
-  useEffect(() => () => { if (!givenHub) buddyHub.destroy(); }, [buddyHub, givenHub]);
   // 加課要等課表更新後才知道有沒有衝堂：記下加之前的衝堂數，課表變了再告訴小山。
   const conflictsBeforeAdd = useRef<number | null>(null);
   useEffect(() => {
@@ -125,6 +124,14 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     const result = planner.apply(changes, label);
     if (result.status === 'needsConfirmation') setPendingBackup({ changes, label, replace: result.replace });
     return result;
+  };
+  // 復原（底部提示或 AI 回覆卡）：記下復原的是哪一次，讓對話裡那張卡跟著標成已復原。
+  const [undone, setUndone] = useState<{ label: string; count: number } | null>(null);
+  const undoLast = () => {
+    const label = planner.undoLabel;
+    planner.undo();
+    buddyHub.changed('undo');
+    if (label) setUndone((previous) => ({ label, count: (previous?.count ?? 0) + 1 }));
   };
   const courseChange = (kind: CourseChange, changes: Change[], label: string) => {
     const before = planner.conflicts.length;
@@ -327,7 +334,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
         }}
         onCancel={() => setPendingBackup(null)}
       />
-      <UndoToast label={planner.undoLabel} onUndo={() => { planner.undo(); buddyHub.changed('undo'); }} onExpire={planner.clearUndo} />
+      <UndoToast label={planner.undoLabel} onUndo={undoLast} onExpire={planner.clearUndo} />
       <MobileNav view={mobileView} tools={tools} onView={(next) => (next === 'search' ? setMobileView('search') : showTool(next))} />
       {aiEnabled && (
         <FloatingOrb
@@ -347,6 +354,15 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                     courses={courses}
                     ready={ready}
                     briefing={briefing}
+                    onShowTimetable={() => {
+                      showTool('timetable');
+                      // 手機上面板蓋住整個畫面，看課表就先收起來（對話內容保留）。
+                      if (typeof matchMedia === 'function' && !matchMedia('(min-width: 768px)').matches) setAiOpen(false);
+                    }}
+                    onUndo={undoLast}
+                    undoLabel={planner.undoLabel}
+                    undone={undone}
+                    visible={aiOpen}
                     onApply={(changes, label, replaceOldestAutoBackup) => planner.applyAi(changes, label, {
                       ...(ready ? { termLabel: data.label } : {}),
                       ...(maximumCredits !== undefined ? { maximumCredits } : {}),

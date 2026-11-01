@@ -160,6 +160,7 @@ test('clearing local data resets the AI panel and the graduation gaps', async ()
   await user.upload(shown(screen.getAllByLabelText('上傳全人系統匯出檔')), new File([JSON.stringify(exportJson)], 'e.json', { type: 'application/json' }));
   expect(shown(await screen.findAllByText(/學校審查資料日期/))).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'AI 光球' }));
+  await user.click(screen.getByRole('button', { name: '設定 AI' }));
   await user.click(screen.getByRole('checkbox', { name: /我已年滿 18 歲/ }));
   expect(screen.getByRole('button', { name: '移除金鑰' })).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: '關閉 AI 光球' }));
@@ -171,6 +172,7 @@ test('clearing local data resets the AI panel and the graduation gaps', async ()
   expect(screen.queryByText(/已通過 \d+ 門/)).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'AI 光球' }));
   expect(screen.queryByRole('button', { name: '移除金鑰' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '設定 AI' }));
   expect(screen.getByRole('checkbox', { name: /我已年滿 18 歲/ })).not.toBeChecked();
 });
 
@@ -179,6 +181,7 @@ test('keeps the AI orb state after closing and reopening it', async () => {
   render(<App catalog={fakeCatalog()} storage={memoryStorage()} guide={false} />);
   const rail = screen.getByRole('navigation', { name: '工具' });
   await user.click(screen.getByRole('button', { name: 'AI 光球' }));
+  await user.click(screen.getByRole('button', { name: '設定 AI' }));
   await user.click(screen.getByRole('checkbox', { name: /我已年滿 18 歲/ }));
   await user.click(screen.getByRole('button', { name: '關閉 AI 光球' }));
   await user.click(within(rail).getByRole('button', { name: '條件' }));

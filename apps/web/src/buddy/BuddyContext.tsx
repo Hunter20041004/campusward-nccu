@@ -45,6 +45,10 @@ export function BuddyProvider({ hub: given, children }: { hub?: BuddyHub; childr
       cancelAnimationFrame(frame);
     };
   }, [hub]);
-  useEffect(() => () => { if (!given) hub.destroy(); }, [given, hub]);
+  // 計時器在 effect 裡開關：React 開發模式掛載兩次時，第二次會重新開始。
+  useEffect(() => {
+    hub.start();
+    return () => hub.stop();
+  }, [hub]);
   return <BuddyContext value={hub}>{children}</BuddyContext>;
 }

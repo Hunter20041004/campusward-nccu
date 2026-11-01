@@ -36,7 +36,7 @@ export function FloatingOrb({ open, onOpen, onClose, nudge, onDismissNudge, chil
         aria-label="AI 光球"
         tabIndex={-1}
         hidden={!open}
-        onKeyDown={(event) => { if (event.key === 'Escape') close(); }}
+        onKeyDown={(event) => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) close(); }}
         className="relief fixed inset-x-3 top-20 bottom-36 z-30 flex-col overflow-hidden outline-none md:inset-x-auto md:top-auto md:right-24 md:bottom-6 md:h-[min(42rem,calc(100dvh-9rem))] md:w-[28rem] [&:not([hidden])]:flex"
       >
         <div className="flex items-center gap-2 px-4 pt-3">
@@ -51,7 +51,7 @@ export function FloatingOrb({ open, onOpen, onClose, nudge, onDismissNudge, chil
             <X className="size-5" aria-hidden="true" />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+        <div className="flex min-h-0 flex-1 flex-col px-4 pt-2 pb-3">{children}</div>
       </section>
       {nudge && !open && (
         <div role="status" className="raised fixed right-5 bottom-40 z-30 flex max-w-64 items-start gap-1 rounded-2xl rounded-br-sm py-2 pr-1 pl-3 text-sm md:right-26 md:bottom-12">

@@ -24,6 +24,7 @@ afterEach(() => vi.useRealTimers());
 function setup() {
   const storage = memoryStorage();
   const hub = createBuddyHub({ storage, now: () => Date.now() });
+  hub.start();
   const orb = fakeBuddy(), panel = fakeBuddy();
   hub.attach('orb', orb);
   hub.attach('panel', panel);
@@ -194,5 +195,40 @@ describe('quiet mode', () => {
     expect(hub.quiet).toBe(false);
     expect(() => hub.setQuiet(true)).not.toThrow();
     expect(hub.quiet).toBe(true);
+  });
+});
+
+describe('fixes from the review', () => {
+  test('closing the panel stops staring at a confirm button the student can no longer see', () => {
+    const { hub, orb, panel } = setup();
+    hub.setPanelOpen(true);
+    hub.aiStart();
+    hub.aiResult('confirm', 5, () => ({ left: 10, top: 10, width: 20, height: 20 }));
+    vi.advanceTimersByTime(2000);
+    hub.setPanelOpen(false);
+    panel.poke.mockClear();
+    orb.lookAt.mockClear();
+    vi.advanceTimersByTime(8000);
+    expect(panel.poke).not.toHaveBeenCalled();
+    hub.pointer(300, 300);
+    expect(orb.lookAt).toHaveBeenCalledWith(300, 300);
+  });
+
+  test('stops watching when the confirm button has disappeared', () => {
+    const { hub, orb } = setup();
+    hub.aiStart();
+    hub.aiResult('confirm', 5, () => ({ left: 0, top: 0, width: 0, height: 0 }));
+    vi.advanceTimersByTime(2000);
+    orb.lookAt.mockClear();
+    hub.pointer(300, 300);
+    expect(orb.lookAt).toHaveBeenCalledWith(300, 300);
+  });
+
+  test('can be stopped and started again (React development mode mounts twice)', () => {
+    const { hub, orb } = setup();
+    hub.stop();
+    hub.start();
+    vi.advanceTimersByTime(SLEEP_AFTER_MS + 2000);
+    expect(orb.mood).toBe('sleepy');
   });
 });

@@ -42,6 +42,10 @@ export interface BuddyHub {
   aiCancel: () => void;
   setQuiet: (quiet: boolean) => void;
   subscribe: (listener: () => void) => () => void;
+  /** 開始檢查要不要打瞌睡；可以重複呼叫（React 開發模式會掛載兩次）。 */
+  start: () => void;
+  /** 停掉所有計時器；之後還能再 start。 */
+  stop: () => void;
   destroy: () => void;
 }
 
@@ -61,10 +65,7 @@ export function createBuddyHub({ storage, now = () => Date.now() }: { storage: S
   const react = (kind: BuddyReaction) => active()?.react(kind);
   const centre = (box: Box) => [box.left + box.width / 2, box.top + box.height / 2] as const;
 
-  const sleepCheck = setInterval(() => {
-    const buddy = active();
-    if (!busy && buddy?.mood === 'idle' && now() - lastActive > SLEEP_AFTER_MS) buddy.setMood('sleepy');
-  }, 1000);
+  let sleepCheck: ReturnType<typeof setInterval> | undefined;
 
   const stopConfirm = () => { clearInterval(confirmTimer); confirmTimer = undefined; };
   const settle = () => { busy = false; clearTimeout(thinkTimer); lastActive = now(); };
@@ -88,6 +89,7 @@ export function createBuddyHub({ storage, now = () => Date.now() }: { storage: S
         buddies.panel?.react('wake');
         setTimeout(() => { if (panelOpen) buddies.panel?.react('nod'); }, 450);
       } else {
+        stopConfirm();
         buddies.panel?.setMood('idle');
         buddies.orb?.setMood(busy ? 'thinking' : 'idle');
         buddies.orb?.react('glance');
@@ -154,13 +156,14 @@ export function createBuddyHub({ storage, now = () => Date.now() }: { storage: S
         const look = () => {
           const box = target?.();
           const buddy = active();
-          if (!box || !buddy) return;
+          // 按鈕不見了（面板收起、切換模式、已按下）就不再盯著看。
+          if (!box || !box.width || !box.height || !buddy) { stopConfirm(); return; }
           buddy.lookAt(...centre(box));
           buddy.poke();
         };
-        look();
         stopConfirm();
         confirmTimer = setInterval(look, 4000);
+        look();
       }, Math.min(2000, 600 + textLength * 30));
     },
     aiConfirmDone() {
@@ -183,11 +186,21 @@ export function createBuddyHub({ storage, now = () => Date.now() }: { storage: S
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    destroy() {
+    start() {
+      if (sleepCheck) return;
+      lastActive = now();
+      sleepCheck = setInterval(() => {
+        const buddy = active();
+        if (!busy && buddy?.mood === 'idle' && now() - lastActive > SLEEP_AFTER_MS) buddy.setMood('sleepy');
+      }, 1000);
+    },
+    stop() {
       clearInterval(sleepCheck);
+      sleepCheck = undefined;
       stopConfirm();
       [listenTimer, thinkTimer, afterTimer].forEach((timer) => clearTimeout(timer));
     },
+    destroy() { hub.stop(); },
   };
   return hub;
 }

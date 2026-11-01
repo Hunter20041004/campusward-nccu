@@ -178,12 +178,15 @@ for (const viewport of ['desktop', 'mobile'] as const) {
       await expect(page.getByRole('banner')).toContainText('115-1');
       await page.getByRole('button', { name: 'AI 光球' }).click();
 
+      // 先說需求，小山才在對話裡問年齡與金鑰；設定好就自動把剛才那句送出。
+      await page.getByLabel('想怎麼排').fill('幫我加英文');
+      await page.getByRole('button', { name: '送出' }).click();
+      expect(calls).toHaveLength(0);
       await page.getByRole('checkbox', { name: /我已年滿 18 歲/ }).click();
       await page.getByLabel('Gemini 金鑰').fill(FAKE_KEY);
       await page.getByRole('button', { name: '使用這把金鑰' }).click();
-      await page.getByLabel('想怎麼排').fill('幫我加英文');
-      await page.getByRole('button', { name: '送出' }).click();
       await expect(page.getByText(/已幫你加入 1 門課/)).toBeVisible();
+      await expect(page.getByRole('region', { name: 'AI 光球' }).getByRole('button', { name: '看課表' })).toBeVisible();
       await expectNoAxeViolations(page);
       if (viewport === 'mobile') expect(await smallTargets(page)).toEqual([]);
 

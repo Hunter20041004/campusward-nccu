@@ -64,14 +64,16 @@ test('runs the main flows without CSP violations or unexpected connections', asy
 
   await page.getByRole('button', { name: 'AI 光球' }).click();
   // 課綱問答：沒有金鑰也能查本機索引（延遲載入的程式包，CSP 下也要能跑）。
+  await page.getByRole('group', { name: '小山能幫的事' }).getByRole('button', { name: '問課綱' }).click();
   await page.getByLabel('想問課程的什麼').fill('期末報告');
   await page.getByRole('button', { name: '查課綱' }).click();
   await expect(page.getByRole('list', { name: '找到的課綱段落' })).toContainText('英文（一）');
+  await page.getByRole('group', { name: '小山能幫的事' }).getByRole('button', { name: '排課' }).click();
+  await page.getByLabel('想怎麼排').fill('加英文');
+  await page.getByRole('button', { name: '送出' }).click();
   await page.getByRole('checkbox', { name: /我已年滿 18 歲/ }).click();
   await page.getByLabel('Gemini 金鑰').fill(FAKE_KEY);
   await page.getByRole('button', { name: '使用這把金鑰' }).click();
-  await page.getByLabel('想怎麼排').fill('加英文');
-  await page.getByRole('button', { name: '送出' }).click();
   await expect(page.getByText(/已幫你加入 1 門課/)).toBeVisible();
 
   await page.goto('/privacy');
