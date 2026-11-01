@@ -24,7 +24,7 @@ export function ConfirmDialog({ open, title, message, confirmLabel, onConfirm, o
           <p className="mt-2 text-sm">{message}</p>
           <div className="modal-action">
             <button type="button" className="btn min-h-11" onClick={onCancel}>取消</button>
-            <button type="button" className="btn min-h-11 border-coral-ink bg-error text-error-content" onClick={onConfirm}>{confirmLabel}</button>
+            <button type="button" className="btn btn-danger min-h-11" onClick={onConfirm}>{confirmLabel}</button>
           </div>
         </div>
       )}

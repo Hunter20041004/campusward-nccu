@@ -2,6 +2,9 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
 import { App } from './App.tsx';
+
+/** 各工具都保持掛載、只隱藏沒選的；取目前看得到的那一個。 */
+const shown = <T extends HTMLElement>(elements: T[]) => elements.find((element) => !element.closest('[hidden]'))!;
 import { fakeCatalog } from './test/fakeCatalog.ts';
 import { memoryStorage } from './test/memoryStorage.ts';
 
@@ -16,23 +19,37 @@ describe('app shell', () => {
     const user = userEvent.setup();
     render(<App catalog={fakeCatalog()} storage={memoryStorage()} guide={false} />);
     const rail = screen.getByRole('navigation', { name: '工具' });
-    await user.click(within(rail).getByRole('button', { name: 'AI 光球' }));
-    expect(within(rail).getByRole('button', { name: 'AI 光球' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('heading', { level: 2, name: /AI 光球/ })).toBeInTheDocument();
+    await user.click(within(rail).getByRole('button', { name: '條件' }));
+    expect(within(rail).getByRole('button', { name: '條件' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('heading', { level: 2, name: /條件/ })).toBeInTheDocument();
     expect(screen.getByRole('searchbox', { name: '搜課' })).toBeInTheDocument();
+  });
+
+  test('opens the AI orb from anywhere and keeps the timetable visible', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog()} storage={memoryStorage()} guide={false} />);
+    const orb = screen.getByRole('button', { name: 'AI 光球' });
+    expect(orb).toHaveAttribute('aria-expanded', 'false');
+    await user.click(orb);
+    expect(orb).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('region', { name: 'AI 光球' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /模擬課表/ })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('region', { name: 'AI 光球' })).not.toBeInTheDocument();
+    expect(orb).toHaveFocus();
   });
 
   test('shows the usage guide on the first visit only, and reopens it from the help button', async () => {
     const user = userEvent.setup();
     const storage = memoryStorage();
     const first = render(<App catalog={fakeCatalog()} storage={storage} />);
-    expect(screen.getByRole('heading', { name: '搜課、加入課表' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '搜課與多條件搜尋' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '略過教學' }));
     first.unmount();
     render(<App catalog={fakeCatalog()} storage={storage} />);
-    expect(screen.queryByRole('heading', { name: '搜課、加入課表' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '搜課與多條件搜尋' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '使用導覽' }));
-    expect(screen.getByRole('heading', { name: '搜課、加入課表' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '搜課與多條件搜尋' })).toBeInTheDocument();
   });
 
   test('offers two ways to start when the timetable is empty', () => {
@@ -120,28 +137,49 @@ test('clearing local data resets the AI panel and the graduation gaps', async ()
   const rail = screen.getByRole('navigation', { name: '工具' });
   await screen.findByText('115-1');
   await user.click(within(rail).getByRole('button', { name: '畢業缺口' }));
-  await user.upload(await screen.findByLabelText('上傳全人系統匯出檔'), new File([JSON.stringify(exportJson)], 'e.json', { type: 'application/json' }));
-  expect(await screen.findByText(/學校審查資料日期/)).toBeInTheDocument();
-  await user.click(within(rail).getByRole('button', { name: 'AI 光球' }));
+  await user.upload(shown(screen.getAllByLabelText('上傳全人系統匯出檔')), new File([JSON.stringify(exportJson)], 'e.json', { type: 'application/json' }));
+  expect(shown(await screen.findAllByText(/學校審查資料日期/))).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'AI 光球' }));
   await user.click(screen.getByRole('checkbox', { name: /我已年滿 18 歲/ }));
   expect(screen.getByRole('button', { name: '移除金鑰' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '關閉 AI 光球' }));
   await user.click(within(rail).getByRole('button', { name: '匯出與資料' }));
   await user.click(screen.getByRole('button', { name: '清除本機資料' }));
   await user.click(screen.getByRole('button', { name: '確認清除' }));
   await user.click(within(rail).getByRole('button', { name: '畢業缺口' }));
   expect(screen.queryByText(/學校審查資料日期/)).not.toBeInTheDocument();
-  await user.click(within(rail).getByRole('button', { name: 'AI 光球' }));
+  expect(screen.queryByText(/已通過 \d+ 門/)).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'AI 光球' }));
   expect(screen.queryByRole('button', { name: '移除金鑰' })).not.toBeInTheDocument();
   expect(screen.getByRole('checkbox', { name: /我已年滿 18 歲/ })).not.toBeChecked();
 });
 
-test('keeps the AI panel state when switching tools', async () => {
+test('keeps the AI orb state after closing and reopening it', async () => {
   const user = userEvent.setup();
   render(<App catalog={fakeCatalog()} storage={memoryStorage()} guide={false} />);
   const rail = screen.getByRole('navigation', { name: '工具' });
-  await user.click(within(rail).getByRole('button', { name: 'AI 光球' }));
+  await user.click(screen.getByRole('button', { name: 'AI 光球' }));
   await user.click(screen.getByRole('checkbox', { name: /我已年滿 18 歲/ }));
+  await user.click(screen.getByRole('button', { name: '關閉 AI 光球' }));
   await user.click(within(rail).getByRole('button', { name: '條件' }));
-  await user.click(within(rail).getByRole('button', { name: 'AI 光球' }));
+  await user.click(screen.getByRole('button', { name: 'AI 光球' }));
   expect(screen.getByLabelText('Gemini 金鑰')).toBeInTheDocument();
+});
+
+test('one import of the student record is shared by conditions and graduation gaps, survives a reload, and stores no names', async () => {
+  const user = userEvent.setup();
+  const storage = memoryStorage();
+  const exportJson = (await import('../../../packages/engine/test/fixtures/synthetic/student-export.json')).default;
+  const first = render(<App catalog={fakeCatalog()} storage={storage} guide={false} />);
+  await screen.findByText('115-1');
+  const rail = screen.getByRole('navigation', { name: '工具' });
+  await user.click(within(rail).getByRole('button', { name: '條件' }));
+  await user.upload(shown(screen.getAllByLabelText('上傳全人系統匯出檔')), new File([JSON.stringify(exportJson)], 'e.json', { type: 'application/json' }));
+  expect(shown(await screen.findAllByText(/學士班四年級/))).toBeInTheDocument();
+  first.unmount();
+  render(<App catalog={fakeCatalog()} storage={storage} guide={false} />);
+  await screen.findByText('115-1');
+  await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '畢業缺口' }));
+  expect(shown(await screen.findAllByText(/學校審查資料日期 2026-10-26/))).toBeInTheDocument();
+  expect(JSON.stringify(storage.values)).not.toMatch(/王合成|SYNTHETIC-0001/);
 });

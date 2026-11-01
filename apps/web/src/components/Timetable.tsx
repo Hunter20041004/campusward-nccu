@@ -67,7 +67,7 @@ function CourseActions({ entry, onToggleLock, onStatus, onAttendance, onRemove, 
 } & Pick<TimetableProps, 'onToggleLock' | 'onStatus' | 'onAttendance' | 'onRemove'>) {
   const { course, item } = entry;
   return (
-    <div role="group" aria-label={`${course.title} 的操作`} className="flex flex-wrap items-center gap-2 border-t border-base-300 px-4 py-3">
+    <div role="group" aria-label={`${course.title} 的操作`} className="well mt-3 flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3">
       <p className="w-full text-sm font-medium sm:w-auto sm:flex-1">{course.title}</p>
       <button type="button" className="btn btn-sm min-h-11 gap-1" aria-pressed={item.locked} onClick={() => onToggleLock(course.key)}>
         <Lock className="size-4" aria-hidden="true" />
@@ -87,7 +87,7 @@ function CourseActions({ entry, onToggleLock, onStatus, onAttendance, onRemove, 
       {item.locked ? (
         <span className="text-sm text-base-content/80">已鎖定，解鎖後才能移出</span>
       ) : (
-        <button type="button" className="btn btn-sm min-h-11 border border-coral-ink/50 text-coral-ink" onClick={() => onRemove(course.key)}>移出課表</button>
+        <button type="button" className="btn btn-danger btn-sm min-h-11" onClick={() => onRemove(course.key)}>移出課表</button>
       )}
       <button type="button" className="btn btn-ghost btn-sm min-h-11 min-w-11" aria-label="關閉操作" onClick={onClose}>
         <X className="size-4" aria-hidden="true" />
@@ -206,7 +206,7 @@ export function Timetable(props: TimetableProps) {
                     <span className="mt-0.5 flex flex-wrap items-center gap-1">
                       <span className="tabular">{block.codes}</span>
                       {newKeys.has(course.key) && <span className="rounded-full bg-base-100/90 px-1.5 font-bold text-mist-ink">新</span>}
-                      {item.status !== 'planned' && <span className="rounded-selector bg-secondary px-1 text-secondary-content">{STATUS_LABELS[item.status]}</span>}
+                      {item.status !== 'planned' && <span className="rounded-full bg-base-100/90 px-1.5 font-bold text-secondary-content">{STATUS_LABELS[item.status]}</span>}
                       {item.locked && <Lock className="size-3" aria-hidden="true" />}
                     </span>
                     <span className="sr-only">，{blockExtra(block)}</span>
@@ -248,7 +248,7 @@ export function Timetable(props: TimetableProps) {
               <ul aria-label="沒有固定時間" className="mt-1.5 flex flex-wrap gap-2">
                 {unscheduled.map(({ course, item }) => (
                   <li key={course.key}>
-                    <button type="button" onClick={() => setSelected(course.key)} className="flex min-h-11 items-center gap-2 rounded-field border border-base-300 bg-base-100 px-3 text-sm">
+                    <button type="button" onClick={() => setSelected(course.key)} className="raised flex min-h-11 items-center gap-2 rounded-2xl px-3 text-sm">
                       <span className="font-medium">{course.title}</span>
                       <span className="text-base-content/75">{item.attendance === 'async' ? '非同步' : '時間未定'}</span>
                     </button>

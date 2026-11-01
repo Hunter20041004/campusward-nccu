@@ -4,7 +4,6 @@ import { useRef, useState } from 'react';
 import type { GeminiClient } from '../ai/gemini.ts';
 import { aiSearch, planWithAi } from '../ai/orb.ts';
 import { AnswerText } from './AnswerText.tsx';
-import { OrbMark } from './OrbMark.tsx';
 import { httpSyllabusSource, type SyllabusSource } from '../qa/syllabusSource.ts';
 import { FEATURES, type Features } from '../features.ts';
 import { CareerSection } from './CareerSection.tsx';
@@ -107,13 +106,7 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
 
   return (
     <div className="flex h-full flex-col gap-3 text-sm">
-      <div className="flex items-center gap-3">
-        <OrbMark size={40} />
-        <div>
-          <p className="font-medium">AI 光球</p>
-          <p className="text-xs text-base-content/75">說出需求，AI 直接幫你搜課排課；衝堂、鎖定課與學分會先檢查，做錯可以復原。</p>
-        </div>
-      </div>
+      <p className="text-xs text-base-content/75">說出需求，AI 直接幫你搜課排課；衝堂、鎖定課與學分會先檢查，做錯可以復原。</p>
 
       {!accepted && (
         <label className="flex items-start gap-2 well px-3 py-2">
@@ -188,7 +181,7 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
           <div className="space-y-2 well px-3 py-2">
             {outcome.kind === 'applied' && (
               <p className="font-medium">
-                {outcome.demo && <span className="badge badge-sm mr-1 border-primary/40">示範</span>}
+                {outcome.demo && <span className="chip mr-1">示範</span>}
                 已幫你{[
                   outcome.added.length ? `加入 ${outcome.added.length} 門課` : '',
                   outcome.removed.length ? `移出 ${outcome.removed.length} 門課` : '',

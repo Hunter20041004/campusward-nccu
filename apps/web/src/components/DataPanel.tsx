@@ -68,7 +68,7 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
 
   return (
     <section aria-labelledby="data-heading">
-      <h2 id="data-heading" className="text-sm font-semibold">匯出與資料</h2>
+      <h2 id="data-heading" className="sr-only">匯出與資料</h2>
       <div className="mt-2 flex flex-wrap gap-2">
         <button type="button" className={action} onClick={copyCodes}>
           <ClipboardCopy className="size-4" aria-hidden="true" />複製課號清單
@@ -101,7 +101,7 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
       {importError && <p role="alert" className="mt-2 text-sm text-coral-ink">{importError}</p>}
 
       {preview && (
-        <section aria-label="匯入預覽" className="mt-3 rounded-field border border-primary/40 bg-primary/10 p-3 text-sm">
+        <section aria-label="匯入預覽" className="well mt-3 rounded-2xl p-3 text-sm">
           <p>
             檔案含 {preview.summary.terms.length} 個學期、{preview.summary.scheduled} 門排入的課、{preview.summary.manualCourses} 門手動課程
             {preview.summary.skippedCourses > 0 && `；${preview.summary.skippedCourses} 門舊資料無法對應，會略過`}。
@@ -115,10 +115,10 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
       )}
 
       {confirmClear && (
-        <div role="group" aria-label="確認清除" className="mt-3 rounded-field border border-coral-ink/50 bg-error/10 p-3 text-sm">
+        <div role="group" aria-label="確認清除" className="course-conflict mt-3 rounded-2xl p-3 text-sm">
           <p>會刪除這台裝置上的所有課表、備案、設定、保留的備份與 Gemini 金鑰，無法復原。建議先匯出資料。</p>
           <div className="mt-2 flex gap-2">
-            <button type="button" className="btn btn-sm min-h-11 border-coral-ink bg-error text-error-content" onClick={() => { onClear(); setConfirmClear(false); setMessage('已清除本機資料。'); }}>確認清除</button>
+            <button type="button" className="btn btn-danger btn-sm min-h-11" onClick={() => { onClear(); setConfirmClear(false); setMessage('已清除本機資料。'); }}>確認清除</button>
             <button type="button" className="btn btn-ghost btn-sm min-h-11" onClick={() => setConfirmClear(false)}>取消</button>
           </div>
         </div>

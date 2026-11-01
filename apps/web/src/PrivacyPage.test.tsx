@@ -32,3 +32,9 @@ test('explains how to get a Gemini key and what the terms say', () => {
   expect(screen.getByText(/not for consumer use/)).toBeInTheDocument();
   expect(screen.getByText(/關掉分頁就清除/)).toBeInTheDocument();
 });
+
+test('says where the imported student record is kept and how to delete it', () => {
+  render(<PrivacyPage />);
+  expect(screen.getByText(/整理後的資料存在這台瀏覽器/)).toHaveTextContent('不送給 AI、不放進匯出檔');
+  expect(screen.getByText(/整理後的資料存在這台瀏覽器/)).toHaveTextContent('清除修課資料');
+});

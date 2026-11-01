@@ -59,10 +59,10 @@ test('runs the main flows without CSP violations or unexpected connections', asy
   expect((await download).suggestedFilename()).toMatch(/課表\.png$/);
 
   await openTool(page, '畢業缺口');
-  await page.getByLabel('上傳全人系統匯出檔').setInputFiles('packages/engine/test/fixtures/synthetic/student-export.json');
-  await expect(page.getByText(/學校審查資料日期/)).toBeVisible();
+  await page.getByLabel('上傳全人系統匯出檔').filter({ visible: true }).setInputFiles('packages/engine/test/fixtures/synthetic/student-export.json');
+  await expect(page.getByText(/學校審查資料日期/).filter({ visible: true })).toBeVisible();
 
-  await openTool(page, 'AI 光球');
+  await page.getByRole('button', { name: 'AI 光球' }).click();
   // 課綱問答：沒有金鑰也能查本機索引（延遲載入的程式包，CSP 下也要能跑）。
   await page.getByLabel('想問課程的什麼').fill('期末報告');
   await page.getByRole('button', { name: '查課綱' }).click();

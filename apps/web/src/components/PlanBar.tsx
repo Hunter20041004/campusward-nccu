@@ -56,7 +56,7 @@ export function PlanBar({ plans, activePlanId, credits, catalog, onSwitch, onCre
             </select>
           </label>
           {comparison && active && other && (
-            <section aria-label="方案比較" className="flex flex-wrap gap-x-4 gap-y-1 rounded-field bg-base-100 px-3 py-2">
+            <section aria-label="方案比較" className="well flex flex-wrap gap-x-4 gap-y-1 rounded-2xl px-3 py-2">
               <span>只在{active.name}：{titles(comparison.onlyInFirst)}</span>
               <span>只在{other.name}：{titles(comparison.onlyInSecond)}</span>
               <span className="tabular">學分 {comparison.firstCredits} → {comparison.secondCredits}（{comparison.creditDifference >= 0 ? '+' : ''}{comparison.creditDifference}）</span>

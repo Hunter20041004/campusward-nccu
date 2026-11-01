@@ -30,7 +30,19 @@ describe('Guide', () => {
     expect(screen.getByRole('heading', { name: GUIDE_SLIDES[2]!.title })).toBeInTheDocument();
   });
 
-  test('covers searching, the timetable, backups and undo, the AI orb and registering', () => {
-    expect(GUIDE_SLIDES.map(({ title }) => title)).toEqual(['搜課、加入課表', '衝堂與選課規則', '備案與一鍵復原', 'AI 光球', '排好後去登記']);
+  test('teaches every feature', () => {
+    expect(GUIDE_SLIDES.map(({ title }) => title)).toEqual([
+      '搜課與多條件搜尋', '課程詳情與官方資料', '加入課表、收藏候選', '在課表上調整一門課', '衝堂與選課規則',
+      '備案、比較與復原', '條件：身分、資格、偏好', '全人系統資料', 'AI 光球', '匯出、登記與隱私',
+    ]);
+  });
+
+  test('explains the colours and marks in a legend tab', async () => {
+    render(<Guide open onClose={vi.fn()} />);
+    await userEvent.setup().click(screen.getByRole('tab', { name: '圖例' }));
+    const legend = screen.getByRole('tabpanel', { name: '圖例' });
+    for (const text of ['必修課', '其他課', '衝堂', '鎖定', '已修過', '收藏到候選', '自動備案']) {
+      expect(legend).toHaveTextContent(text);
+    }
   });
 });

@@ -25,7 +25,7 @@ function LiveCheckButton({ course, fetchImpl }: { course: Course; fetchImpl: (ur
           : state.status === 'missing' ? <p className="text-coral-ink">政大課程查詢目前查不到這門課，可能已停開，請到學校系統確認。</p>
             : state.status === 'failed' ? <p className="text-coral-ink">連不上政大課程查詢，請稍後再試。</p>
               : (
-                <div className="rounded-field border border-coral-ink/40 px-3 py-2">
+                <div className="course-conflict rounded-2xl px-3 py-2">
                   <p className="font-medium">學校已更新這門課（以學校為準）：</p>
                   <ul className="list-disc pl-5">
                     {state.fields.filter((field) => field !== 'meetings' || !state.fields.includes('scheduleText')).map((field) => (
@@ -70,9 +70,9 @@ export function CourseDetails({ course, id, fetchImpl = (url) => fetch(url, { he
     ['其他說明', notes.informationNotes],
   ] as [string, string[]][]).filter(([, values]) => values.length > 0);
   return (
-    <section id={id} aria-label={`${course.title} 詳細資料`} className="mt-3 space-y-3 border-t border-base-300 pt-3 text-sm">
+    <section id={id} aria-label={`${course.title} 詳細資料`} className="well mt-3 space-y-3 rounded-2xl p-3 text-sm">
       {course.restrictionText && (
-        <p className="rounded-field bg-secondary/40 px-3 py-2 text-secondary-content">
+        <p className="course-apricot rounded-2xl px-3 py-2">
           <span className="font-medium">修課限制：</span>
           {course.restrictionText}
         </p>

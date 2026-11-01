@@ -40,3 +40,11 @@ test('collapses to a summary on small screens', async () => {
   await user.click(toggle);
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
 });
+
+test('lists possible retakes from the imported record with where the reminder comes from', () => {
+  render(<RulesPanel conflicts={[]} reminders={[]} retakes={[{ key: '1151:900001001', message: '「統計學」與你已通過的「統計學」同名，可能是重複修習。' }]} />);
+  const list = screen.getByRole('list', { name: '提醒' });
+  expect(list).toHaveTextContent('重修');
+  expect(list).toHaveTextContent('與你已通過的「統計學」同名');
+  expect(list).toHaveTextContent('出處：你匯入的全人系統資料');
+});

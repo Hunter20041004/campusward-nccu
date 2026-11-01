@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { rowToCourse, toScheduleCourse, type Course } from '@campusward/engine';
+import { rowToCourse, toScheduleCourse, type Course, type StudentRecord } from '@campusward/engine';
+import { useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { officialRow } from '../../../../packages/engine/test/fixtures/synthetic/official-rows.ts';
 import exportJson from '../../../../packages/engine/test/fixtures/synthetic/student-export.json' with { type: 'json' };
@@ -15,10 +16,15 @@ const courseOf = (overrides: Record<string, unknown>): Course => {
 const missingOffering = courseOf({ subNum: '900777001', subNam: '合成必修甲' });
 const other = courseOf({ subNum: '900888001', subNam: '其他課' });
 
-function setup(overrides: Partial<GraduationPanelProps> = {}) {
-  const props: GraduationPanelProps = {
+// 全人系統資料由 App 保管（2026-11-01 起共用）；測試用一個會記住匯入結果的外殼。
+function Harness(props: Omit<GraduationPanelProps, 'record' | 'onRecord'>) {
+  const [record, setRecord] = useState<StudentRecord | null>(null);
+  return <GraduationPanel {...props} record={record} onRecord={setRecord} />;
+}
+
+function setup(overrides: Partial<Omit<GraduationPanelProps, 'record' | 'onRecord'>> = {}) {
+  const props: Omit<GraduationPanelProps, 'record' | 'onRecord'> = {
     courses: [missingOffering, other],
-    entries: [],
     candidateKeys: new Set(),
     scheduledKeys: new Set(),
     profile: {},
@@ -27,7 +33,7 @@ function setup(overrides: Partial<GraduationPanelProps> = {}) {
     onProfile: vi.fn(),
     ...overrides,
   };
-  render(<GraduationPanel {...props} />);
+  render(<Harness {...props} />);
   return props;
 }
 const upload = async (text = exportText) => {

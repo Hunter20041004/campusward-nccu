@@ -1,4 +1,17 @@
-import { checkEnrollmentRules, parseEnrollmentRules, toScheduleCourse, type Change, type Course, type StorageLike } from '@campusward/engine';
+import {
+  checkEnrollmentRules,
+  clearStudentRecord,
+  findRetakes,
+  loadStudentRecord,
+  normalizeSearchText,
+  parseEnrollmentRules,
+  saveStudentRecord,
+  toScheduleCourse,
+  type Change,
+  type Course,
+  type StorageLike,
+  type StudentRecord,
+} from '@campusward/engine';
 import enrollmentRules from '../../../data/rules/enrollment-11407.json' with { type: 'json' };
 import { Search } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
@@ -14,6 +27,7 @@ import { RulesPanel } from './components/RulesPanel.tsx';
 import { SearchPanel } from './components/SearchPanel.tsx';
 import { ToolRail, TOOLS, type Tool } from './components/ToolRail.tsx';
 import { Guide } from './components/Guide.tsx';
+import { FloatingOrb } from './components/FloatingOrb.tsx';
 import { Timetable } from './components/Timetable.tsx';
 import { UndoToast } from './components/UndoToast.tsx';
 import { gemini } from './ai/session.ts';
@@ -46,6 +60,19 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const [mobileView, setMobileView] = useState<MobileView>('timetable');
   // 第一次進站顯示使用導覽（2026-11-01 使用者決定）；看過就記在這台裝置，「?」可以再開。
   const [guideOpen, setGuideOpen] = useState(() => guide && storageRef.current?.getItem(GUIDE_KEY) !== 'seen');
+  // 全人系統資料：匯入一次、各功能共用，存在這台瀏覽器（不送 AI、不進匯出檔）。
+  const [record, setRecordState] = useState<StudentRecord | null>(() => (storageRef.current ? loadStudentRecord(storageRef.current) : null));
+  const [recordNotice, setRecordNotice] = useState('');
+  const setRecord = (next: StudentRecord | null) => {
+    try {
+      if (next) saveStudentRecord(storageRef.current!, next);
+      else clearStudentRecord(storageRef.current!);
+      setRecordNotice('');
+    } catch {
+      setRecordNotice('修課資料沒有存進這台裝置（可能是無痕模式或空間不足），重新整理後要重新匯入。');
+    }
+    setRecordState(next);
+  };
   const closeGuide = () => {
     setGuideOpen(false);
     try {
@@ -59,6 +86,18 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const candidateKeys = useMemo(() => new Set(planner.planner.candidates), [planner.planner.candidates]);
   const keyOf = (course: Course) => toScheduleCourse(course).key;
   const reminders = useMemo(() => checkEnrollmentRules(planner.entries, planner.profile, RULES), [planner.entries, planner.profile]);
+  const retakes = useMemo(() => (record ? findRetakes(record, planner.entries).map((retake) => ({
+    key: retake.key,
+    message: `「${planner.catalog.get(retake.key)?.title ?? retake.key}」與你已通過的「${retake.passedTitle}」${retake.reason === 'code' ? '課號前六碼相同' : '同名'}，可能是重複修習，學分通常不計入畢業學分。`,
+  })) : []), [planner.catalog, planner.entries, record]);
+  // 搜課結果標示「已修過」：已通過的課，課號前六碼或課名相同。
+  const passedAs = useMemo(() => {
+    if (!record) return undefined;
+    const passed = record.courses.filter(({ result }) => result === 'passed');
+    const byCode = new Map(passed.map(({ code, title }) => [code.slice(0, 6), title]));
+    const byTitle = new Map(passed.map(({ title }) => [normalizeSearchText(title), title]));
+    return (course: Course) => byCode.get(course.code.slice(0, 6)) ?? byTitle.get(normalizeSearchText(course.title)) ?? null;
+  }, [record]);
   const titleOf = (key: string) => planner.catalog.get(key)?.title ?? '課程';
   const [pendingBackup, setPendingBackup] = useState<{ changes: Change[]; label: string; replace: number } | null>(null);
   // 清除本機資料後換掉這個值，讓 AI 面板與畢業缺口重新掛載（金鑰、勾選、匯入的修課資料都歸零）。
@@ -82,7 +121,9 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     ? RULES.credits.maximum[planner.profile.additionalMajor ?? 'none']
     : undefined;
 
-  const tools: Tool[] = ['timetable', 'conditions', ...(FEATURES.orb || FEATURES.qa || FEATURES.demo ? ['ai' as const] : []), 'data', ...(FEATURES.graduation ? ['graduation' as const] : [])];
+  const tools: Tool[] = ['timetable', 'conditions', 'data', ...(FEATURES.graduation ? ['graduation' as const] : [])];
+  const aiEnabled = FEATURES.orb || FEATURES.qa || FEATURES.demo;
+  const [aiOpen, setAiOpen] = useState(false);
   const showTool = (next: Tool) => {
     setTool(next);
     setMobileView(next);
@@ -102,6 +143,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
             課程資料暫時載入不了，請檢查網路後重新整理。已排的課表仍保存在這台裝置。
           </p>
         )}
+        {recordNotice && <p role="alert" className="well mb-3 rounded-2xl px-4 py-3 text-sm">{recordNotice}</p>}
         {planner.notice && (
           <p role="alert" className="well mb-3 flex items-start gap-3 rounded-2xl px-4 py-3 text-sm">
             <span className="flex-1">{planner.notice}</span>
@@ -124,6 +166,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                 onAdd={(course) => applyChange([{ type: 'addToSchedule', key: keyOf(course) }], `已加入「${course.title}」`)}
                 onRemove={(course) => applyChange([{ type: 'removeFromSchedule', key: keyOf(course) }], `已移出「${course.title}」`)}
                 onCandidate={(course) => applyChange([{ type: 'addCandidate', key: keyOf(course) }], `已放進候選「${course.title}」`)}
+                {...(passedAs ? { passedAs } : {})}
               />
             ) : (
               <p className="p-4 text-sm text-base-content/80">{data.status === 'loading' ? '正在載入課程資料…' : '課程資料載入失敗。'}</p>
@@ -165,7 +208,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   onAttendance={(key, attendance) => applyChange([{ type: 'setAttendance', key, attendance }], `「${titleOf(key)}」改為${attendance === 'async' ? '非同步' : '同步'}上課`)}
                   onRemove={(key) => applyChange([{ type: 'removeFromSchedule', key }], `已移出「${titleOf(key)}」`)}
                 />
-                {planner.entries.length > 0 && <RulesPanel conflicts={planner.conflicts} reminders={reminders} />}
+                {planner.entries.length > 0 && <RulesPanel conflicts={planner.conflicts} reminders={reminders} retakes={retakes} />}
               </div>
               <div hidden={tool !== 'conditions'}>
                 <ConditionsPanel
@@ -175,27 +218,11 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   preferences={planner.planner.preferences}
                   onProfile={planner.setProfile}
                   onPreferences={(change) => applyChange([{ type: 'setPreference', ...change }], '已更新偏好')}
+                  record={record}
+                  onRecord={setRecord}
+                  allCourses={courses}
                 />
               </div>
-              {tools.includes('ai') && (
-                <div hidden={tool !== 'ai'} className="h-full">
-                  <AiPanel
-                    key={`ai-${generation}`}
-                    client={ai}
-                    term={ready ? data.term : ''}
-                    termLabel={ready ? data.label : ''}
-                    planner={planner.planner}
-                    catalog={planner.catalog}
-                    courses={courses}
-                    ready={ready}
-                    onApply={(changes, label, replaceOldestAutoBackup) => planner.applyAi(changes, label, {
-                      ...(ready ? { termLabel: data.label } : {}),
-                      ...(maximumCredits !== undefined ? { maximumCredits } : {}),
-                      ...(replaceOldestAutoBackup ? { replaceOldestAutoBackup } : {}),
-                    })}
-                  />
-                </div>
-              )}
               <div hidden={tool !== 'data'}>
                 {ready && (
                   <DataPanel
@@ -205,6 +232,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                     onReplace={planner.replaceData}
                     onClear={() => {
                       planner.clearAll();
+                      setRecord(null);
                       ai.removeKey();
                       void clearBrowserCaches();
                       setGeneration((value) => value + 1);
@@ -228,9 +256,9 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                 <div hidden={tool !== 'graduation'}>
                   {ready && (
                     <GraduationPanel
-                      key={`graduation-${generation}`}
                       courses={courses}
-                      entries={planner.entries}
+                      record={record}
+                      onRecord={setRecord}
                       candidateKeys={candidateKeys}
                       scheduledKeys={scheduledKeys}
                       profile={planner.profile}
@@ -260,6 +288,25 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
       />
       <UndoToast label={planner.undoLabel} onUndo={planner.undo} onExpire={planner.clearUndo} />
       <MobileNav view={mobileView} tools={tools} onView={(next) => (next === 'search' ? setMobileView('search') : showTool(next))} />
+      {aiEnabled && (
+        <FloatingOrb open={aiOpen} onOpen={() => setAiOpen(true)} onClose={() => setAiOpen(false)}>
+          <AiPanel
+                    key={`ai-${generation}`}
+                    client={ai}
+                    term={ready ? data.term : ''}
+                    termLabel={ready ? data.label : ''}
+                    planner={planner.planner}
+                    catalog={planner.catalog}
+                    courses={courses}
+                    ready={ready}
+                    onApply={(changes, label, replaceOldestAutoBackup) => planner.applyAi(changes, label, {
+                      ...(ready ? { termLabel: data.label } : {}),
+                      ...(maximumCredits !== undefined ? { maximumCredits } : {}),
+                      ...(replaceOldestAutoBackup ? { replaceOldestAutoBackup } : {}),
+                    })}
+                  />
+        </FloatingOrb>
+      )}
       <Guide open={guideOpen} onClose={closeGuide} />
     </div>
   );

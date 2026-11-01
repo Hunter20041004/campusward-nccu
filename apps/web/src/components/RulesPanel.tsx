@@ -11,11 +11,17 @@ interface Item {
 }
 
 /** 衝堂與選課規則提醒：只提醒、不阻擋，每則附出處（設計第 5 節）。 */
-export function RulesPanel({ conflicts, reminders }: { conflicts: readonly Conflict[]; reminders: readonly RuleReminder[] }) {
+export function RulesPanel({ conflicts, reminders, retakes = [] }: {
+  conflicts: readonly Conflict[];
+  reminders: readonly RuleReminder[];
+  /** 全人系統資料比對出的可能重修（同名或課號前六碼相同）。 */
+  retakes?: readonly { key: string; message: string }[];
+}) {
   const [open, setOpen] = useState(false);
   const items: Item[] = [
     ...conflicts.map((conflict, index): Item => ({ key: `conflict-${index}`, severity: 'warn', tag: '衝堂', message: conflict.message })),
     ...reminders.map((reminder, index): Item => ({ key: `${reminder.id}-${index}`, severity: reminder.severity, tag: reminder.severity === 'warn' ? '注意' : '提示', message: reminder.message, source: reminder.source })),
+    ...retakes.map(({ key, message }): Item => ({ key: `retake-${key}`, severity: 'warn', tag: '重修', message, source: '你匯入的全人系統資料（只比對同名或課號前六碼）' })),
   ].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'warn' ? -1 : 1));
   const warnings = items.filter(({ severity }) => severity === 'warn').length;
 

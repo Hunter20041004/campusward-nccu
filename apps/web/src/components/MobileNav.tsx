@@ -1,18 +1,16 @@
 import { CalendarDays, Ellipsis, Search } from 'lucide-react';
 import { useState } from 'react';
-import { OrbMark } from './OrbMark.tsx';
 import { TOOLS, type Tool } from './ToolRail.tsx';
 
 export type MobileView = 'search' | Tool;
 
-/** 手機底部分頁：搜課、課表、AI，其他工具收在「更多」。 */
+/** 手機底部分頁：搜課、課表，其他工具收在「更多」；AI 光球是浮在右下角的按鈕。 */
 export function MobileNav({ view, tools, onView }: { view: MobileView; tools: readonly Tool[]; onView: (view: MobileView) => void }) {
   const [more, setMore] = useState(false);
-  const others = TOOLS.filter(({ id }) => id !== 'timetable' && id !== 'ai' && tools.includes(id));
+  const others = TOOLS.filter(({ id }) => id !== 'timetable' && tools.includes(id));
   const items: { id: MobileView; label: string; icon: React.ReactNode }[] = [
     { id: 'search', label: '搜課', icon: <Search className="size-5" aria-hidden="true" /> },
     { id: 'timetable', label: '課表', icon: <CalendarDays className="size-5" aria-hidden="true" /> },
-    ...(tools.includes('ai') ? [{ id: 'ai' as const, label: 'AI', icon: <OrbMark size={20} /> }] : []),
   ];
   const choose = (next: MobileView) => {
     setMore(false);
@@ -31,7 +29,7 @@ export function MobileNav({ view, tools, onView }: { view: MobileView; tools: re
           ))}
         </ul>
       )}
-      <ul className="grid grid-cols-4">
+      <ul className="grid grid-cols-3">
         {[...items, { id: 'more' as const, label: '更多', icon: <Ellipsis className="size-5" aria-hidden="true" /> }].map(({ id, label, icon }) => (
           <li key={id}>
             <button

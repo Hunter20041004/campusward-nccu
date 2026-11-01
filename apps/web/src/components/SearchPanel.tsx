@@ -8,7 +8,7 @@ import { DAY_LABELS, DAYPARTS, formatCredits } from './labels.ts';
 const PAGE_SIZES = [25, 50, 100];
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];
 // 桌機表格欄位：課程名稱／教師／課號／類型／時間地點／收藏與加入。
-const COLUMNS = 'lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.6fr)_auto]';
+const COLUMNS = 'lg:grid-cols-[minmax(0,2fr)_minmax(4.5rem,0.9fr)_6.5rem_minmax(0,1fr)_minmax(0,1.5fr)_auto]';
 
 export interface SearchPanelProps {
   courses: readonly Course[];
@@ -20,6 +20,8 @@ export interface SearchPanelProps {
   onAdd: (course: Course) => void;
   onRemove: (course: Course) => void;
   onCandidate: (course: Course) => void;
+  /** 依全人系統資料：已通過同名或課號前六碼相同的課，回傳已通過的課名。 */
+  passedAs?: (course: Course) => string | null;
 }
 
 function Chip({ pressed, onClick, children, label }: { pressed: boolean; onClick: () => void; children: React.ReactNode; label?: string }) {
@@ -38,7 +40,7 @@ function Chip({ pressed, onClick, children, label }: { pressed: boolean; onClick
 
 const toggle = <T,>(values: T[], value: T) => (values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
 
-export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys, candidateKeys, onAdd, onRemove, onCandidate }: SearchPanelProps) {
+export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys, candidateKeys, onAdd, onRemove, onCandidate, passedAs }: SearchPanelProps) {
   const [weekdays, setWeekdays] = useState<number[]>([]);
   const [dayparts, setDayparts] = useState<string[]>([]);
   const [generalEducation, setGeneralEducation] = useState('');
@@ -158,6 +160,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
                         <span className="tabular text-sm">{course.code}</span>
                         <span className="flex flex-wrap items-center gap-1 text-sm">
                           {course.official.requirementKind && <span>{course.official.requirementKind}</span>}
+                          {passedAs?.(course) && <span className="chip" title={`你已通過「${passedAs(course)}」`}>已修過</span>}
                           <CourseTags course={course} />
                         </span>
                         <span className="text-sm">
@@ -204,7 +207,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
           {results.length > 0 && (
             <nav aria-label="搜尋結果分頁" className="flex items-center gap-2">
               <label className="flex items-center gap-1 text-xs">
-                <select aria-label="每頁筆數" className="select select-sm min-h-11 w-auto" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); resetPaging(); }}>
+                <select aria-label="每頁筆數" className="select select-sm min-h-11 w-24" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); resetPaging(); }}>
                   {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
                 </select>
                 每頁

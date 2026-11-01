@@ -8,7 +8,10 @@ import {
   type Preferences,
   type ScheduleCourse,
   type ScheduleEntry,
+  type Course,
+  type StudentRecord,
 } from '@campusward/engine';
+import { StudentRecordCard } from './StudentRecordCard.tsx';
 import { useState } from 'react';
 import { DAY_LABELS } from './labels.ts';
 
@@ -20,6 +23,10 @@ export interface ConditionsPanelProps {
   preferences: Preferences;
   onProfile: (profile: IdentityProfile) => void;
   onPreferences: (change: { freeDays?: number[]; internship?: InternshipSettings }) => void;
+  record?: StudentRecord | null;
+  onRecord?: (record: StudentRecord | null) => void;
+  /** 本學期所有課程（擋修條件比對用）。 */
+  allCourses?: readonly Course[];
 }
 
 const without = (values: readonly string[] | undefined, value: string) => (values ?? []).filter((item) => item !== value);
@@ -27,15 +34,15 @@ const formatDays = (days: number) => (Number.isInteger(days) ? String(days) : da
 
 function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-2 border-b border-base-300 pb-4 last:border-b-0">
-      <h3 className="text-sm font-semibold">{title}</h3>
+    <section className="well space-y-2 rounded-2xl p-4">
+      <h3 className="text-base font-bold text-mist-ink">{title}</h3>
       {note && <p className="text-xs text-base-content/75">{note}</p>}
       {children}
     </section>
   );
 }
 
-export function ConditionsPanel({ profile, courses, entries, preferences, onProfile, onPreferences }: ConditionsPanelProps) {
+export function ConditionsPanel({ profile, courses, entries, preferences, onProfile, onPreferences, record = null, onRecord, allCourses = [] }: ConditionsPanelProps) {
   const definitions = buildConditionDefinitions(courses.map(({ eligibility }) => eligibility));
   const impacts = buildConditionImpacts(courses.map(({ key, title, eligibility }) => ({ ...eligibility, id: key, title })), definitions, profile);
   const [targetDraft, setTargetDraft] = useState(String(preferences.internship.targetDays));
@@ -58,6 +65,11 @@ export function ConditionsPanel({ profile, courses, entries, preferences, onProf
 
   return (
     <div className="space-y-4 overflow-y-auto">
+      {onRecord && (
+        <Section title="全人系統資料">
+          <StudentRecordCard record={record} onRecord={onRecord} courses={allCourses} profile={profile} onProfile={onProfile} />
+        </Section>
+      )}
       <Section title="我的身分" note="只有你自己能改；AI 不會改這些設定。">
         <div className="grid grid-cols-2 gap-2 text-sm">
           <label className="flex flex-col gap-1">
@@ -93,7 +105,7 @@ export function ConditionsPanel({ profile, courses, entries, preferences, onProf
           <ul className="space-y-2">
             {impacts.map((impact) => (
               <li key={impact.id}>
-                <div role="radiogroup" aria-label={impact.label} className="rounded-field border border-base-300 bg-base-100 p-3 text-sm">
+                <div role="radiogroup" aria-label={impact.label} className="raised rounded-2xl p-3 text-sm">
                   <p className="font-medium">{impact.label}</p>
                   <p className="text-xs text-base-content/75">{impact.summary}：{impact.affectedCourses.map(({ title }) => title).join('、')}</p>
                   <div className="mt-2 flex flex-wrap gap-x-4">
@@ -122,7 +134,7 @@ export function ConditionsPanel({ profile, courses, entries, preferences, onProf
                 aria-pressed={pressed}
                 aria-label={`${DAY_LABELS[day]}空下來`}
                 onClick={() => onPreferences({ freeDays: pressed ? preferences.freeDays.filter((value) => value !== day) : [...preferences.freeDays, day].sort() })}
-                className={`min-h-11 min-w-11 rounded-selector border text-sm ${pressed ? 'border-mist-ink bg-primary/20 font-medium text-mist-ink' : 'border-base-300 bg-base-100'}`}
+                className={`btn btn-sm min-h-11 min-w-11 px-3 ${pressed ? 'tab-selected text-mist-ink' : ''}`}
               >
                 {DAY_LABELS[day]!.slice(1)}
               </button>

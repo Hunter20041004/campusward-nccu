@@ -26,4 +26,5 @@ export * from './ai/import.ts';
 export * from './ai/plan.ts';
 export * from './storage.ts';
 export * from './studentExport.ts';
+export * from './studentRecordStorage.ts';
 export * from './syllabus.ts';

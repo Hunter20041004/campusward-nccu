@@ -6,7 +6,7 @@ const SECTIONS: { id?: string; title: string; items: string[] }[] = [
     title: '留在你的瀏覽器',
     items: [
       '課表、備案、候選清單、偏好、身分與資格條件，都只存在這台裝置的瀏覽器裡。Campusward 沒有帳號，也沒有伺服器保存你的資料。',
-      '匯入的全人系統檔案只讀學籍、修課紀錄與學校的畢業審查；分數不保存，只留通過、未通過或停修。',
+      '匯入的全人系統檔案只讀學籍、修課紀錄與學校的畢業審查；原始檔讀完就丟，分數不保存（只留通過、未通過或停修），姓名、學號、聯絡資料都不讀。整理後的資料存在這台瀏覽器，讓條件、重修提醒、搜課「已修過」與畢業缺口共用；不送給 AI、不放進匯出檔，按「清除修課資料」或「清除本機資料」就刪除。',
       '可以隨時匯出成檔案，或在「匯出與資料」按「清除本機資料」全部刪除（包含保留的備份）。',
       '用共用電腦或別人的電腦時，同一個瀏覽器的其他使用者看得到這些資料；用完請清除本機資料。',
     ],
@@ -51,7 +51,7 @@ const SECTIONS: { id?: string; title: string; items: string[] }[] = [
 export function PrivacyPage() {
   return (
     <div className="min-h-dvh">
-      <header className="border-b border-base-300 bg-base-100">
+      <header className="bg-base-100">
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
           <a href="/" className="inline-flex min-h-11 items-center gap-2 rounded-field text-sm font-medium text-mist-ink">
             <ArrowLeft className="size-4" aria-hidden="true" />回到排課

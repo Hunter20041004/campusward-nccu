@@ -13,9 +13,9 @@ export function UndoToast({ label, onUndo, onExpire }: { label: string | null; o
   return (
     <div role="status" aria-label="最近的修改" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-20 z-30 flex justify-center px-4 md:bottom-6">
       {label && (
-        <div className="pointer-events-auto flex items-center gap-3 rounded-field bg-neutral py-2 pl-4 pr-2 text-sm text-neutral-content shadow-lg">
+        <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-neutral py-2 pl-5 pr-2 text-sm text-neutral-content shadow-lg">
           <span>{label}</span>
-          <button type="button" onClick={onUndo} className="btn btn-sm min-h-11 gap-1 border-none bg-neutral-content/15 text-neutral-content hover:bg-neutral-content/25">
+          <button type="button" onClick={onUndo} className="btn btn-ghost btn-sm min-h-11 gap-1 text-neutral-content hover:bg-neutral-content/20">
             <Undo2 className="size-4" aria-hidden="true" />
             復原
           </button>

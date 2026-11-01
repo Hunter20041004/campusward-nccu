@@ -92,7 +92,7 @@ export function QaSection({ source, term, courses, client, aiReady }: QaSectionP
       {error && <p role="alert" className="text-coral-ink">{error}</p>}
       {answer?.status === 'failed' && <p role="alert" className="text-coral-ink">{answer.message}</p>}
       {answer?.status === 'ok' && (
-        <div className="rounded-field bg-base-200/60 px-3 py-2">
+        <div className="raised rounded-2xl px-3 py-2">
           <AnswerText text={answer.answer} knownCodes={new Set(byCode.keys())} />
           <p className="mt-1 text-xs text-base-content/75">
             AI 只根據下面的課綱段落回答，可能有誤，以官方課綱為準。

@@ -146,49 +146,72 @@
   box-shadow: inset -2px -2px 6.9px rgb(0 0 0 / 0.2), inset 4px 4px 3.5px rgb(240 205 200), inset 0 0 0 2px var(--color-coral-ink);
 }
 
-@layer components {
-  /* 按鈕：與面板同色、凸起、圓角；按下時凹陷。 */
-  .btn {
-    background: var(--color-base-100);
-    border-color: transparent;
-    border-radius: 9999px;
-    font-weight: 700;
-    box-shadow: -5px -5px 15px rgb(252 252 252), 6px 6px 18px -14px rgb(135 135 135 / 0.3), 7px 6px 7px -6px rgb(0 0 0 / 0.08);
-  }
-  .btn:active {
-    box-shadow: inset 2px 3px 6px -1px rgb(0 0 0 / 0.22), inset -3px -3px 6px -2px rgb(255 255 255);
-  }
-  .btn-primary {
-    background: var(--color-primary);
-    color: var(--color-primary-content);
-  }
-  .btn-ghost {
-    background: transparent;
-    box-shadow: none;
-  }
-  .btn:disabled {
-    box-shadow: none;
-  }
-  /* 輸入框：凹陷。保留一條淡框線，讓元件邊界看得出來。 */
-  .input,
-  .select,
-  .textarea {
-    background: var(--color-base-100);
-    border-color: oklch(0.88 0 0);
-    box-shadow:
-      inset 3.4px 4.5px 9px -2.3px rgb(0 0 0 / 0.26),
-      inset -8px -6.8px 8px -6.8px rgb(255 255 255),
-      -5.7px -5.7px 17px rgb(255 255 255);
-  }
-  .input,
-  .select {
-    border-radius: 9999px;
-  }
-  .textarea {
-    border-radius: 1rem;
-  }
-  .checkbox {
-    background: var(--color-base-100);
-    box-shadow: inset 1.5px 2px 4px -1px rgb(0 0 0 / 0.3), inset -2px -2px 3px -2px rgb(255 255 255);
-  }
+/* 元件覆寫放在所有樣式層之外（daisyUI 的元件樣式在 utilities 層，放在 components 層會被蓋掉，2026-11-01 發現）。
+   選取狀態（tab-selected）與幽靈按鈕不套凸起陰影，避免蓋掉它們。 */
+.btn {
+  background: var(--color-base-100);
+  border-color: transparent;
+  border-radius: 9999px;
+  font-weight: 700;
+}
+.btn:not(.tab-selected):not(.btn-ghost):not(:disabled) {
+  box-shadow: -5px -5px 15px rgb(252 252 252), 6px 6px 18px -14px rgb(135 135 135 / 0.3), 7px 6px 7px -6px rgb(0 0 0 / 0.08);
+}
+.btn:not(.btn-ghost):active {
+  box-shadow: inset 2px 3px 6px -1px rgb(0 0 0 / 0.22), inset -3px -3px 6px -2px rgb(255 255 255);
+}
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+}
+.btn-ghost {
+  background: transparent;
+  box-shadow: none;
+}
+.btn-danger {
+  color: var(--color-coral-ink);
+}
+.btn:disabled {
+  box-shadow: none;
+  opacity: 0.55;
+}
+/* 輸入框、選單、多行輸入：凹陷，保留一條淡框線讓邊界看得出來。 */
+.input,
+.select,
+.textarea {
+  background-color: var(--color-base-100);
+  border: 1px solid oklch(0.88 0 0);
+  box-shadow:
+    inset 3.4px 4.5px 9px -2.3px rgb(0 0 0 / 0.26),
+    inset -8px -6.8px 8px -6.8px rgb(255 255 255),
+    -5.7px -5.7px 17px rgb(255 255 255);
+}
+.input,
+.select {
+  border-radius: 9999px;
+  padding-inline: 1rem;
+}
+.textarea {
+  border-radius: 1rem;
+}
+.input:focus-within,
+.select:focus,
+.textarea:focus {
+  outline: 2px solid var(--color-mist-ink);
+  outline-offset: 2px;
+}
+.checkbox,
+.radio {
+  background-color: var(--color-base-100);
+  border: 1px solid oklch(0.8 0 0);
+  box-shadow: inset 1.5px 2px 4px -1px rgb(0 0 0 / 0.3), inset -2px -2px 3px -2px rgb(255 255 255);
+}
+.checkbox:checked,
+.radio:checked {
+  background-color: var(--color-primary);
+  border-color: var(--color-mist-ink);
+}
+.modal-box {
+  background: var(--color-base-100);
+  border-radius: 1.5rem;
 }

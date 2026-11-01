@@ -135,3 +135,10 @@ describe('SearchPanel', () => {
     expect(syllabus.getAttribute('href')).toMatch(/^https:\/\/newdoc\.nccu\.edu\.tw\//);
   });
 });
+
+test('marks courses the student already passed, according to the imported record', () => {
+  setup('統計', { passedAs: (course: Course) => (course.title === '統計學' ? '統計學' : null) });
+  const [first, second] = screen.getAllByRole('article');
+  expect(within(first!).getByText('已修過')).toBeInTheDocument();
+  expect(within(second!).queryByText('已修過')).not.toBeInTheDocument();
+});

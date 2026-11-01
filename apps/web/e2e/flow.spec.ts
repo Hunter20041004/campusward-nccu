@@ -130,19 +130,26 @@ test.describe('mobile', () => {
 test.describe('graduation gaps', () => {
   test.skip(({ isMobile }) => isMobile, 'desktop only');
 
-  test('reads the school audit from a synthetic export without sending anything', async ({ page }) => {
+  test('reads the school audit from a synthetic export, keeps the reduced record in this browser only, and clears it', async ({ page }) => {
     const requests: string[] = [];
     page.on('request', (request) => requests.push(request.url()));
     await page.goto('/');
     await expect(page.getByRole('banner')).toContainText('115-1');
     await openTool(page, '畢業缺口');
-    await page.getByLabel('上傳全人系統匯出檔').setInputFiles('packages/engine/test/fixtures/synthetic/student-export.json');
-    await expect(page.getByText(/學校審查資料日期 2026-10-26/)).toBeVisible();
+    await page.getByLabel('上傳全人系統匯出檔').filter({ visible: true }).setInputFiles('packages/engine/test/fixtures/synthetic/student-export.json');
+    await expect(page.getByText(/學校審查資料日期 2026-10-26/).filter({ visible: true })).toBeVisible();
     await expect(page.getByText(/體育欠 1 門/)).toBeVisible();
     await expectNoAxeViolations(page);
     expect(requests.filter((url) => !url.startsWith('http://localhost:5174/'))).toEqual([]);
+    // 2026-11-01 起匯入一次、各功能共用：存在這台瀏覽器，重新整理後還在；存的內容不含姓名、學號、分數。
+    const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }));
+    expect(stored).not.toMatch(/王合成|SYNTHETIC-0001|"score"/);
     await page.reload();
-    await expect(page.getByText(/學校審查資料日期/)).toHaveCount(0);
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    await openTool(page, '畢業缺口');
+    await expect(page.getByText(/學校審查資料日期 2026-10-26/).filter({ visible: true })).toBeVisible();
+    await page.getByRole('button', { name: '清除修課資料' }).filter({ visible: true }).click();
+    await expect(page.getByText(/學校審查資料日期/).filter({ visible: true })).toHaveCount(0);
   });
 });
 
@@ -169,8 +176,7 @@ for (const viewport of ['desktop', 'mobile'] as const) {
       const calls = await fakeGemini(page);
       await page.goto('/');
       await expect(page.getByRole('banner')).toContainText('115-1');
-      if (viewport === 'mobile') await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: 'AI' }).click();
-      else await openTool(page, 'AI 光球');
+      await page.getByRole('button', { name: 'AI 光球' }).click();
 
       await page.getByRole('checkbox', { name: /我已年滿 18 歲/ }).click();
       await page.getByLabel('Gemini 金鑰').fill(FAKE_KEY);
@@ -203,16 +209,19 @@ test.describe('usage guide', () => {
   test('shows the usage guide on the first visit, can be skipped, and reopens from the help button', async ({ page }) => {
     await page.goto('/');
     const guide = page.getByRole('dialog');
-    await expect(guide.getByRole('heading', { name: '搜課、加入課表' })).toBeVisible();
+    await expect(guide.getByRole('heading', { name: '搜課與多條件搜尋' })).toBeVisible();
+    // 等視窗淡入動畫結束再量顏色對比。
+    await expect.poll(() => guide.evaluate((element) => getComputedStyle(element).opacity)).toBe('1');
+    await page.waitForTimeout(300);
     await expectNoAxeViolations(page);
     await guide.getByRole('button', { name: '下一步' }).click();
-    await expect(guide.getByRole('heading', { name: '衝堂與選課規則' })).toBeVisible();
+    await expect(guide.getByRole('heading', { name: '課程詳情與官方資料' })).toBeVisible();
     await guide.getByRole('button', { name: '略過教學' }).click();
     await expect(guide).toBeHidden();
     await page.reload();
     await expect(page.getByRole('banner')).toContainText('115-1');
     await expect(page.getByRole('dialog')).toBeHidden();
     await page.getByRole('button', { name: '使用導覽' }).click();
-    await expect(page.getByRole('dialog').getByRole('heading', { name: '搜課、加入課表' })).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('heading', { name: '搜課與多條件搜尋' })).toBeVisible();
   });
 });
