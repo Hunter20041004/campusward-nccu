@@ -20,7 +20,7 @@ import {
   type StudentRecord,
 } from '@campusward/engine';
 import enrollmentRules from '../../../data/rules/enrollment-11407.json' with { type: 'json' };
-import { Search } from 'lucide-react';
+import { CalendarDays } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header.tsx';
 import { MobileNav, type MobileView } from './components/MobileNav.tsx';
@@ -79,7 +79,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     conflictsBeforeAdd.current = null;
   }, [buddyHub, planner.conflicts.length, planner.entries.length]);
   const [query, setQuery] = useState('');
-  const [tool, setTool] = useState<Tool>('timetable');
+  const [tool, setTool] = useState<Tool>('search');
   const [mobileView, setMobileView] = useState<MobileView>('timetable');
   // 第一次進站顯示使用導覽（2026-11-01 使用者決定）；看過就記在這台裝置，「?」可以再開。
   const [guideOpen, setGuideOpen] = useState(() => guide && storageRef.current?.getItem(GUIDE_KEY) !== 'seen');
@@ -215,7 +215,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const limits = creditLimits(planner.profile, RULES);
   const maximumCredits = limits?.maximum;
 
-  const tools: Tool[] = ['timetable', 'candidates', 'conditions', 'data', ...(FEATURES.graduation ? ['graduation' as const] : [])];
+  const tools: Tool[] = ['search', 'candidates', 'conditions', 'data', ...(FEATURES.graduation ? ['graduation' as const] : [])];
   const aiEnabled = FEATURES.orb || FEATURES.qa || FEATURES.demo;
   const [aiOpen, setAiOpen] = useState(false);
   const conflictPairs = planner.conflicts.map(({ courseKeys }) => [titleOf(courseKeys[0] ?? ''), titleOf(courseKeys[1] ?? '')] as const);
@@ -249,10 +249,10 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     const key = unlocked.find((candidate) => findOtherSections(planner.entries, candidate, planner.catalog.values()).length > 0) ?? unlocked[0] ?? keys[0];
     setDismissedNudge(conflictSignature);
     if (!key) return;
-    showTool('timetable');
+    showTimetable();
     setCardFocus((previous) => ({ key, nonce: (previous?.nonce ?? 0) + 1 }));
   };
-  const nudgeHidden = (cardOpen && tool === 'timetable') || menuOpen || copyPreviewOpen || guideOpen || pendingBackup !== null;
+  const nudgeHidden = cardOpen || menuOpen || copyPreviewOpen || guideOpen || pendingBackup !== null;
   const nudge = conflictSignature && dismissedNudge !== conflictSignature
     ? `有 ${planner.conflicts.length} 個衝堂，要我幫忙看看嗎？`
     : null;
@@ -268,8 +268,10 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     setTool(next);
     setMobileView(next);
   };
+  // 課表一直在左邊；手機上才需要切到「課表」分頁。
+  const showTimetable = () => setMobileView('timetable');
   const startSearch = () => {
-    setMobileView('search');
+    showTool('search');
     setTimeout(() => searchRef.current?.focus(), 0);
   };
   // 「設定年級後可檢查學分上下限」：打開條件並把焦點放到年級。
@@ -302,78 +304,81 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
           </p>
         )}
         <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_3.5rem] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_3.5rem]">
-          <section aria-labelledby="search-title" className={`relief flex-col p-4 md:sticky md:top-20 md:h-[calc(100dvh-6rem)] ${mobileOnly(mobileView === 'search')}`}>
-            <h2 id="search-title" className="flex items-center gap-2 px-1 text-xl font-bold text-mist-ink">
-              <Search className="size-5" aria-hidden="true" />課程搜尋<span aria-hidden="true" className="h-5 w-0.5 rounded bg-mist-ink/50" />
+          {/* 2026-11-01 使用者決定：模擬課表在左邊當主畫面，一直看得到；右邊面板預設是搜課，圖示列切換其他工具。 */}
+          <section aria-labelledby="timetable-title" className={`relief flex-col md:sticky md:top-20 md:h-[calc(100dvh-6rem)] ${mobileOnly(mobileView === 'timetable')}`}>
+            <h2 id="timetable-title" className="flex items-center gap-2 px-5 pt-4 text-xl font-bold text-mist-ink">
+              <CalendarDays className="size-5" aria-hidden="true" />模擬課表<span aria-hidden="true" className="h-5 w-0.5 rounded bg-mist-ink/50" />
             </h2>
-            {ready ? (
-              <SearchPanel
-                courses={courses}
-                query={query}
-                onQuery={setQuery}
-                searchRef={searchRef}
-                scheduledKeys={scheduledKeys}
-                candidateKeys={candidateKeys}
-                onAdd={(course) => courseChange('add', [{ type: 'addToSchedule', key: keyOf(course) }], addLabel(course))}
-                onRemove={(course) => courseChange('remove', [{ type: 'removeFromSchedule', key: keyOf(course) }], `已移出「${course.title}」`)}
-                onCandidate={toggleCandidate}
-                clashesOf={clashesOf}
-                slot={slot}
-                {...(planner.profile.level ? { defaultDegree: planner.profile.level } : {})}
-                {...(passedAs ? { passedAs } : {})}
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+              <PlanBar
+                plans={planner.planner.plans}
+                activePlanId={planner.planner.activePlanId}
+                credits={planner.credits}
+                catalog={planner.catalog}
+                limits={limits}
+                {...(!limits && planner.profile.level !== 'graduate' ? { onSetIdentity: openIdentity } : {})}
+                onSwitch={(planId) => applyChange([{ type: 'switchPlan', planId }], `已切換到「${planner.planner.plans.find(({ id }) => id === planId)?.name ?? '方案'}」`)}
+                onCreate={() => {
+                  const name = `備案 ${planner.planner.plans.filter(({ auto }) => !auto).length}`;
+                  applyChange([{ type: 'createPlan', name }], `已另存「${name}」`);
+                }}
               />
-            ) : (
-              <p className="p-4 text-sm text-base-content/80">{data.status === 'loading' ? '正在載入課程資料…' : '課程資料載入失敗。'}</p>
-            )}
+              <Timetable
+                entries={planner.entries}
+                conflicts={planner.conflicts}
+                newKeys={planner.newKeys}
+                onStartSearch={startSearch}
+                onFindSlot={(day, period) => {
+                  setSlot((previous) => ({ day, period, nonce: (previous?.nonce ?? 0) + 1 }));
+                  showTool('search');
+                }}
+                onImport={() => {
+                  showTool('data');
+                  setTimeout(() => document.querySelector<HTMLInputElement>('input[aria-label="匯入資料"]')?.click(), 0);
+                }}
+                onToggleLock={(key) => {
+                  const locked = !planner.activePlan.items.find((item) => item.key === key)?.locked;
+                  applyChange([{ type: 'setLock', key, locked }], `已${locked ? '鎖定' : '解鎖'}「${titleOf(key)}」`);
+                }}
+                onStatus={(key, status) => applyChange([{ type: 'setStatus', key, status }], `已將「${titleOf(key)}」標為${{ planned: '排入', registered: '已灌檔', enrolled: '已選上' }[status]}`)}
+                onAttendance={(key, attendance) => applyChange([{ type: 'setAttendance', key, attendance }], `「${titleOf(key)}」改為${attendance === 'async' ? '非同步' : '同步'}上課`)}
+                onRemove={(key) => courseChange('remove', [{ type: 'removeFromSchedule', key }], `已移出「${titleOf(key)}」`)}
+                courseOf={(key) => courseByKey.get(key)}
+                otherSections={otherSections}
+                onSwap={swapSection}
+                onSelect={setCardOpenFor}
+                focus={cardFocus}
+              />
+              {planner.entries.length > 0 && <RulesPanel conflicts={planner.conflicts} reminders={reminders} retakes={retakes} />}
+            </div>
           </section>
 
-          <section aria-labelledby="tool-title" className={`relief flex-col md:sticky md:top-20 md:h-[calc(100dvh-6rem)] ${mobileOnly(mobileView !== 'search')}`}>
+          <section aria-labelledby="tool-title" className={`relief flex-col md:sticky md:top-20 md:h-[calc(100dvh-6rem)] ${mobileOnly(mobileView !== 'timetable')}`}>
             <h2 id="tool-title" className="flex items-center gap-2 px-5 pt-4 text-xl font-bold text-mist-ink">
               {current.icon}{current.label}<span aria-hidden="true" className="h-5 w-0.5 rounded bg-mist-ink/50" />
             </h2>
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              {/* 每個工具都保持掛載、只隱藏沒選的：切換不會丟掉 AI 結果與輸入到一半的文字。 */}
-              <div hidden={tool !== 'timetable'} className="space-y-3">
-                <PlanBar
-                  plans={planner.planner.plans}
-                  activePlanId={planner.planner.activePlanId}
-                  credits={planner.credits}
-                  catalog={planner.catalog}
-                  limits={limits}
-                  {...(!limits && planner.profile.level !== 'graduate' ? { onSetIdentity: openIdentity } : {})}
-                  onSwitch={(planId) => applyChange([{ type: 'switchPlan', planId }], `已切換到「${planner.planner.plans.find(({ id }) => id === planId)?.name ?? '方案'}」`)}
-                  onCreate={() => {
-                    const name = `備案 ${planner.planner.plans.filter(({ auto }) => !auto).length}`;
-                    applyChange([{ type: 'createPlan', name }], `已另存「${name}」`);
-                  }}
+              {/* 每個工具都保持掛載、只隱藏沒選的：切換不會丟掉搜尋條件、AI 結果與輸入到一半的文字。 */}
+              <div hidden={tool !== 'search'} className="flex h-full flex-col">
+              {ready ? (
+                <SearchPanel
+                  courses={courses}
+                  query={query}
+                  onQuery={setQuery}
+                  searchRef={searchRef}
+                  scheduledKeys={scheduledKeys}
+                  candidateKeys={candidateKeys}
+                  onAdd={(course) => courseChange('add', [{ type: 'addToSchedule', key: keyOf(course) }], addLabel(course))}
+                  onRemove={(course) => courseChange('remove', [{ type: 'removeFromSchedule', key: keyOf(course) }], `已移出「${course.title}」`)}
+                  onCandidate={toggleCandidate}
+                  clashesOf={clashesOf}
+                  slot={slot}
+                  {...(planner.profile.level ? { defaultDegree: planner.profile.level } : {})}
+                  {...(passedAs ? { passedAs } : {})}
                 />
-                <Timetable
-                  entries={planner.entries}
-                  conflicts={planner.conflicts}
-                  newKeys={planner.newKeys}
-                  onStartSearch={startSearch}
-                  onFindSlot={(day, period) => {
-                    setSlot((previous) => ({ day, period, nonce: (previous?.nonce ?? 0) + 1 }));
-                    setMobileView('search');
-                  }}
-                  onImport={() => {
-                    showTool('data');
-                    setTimeout(() => document.querySelector<HTMLInputElement>('input[aria-label="匯入資料"]')?.click(), 0);
-                  }}
-                  onToggleLock={(key) => {
-                    const locked = !planner.activePlan.items.find((item) => item.key === key)?.locked;
-                    applyChange([{ type: 'setLock', key, locked }], `已${locked ? '鎖定' : '解鎖'}「${titleOf(key)}」`);
-                  }}
-                  onStatus={(key, status) => applyChange([{ type: 'setStatus', key, status }], `已將「${titleOf(key)}」標為${{ planned: '排入', registered: '已灌檔', enrolled: '已選上' }[status]}`)}
-                  onAttendance={(key, attendance) => applyChange([{ type: 'setAttendance', key, attendance }], `「${titleOf(key)}」改為${attendance === 'async' ? '非同步' : '同步'}上課`)}
-                  onRemove={(key) => courseChange('remove', [{ type: 'removeFromSchedule', key }], `已移出「${titleOf(key)}」`)}
-                  courseOf={(key) => courseByKey.get(key)}
-                  otherSections={otherSections}
-                  onSwap={swapSection}
-                  onSelect={setCardOpenFor}
-                  focus={cardFocus}
-                />
-                {planner.entries.length > 0 && <RulesPanel conflicts={planner.conflicts} reminders={reminders} retakes={retakes} />}
+              ) : (
+                <p className="p-4 text-sm text-base-content/80">{data.status === 'loading' ? '正在載入課程資料…' : '課程資料載入失敗。'}</p>
+              )}
               </div>
               <div hidden={tool !== 'candidates'}>
                 <CandidatesPanel
@@ -423,7 +428,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                     onRestoreImport={planner.restoreBeforeImport}
                     planName={planner.activePlan.name}
                     limits={limits}
-                    onBackToTimetable={() => showTool('timetable')}
+                    onBackToTimetable={() => showTimetable()}
                     onCopyPreview={setCopyPreviewOpen}
                     onWallpaper={() => {
                       void renderWallpaper(wallpaperLayout(planner.entries, data.label)).then((blob) => {
@@ -474,7 +479,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
         onCancel={() => setPendingBackup(null)}
       />
       <UndoToast label={planner.undoLabel} onUndo={undoLast} onExpire={planner.clearUndo} />
-      <MobileNav view={mobileView} tools={tools} onMenu={setMenuOpen} onView={(next) => (next === 'search' ? setMobileView('search') : showTool(next))} />
+      <MobileNav view={mobileView} tools={tools} onMenu={setMenuOpen} onView={(next) => (next === 'timetable' ? showTimetable() : showTool(next))} />
       {aiEnabled && (
         <FloatingOrb
           open={aiOpen}
@@ -496,7 +501,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                     ready={ready}
                     briefing={briefing}
                     onShowTimetable={() => {
-                      showTool('timetable');
+                      showTimetable();
                       // 手機上面板蓋住整個畫面，看課表就先收起來（對話內容保留）。
                       if (typeof matchMedia === 'function' && !matchMedia('(min-width: 768px)').matches) setAiOpen(false);
                     }}

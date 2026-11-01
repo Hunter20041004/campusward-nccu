@@ -86,7 +86,7 @@ test('uses phone wording on a phone and desktop wording on a computer', async ()
   }
   first.unmount();
   render(<Guide open onClose={vi.fn()} phone={false} />);
-  expect(screen.getByText(/左邊「課程搜尋」/)).toBeInTheDocument();
+  expect(screen.getByText(/右邊「課程搜尋」/)).toBeInTheDocument();
 });
 
 test('every slide stays short', () => {

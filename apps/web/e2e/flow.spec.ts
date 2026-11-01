@@ -4,6 +4,12 @@ import { expect, test, type Page } from '@playwright/test';
 // 合成資料：統計學（一234）與會計學（一34）衝堂。
 async function addCourse(page: Page, title: string) {
   const search = page.getByRole('searchbox', { name: '搜課' });
+  // 搜課和其他工具共用右邊面板（手機是「搜課」分頁）：看不到搜尋框就先切回去。
+  if (!(await search.isVisible())) {
+    const rail = page.getByRole('navigation', { name: '工具' });
+    if (await rail.isVisible()) await rail.getByRole('button', { name: '課程搜尋' }).click();
+    else await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '搜課' }).click();
+  }
   await search.fill(title);
   await page.getByRole('button', { name: `加入課表：${title}` }).click();
 }
@@ -72,7 +78,7 @@ test.describe('desktop', () => {
     await page.getByRole('button', { name: '匯出資料' }).click();
     expect((await download).suggestedFilename()).toMatch(/^campusward-\d{4}-\d{2}-\d{2}\.json$/);
 
-    await openTool(page, '模擬課表');
+    // 課表一直在左邊，不用切換。
     await page.getByRole('button', { name: '另存為新備案' }).click();
     await expect(page.getByRole('group', { name: '方案' }).getByRole('button', { name: '備案 1' })).toHaveAttribute('aria-pressed', 'true');
 
@@ -204,7 +210,8 @@ test.describe('graduation gaps', () => {
     await expect(page.getByText(/學校審查資料日期 2026-10-26/).filter({ visible: true })).toBeVisible();
     await expect(page.getByText(/體育欠 1 門/)).toBeVisible();
     await expectNoAxeViolations(page);
-    expect(requests.filter((url) => !url.startsWith('http://localhost:5174/'))).toEqual([]);
+    const origin = new URL(page.url()).origin;
+    expect(requests.filter((url) => !url.startsWith(`${origin}/`))).toEqual([]);
     // 2026-11-01 起匯入一次、各功能共用：存在這台瀏覽器，重新整理後還在；存的內容不含姓名、學號、分數。
     const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }));
     expect(stored).not.toMatch(/王合成|SYNTHETIC-0001|"score"/);
@@ -264,7 +271,6 @@ for (const viewport of ['desktop', 'mobile'] as const) {
 
       await page.getByRole('status', { name: '最近的修改' }).getByRole('button', { name: '復原' }).click();
       if (viewport === 'mobile') await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '課表' }).click();
-      else await openTool(page, '模擬課表');
       await expect(page.getByText('從搜課開始')).toBeVisible();
     });
   });
@@ -320,7 +326,7 @@ test.describe('soft relief on every page', () => {
           : fieldStyle.boxShadow.includes('inset');
         return rounded && shadowed ? [] : [`${element.tagName} ${element.getAttribute('aria-label') ?? element.textContent?.trim().slice(0, 16)} radius=${(isButton ? style : fieldStyle).borderTopLeftRadius}`];
       }));
-    for (const name of ['模擬課表', '候選', '條件', '匯出與資料', '畢業缺口']) {
+    for (const name of ['課程搜尋', '候選', '條件', '匯出與資料', '畢業缺口']) {
       await openTool(page, name);
       expect(await offenders(), name).toEqual([]);
     }
@@ -415,7 +421,6 @@ test.describe('candidates and copy preview', () => {
     await expect(year).toBeFocused();
     await year.selectOption('2');
     if (isMobile) await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '課表' }).click();
-    else await openTool(page, '模擬課表');
     await expect(page.getByText('共 0 學分（12–25）')).toBeVisible();
   });
 });
@@ -450,9 +455,10 @@ test.describe('nothing covers the undo button', () => {
     test.skip(isMobile, 'desktop project only');
     await page.setViewportSize({ width: 900, height: 800 });
     await page.goto('/');
-    await page.getByRole('button', { name: '小山', exact: true }).click();
+    // 小山面板打開時蓋在右邊的搜課上（聊天時看得到左邊課表的變化）；先加課再打開，確認「復原」仍沒被蓋住。
     await page.getByRole('searchbox', { name: '搜課' }).fill('統計');
-    await page.getByRole('button', { name: '加入課表：統計學' }).click({ force: true });
+    await page.getByRole('button', { name: '加入課表：統計學' }).click();
+    await page.getByRole('button', { name: '小山', exact: true }).click();
     expect(await topElementIsUndo(page)).toBe('ok');
   });
 });
@@ -615,7 +621,7 @@ test.describe('usage guide wording and periods', () => {
       await expect(guide).toContainText('底部「搜課」');
       await expect(guide).not.toContainText('左邊');
     } else {
-      await expect(guide).toContainText('左邊「課程搜尋」');
+      await expect(guide).toContainText('右邊「課程搜尋」');
     }
     await guide.getByRole('tab', { name: '圖例' }).click();
     const periods = guide.getByRole('table', { name: '政大節次與時間' });

@@ -17,13 +17,21 @@ describe('app shell', () => {
     expect(screen.getAllByText('非政大官方服務').length).toBeGreaterThan(0);
   });
 
-  test('switches the right panel with the tool rail while search stays on the left', async () => {
+  test('the timetable stays on the left as the main view; the rail switches the right panel between search and tools', async () => {
     const user = userEvent.setup();
     render(<App catalog={fakeCatalog()} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
     const rail = screen.getByRole('navigation', { name: '工具' });
+    const columns = () => [...document.querySelectorAll('main section h2')].map((heading) => heading.textContent);
+    expect(columns()[0]).toMatch(/模擬課表/);
+    expect(within(rail).getByRole('button', { name: '課程搜尋' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('searchbox', { name: '搜課' })).toBeInTheDocument();
     await user.click(within(rail).getByRole('button', { name: '條件' }));
     expect(within(rail).getByRole('button', { name: '條件' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('heading', { level: 2, name: /條件/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /模擬課表/ })).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox', { name: '搜課' })).not.toBeInTheDocument();
+    await user.click(within(rail).getByRole('button', { name: '課程搜尋' }));
     expect(screen.getByRole('searchbox', { name: '搜課' })).toBeInTheDocument();
   });
 
@@ -386,7 +394,6 @@ describe('planner fixes', () => {
     const year = screen.getByRole('combobox', { name: '年級' });
     expect(year).toHaveFocus();
     await user.selectOptions(year, '2');
-    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '模擬課表' }));
     expect(shown(screen.getAllByText(/共/))).toHaveTextContent('共 0 學分（12–25）');
     expect(screen.queryByRole('button', { name: '設定年級後可檢查學分上下限' })).toBeNull();
   });

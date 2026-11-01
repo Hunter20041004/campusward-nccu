@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 5174;
+// 自己開著的開發伺服器常佔用 5174：可用 E2E_PORT 換一個埠跑測試。
+const PORT = Number(process.env.E2E_PORT ?? 5174);
 // 正式建置＋安全標頭（public/_headers）：CSP 與連線網域測試在這裡跑。
 const PREVIEW_PORT = 5175;
 const env = { CAMPUSWARD_DATA_DIR: 'e2e/fixtures/data' };

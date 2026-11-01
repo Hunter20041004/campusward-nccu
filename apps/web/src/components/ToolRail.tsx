@@ -1,16 +1,16 @@
-import { CalendarDays, Download, GraduationCap, Heart, SlidersHorizontal } from 'lucide-react';
+import { Download, GraduationCap, Heart, Search, SlidersHorizontal } from 'lucide-react';
 
-export type Tool = 'timetable' | 'candidates' | 'conditions' | 'data' | 'graduation';
+export type Tool = 'search' | 'candidates' | 'conditions' | 'data' | 'graduation';
 
 export const TOOLS: { id: Tool; label: string; icon: React.ReactNode }[] = [
-  { id: 'timetable', label: '模擬課表', icon: <CalendarDays className="size-5" aria-hidden="true" /> },
+  { id: 'search', label: '課程搜尋', icon: <Search className="size-5" aria-hidden="true" /> },
   { id: 'candidates', label: '候選', icon: <Heart className="size-5" aria-hidden="true" /> },
   { id: 'conditions', label: '條件', icon: <SlidersHorizontal className="size-5" aria-hidden="true" /> },
   { id: 'data', label: '匯出與資料', icon: <Download className="size-5" aria-hidden="true" /> },
   { id: 'graduation', label: '畢業缺口', icon: <GraduationCap className="size-5" aria-hidden="true" /> },
 ];
 
-/** 桌機最右側的圖示列：切換右側面板的內容。 */
+/** 桌機最右側的圖示列：切換右側面板的內容（預設搜課）；模擬課表固定在左邊。 */
 export function ToolRail({ tool, tools, onTool }: { tool: Tool; tools: readonly Tool[]; onTool: (tool: Tool) => void }) {
   return (
     <nav aria-label="工具" className="hidden md:block">

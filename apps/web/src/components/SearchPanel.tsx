@@ -17,7 +17,7 @@ import { DAY_LABELS, DAYPARTS, formatCredits } from './labels.ts';
 const PAGE_SIZES = [25, 50, 100];
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];
 // 桌機表格欄位：課程名稱／教師／課號／類型／時間地點／收藏與加入。課名欄放寬，課名可以換行。
-const COLUMNS = 'lg:grid-cols-[minmax(0,2.4fr)_minmax(4rem,0.8fr)_5.5rem_minmax(0,1fr)_minmax(0,1.5fr)_auto]';
+const COLUMNS = '@4xl:grid-cols-[minmax(0,2.4fr)_minmax(4rem,0.8fr)_5.5rem_minmax(0,1fr)_minmax(0,1.5fr)_auto]';
 // 早八：清晨 A、B 與第 1 節（08:10）。
 const EARLY_PERIODS = ['A', 'B', '1'];
 const ALL_GENERAL_EDUCATION = '*';
@@ -153,8 +153,9 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
   const resetPaging = () => setPage(0);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-center gap-3 py-2 lg:py-6">
+    // 依這個面板自己的寬度（不是整個視窗）決定要不要排成表格：放在右邊較窄的欄位時改成一張張卡片。
+    <div className="@container flex h-full min-h-0 flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-center gap-3 py-2 @4xl:py-6">
         {onQuery && (
           <label className="input flex h-12 min-w-0 flex-1 items-center gap-2 px-4 sm:max-w-md">
             <Search className="size-4 shrink-0 text-mist-ink" aria-hidden="true" />
@@ -273,7 +274,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
         ) : (
           <>
             <p className="sr-only" aria-live="polite">找到 {results.length} 門</p>
-            <div aria-hidden="true" className={`hidden gap-3 border-b border-base-300 px-4 py-2 text-xs font-bold text-base-content/70 lg:grid ${COLUMNS}`}>
+            <div aria-hidden="true" className={`hidden gap-3 border-b border-base-300 px-4 py-2 text-xs font-bold text-base-content/70 @4xl:grid ${COLUMNS}`}>
               <span className="pl-2">課程名稱</span><span>教師</span><span>課程編號</span><span>類型</span><span>時間／地點</span><span className="w-32 text-right">收藏・加入</span>
             </div>
             <ul className="min-h-0 flex-1 divide-y divide-base-300 overflow-y-auto px-2">
@@ -294,7 +295,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
                       data-clash={clashing ? 'true' : undefined}
                       className={`my-2 border-l-4 pl-3 ${clashing ? 'border-dashed border-coral-ink/50' : course.official.requirementKind === '必修' ? 'border-primary' : 'border-secondary'}`}
                     >
-                      <div className={`grid gap-x-3 gap-y-1 lg:items-center ${COLUMNS}`}>
+                      <div className={`grid gap-x-3 gap-y-1 @4xl:items-center ${COLUMNS}`}>
                         <div className="min-w-0">
                           <button
                             type="button"
@@ -329,7 +330,7 @@ export function SearchPanel({ courses, query, onQuery, searchRef, scheduledKeys,
                           })}
                           <span className="block text-xs text-base-content/75">{[course.classroom, formatCredits(course.credits)].filter(Boolean).join(' · ')}</span>
                         </span>
-                        <span className="flex items-center justify-end gap-1.5 lg:w-32">
+                        <span className="flex items-center justify-end gap-1.5 @4xl:w-32">
                           {!scheduled && (
                             <button
                               type="button"
