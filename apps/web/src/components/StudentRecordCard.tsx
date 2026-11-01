@@ -12,12 +12,10 @@ export interface StudentRecordCardProps {
 }
 
 const action = 'btn btn-sm min-h-11 gap-1.5';
-const LEVEL = { undergrad: '學士班', graduate: '碩博士班' } as const;
-const ADDITIONAL = { none: '沒有加修', minor: '輔系', double: '雙主修' } as const;
-const YEAR = ['一', '二', '三', '四', '五', '六', '七'];
 
 /**
  * 全人系統資料（2026-11-01 使用者要求匯入一次、各功能共用）：條件（身分、擋修）、重修提醒、搜課「已修過」、畢業缺口都讀這一份。
+ * 匯入時 App 自動帶入身分（提示列可復原，易用性審查第 6 名），這裡不再要學生按「套用」。
  * 原始檔讀完即丟，只留白名單解析結果；存在這台瀏覽器，不送 AI、不進匯出檔，清除本機資料時一起清掉。
  */
 export function StudentRecordCard({ record, onRecord, courses, profile, onProfile }: StudentRecordCardProps) {
@@ -46,13 +44,6 @@ export function StudentRecordCard({ record, onRecord, courses, profile, onProfil
     return satisfiedPrerequisiteIds(record).filter((id) => offered.has(id) && !accepted.has(id));
   }, [courses, profile.conditionIds, record]);
 
-  const suggested = record?.suggestedProfile;
-  // 只比對匯出檔看得出來的欄位；看不出年級時，不因學生自己填的年級而一直提示。
-  const suggestionDiffers = suggested && (
-    (suggested.level !== undefined && suggested.level !== profile.level)
-    || (suggested.year !== undefined && suggested.year !== profile.year)
-    || (suggested.additionalMajor !== undefined && suggested.additionalMajor !== profile.additionalMajor)
-  );
   const passed = record?.courses.filter(({ result }) => result === 'passed').length ?? 0;
 
   return (
@@ -80,18 +71,6 @@ export function StudentRecordCard({ record, onRecord, courses, profile, onProfil
           {record.audit.checkedAt && ` · 學校審查資料日期 ${record.audit.checkedAt}`}
           {record.skippedCourseRows > 0 && ` · 有 ${record.skippedCourseRows} 筆修課紀錄格式看不懂，已略過`}
         </p>
-      )}
-      {suggested && suggestionDiffers && (
-        <div className="raised rounded-2xl px-3 py-2">
-          <p>
-            匯出檔看起來是：{suggested.level ? LEVEL[suggested.level] : '身分不明'}
-            {suggested.year ? `${YEAR[suggested.year - 1]}年級` : ''}、{ADDITIONAL[suggested.additionalMajor ?? 'none']}。
-            學分上下限依這些條件判斷，請確認正確再套用。
-          </p>
-          <button type="button" className={`${action} mt-2`} onClick={() => { onProfile({ ...profile, ...suggested }); setMessage('已套用身分條件。'); }}>
-            套用到我的條件
-          </button>
-        </div>
       )}
       {prerequisiteIds.length > 0 && (
         <div className="raised rounded-2xl px-3 py-2">

@@ -57,7 +57,8 @@ export interface PlannerApi {
   undo: () => void;
   clearUndo: () => void;
   dismissNotice: () => void;
-  setProfile: (profile: IdentityProfile) => void;
+  /** 有 undoLabel 時是一筆可復原的修改（例：匯入全人系統資料自動帶入身分），復原只改回身分。 */
+  setProfile: (profile: IdentityProfile, undoLabel?: string) => void;
   /** 匯入：先把目前資料存成備份，再取代。 */
   replaceData: (next: StoredData) => void;
   /** 清除本機資料（主資料、備份、匯入前資料、讀不了時另存的資料）。 */
@@ -75,11 +76,13 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
   const [notice, setNotice] = useState<string | null>(
     initial.current.error ? '這台裝置上的課表資料讀取失敗，已改用備份或從空白開始。' : null,
   );
-  const [undoEntry, setUndoEntry] = useState<{ label: string; planner: PlannerState } | null>(null);
+  const [undoEntry, setUndoEntry] = useState<{ label: string; planner: PlannerState; profile?: IdentityProfile } | null>(null);
   const [newKeys, setNewKeys] = useState<ReadonlySet<string>>(new Set());
   const [canRestoreImport, setCanRestoreImport] = useState(() => readPreImportCopy(storage) !== null);
 
-  const workspace = data.terms[term] ?? emptyWorkspace();
+  // 這學期還沒存過資料時用同一個空白工作區：每次重畫都換新物件，會讓課程目錄與課表跟著重算（幫我排滿的「換一門」會被洗掉）。
+  const blank = useMemo(() => emptyWorkspace(), [term]);
+  const workspace = data.terms[term] ?? blank;
   const catalog = useMemo(() => {
     const map = new Map<string, ScheduleCourse>();
     courses.forEach((course) => { const scheduled = toScheduleCourse(course); map.set(scheduled.key, scheduled); });
@@ -137,10 +140,11 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
 
   const undo = useCallback(() => {
     if (!undoEntry) return;
-    savePlanner(undoEntry.planner);
+    if (undoEntry.profile) save({ ...latest.current.data, profile: undoEntry.profile });
+    else savePlanner(undoEntry.planner);
     setUndoEntry(null);
     setNewKeys(new Set());
-  }, [savePlanner, undoEntry]);
+  }, [save, savePlanner, undoEntry]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -178,8 +182,14 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
     undo,
     clearUndo,
     dismissNotice,
-    setProfile: (profile) => {
-      if (term) save({ ...data, profile });
+    setProfile: (profile, undoLabel) => {
+      if (!term) return;
+      const previous = latest.current.data.profile;
+      if (!save({ ...latest.current.data, profile })) return;
+      if (undoLabel) {
+        setUndoEntry({ label: undoLabel, planner: latest.current.planner, profile: previous });
+        setNewKeys(new Set());
+      }
     },
     replaceData: (next) => {
       try {

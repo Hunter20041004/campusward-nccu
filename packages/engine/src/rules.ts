@@ -51,7 +51,13 @@ export interface RuleOptions {
   phase?: 'stage1' | 'stage2' | 'add-drop';
 }
 
-type Category = 'pe' | 'chinese' | 'foreign' | 'college' | 'general' | 'professional';
+export type CourseCategory = 'pe' | 'chinese' | 'foreign' | 'college' | 'general' | 'professional';
+type Category = CourseCategory;
+
+/** 初選分發的科目類別（體育、中文／外文／書院／一般通識、專業科目），依課號字首與官方通識類別。 */
+export function courseCategory(course: ScheduleCourse, rules: EnrollmentRules): CourseCategory {
+  return categorize(course, rules);
+}
 
 function categorize(course: ScheduleCourse, rules: EnrollmentRules): Category {
   const code = course.code ?? '';
@@ -64,7 +70,8 @@ function categorize(course: ScheduleCourse, rules: EnrollmentRules): Category {
   if (generalEducation === '中文通識') return 'chinese';
   if (generalEducation === '外文通識') return 'foreign';
   if (generalEducation.includes('書院')) return 'college';
-  if (generalEducation.includes('通識')) return 'general';
+  // 其餘官方通識類別都是一般通識，包括沒有「通識」兩個字的「跨領域(人文、社會)」。
+  if (generalEducation) return 'general';
   return 'professional';
 }
 

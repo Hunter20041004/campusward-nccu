@@ -1,7 +1,7 @@
 import { exportTransfer, previewImport, type ImportPreview, type ScheduleEntry, type StoredData } from '@campusward/engine';
 import { ClipboardCopy, Download, FileUp, History, Image, ShieldCheck, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { CopyListPreview } from './CopyListPreview.tsx';
+import { CopyListPreview, type CopyPlan } from './CopyListPreview.tsx';
 
 export interface DataPanelProps {
   entries: readonly ScheduleEntry[];
@@ -13,8 +13,14 @@ export interface DataPanelProps {
   onWallpaper: () => void;
   canRestoreImport: boolean;
   onRestoreImport: () => void;
-  /** 目前方案的名稱（複製預覽寫出是哪個方案）。 */
+  /** 目前方案的名稱（沒給 plans 時，複製預覽只有這一份）。 */
   planName: string;
+  /** 可以複製的方案（自己的方案，不含自動備案）；預覽最上面可以切換。 */
+  plans?: readonly CopyPlan[];
+  /** 預覽預設的方案（主方案）。 */
+  mainPlanId?: string;
+  /** 學生的系級：本班必修灌檔的課預設不勾。 */
+  className?: string;
   /** 依身分的學分上下限；沒設定年級時是 null。 */
   limits: { minimum: number; maximum: number } | null;
   /** 預覽裡按「回課表處理」。 */
@@ -39,7 +45,8 @@ function download(name: string, text: string) {
 
 const action = 'btn btn-sm min-h-11 gap-1.5';
 
-export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper, canRestoreImport, onRestoreImport, planName, limits, onBackToTimetable, onCopyPreview, visible = true, now = () => new Date() }: DataPanelProps) {
+export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper, canRestoreImport, onRestoreImport, planName, plans, mainPlanId, className, limits, onBackToTimetable, onCopyPreview, visible = true, now = () => new Date() }: DataPanelProps) {
+  const copyPlans: readonly CopyPlan[] = plans?.length ? plans : [{ id: 'active', name: planName, entries }];
   const [message, setMessage] = useState('');
   const [preview, setPreview] = useState<Extract<ImportPreview, { valid: true }> | null>(null);
   const [importError, setImportError] = useState('');
@@ -65,17 +72,17 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
       setCopyOpen(false);
       return;
     }
-    if (!entries.some(({ course }) => course.code)) {
+    if (!copyPlans.some((plan) => plan.entries.some(({ course }) => course.code))) {
       setMessage('課表上沒有要登記的課。');
       return;
     }
     setCopyOpen(true);
   };
-  const copyCodes = async (codes: string[]) => {
+  const copyCodes = async (codes: string[], copiedPlan: string) => {
     closeCopy();
     try {
       await navigator.clipboard.writeText(codes.join('\n'));
-      setMessage(`已複製 ${codes.length} 個課號（${planName}），依課表順序排列，可到選課系統批量登記。`);
+      setMessage(`已複製 ${codes.length} 個課號（${copiedPlan}），依課表順序排列，可到選課系統批量登記。`);
     } catch {
       setMessage(`無法自動複製，請手動複製：${codes.join(' ')}`);
     }
@@ -129,10 +136,11 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
 
       {copyOpen && (
         <CopyListPreview
-        planName={planName}
-        entries={entries}
+        plans={copyPlans}
+        defaultPlanId={mainPlanId ?? copyPlans[0]!.id}
+        {...(className ? { className } : {})}
         limits={limits}
-        onCopy={(codes) => { void copyCodes(codes); }}
+        onCopy={(codes, copiedPlan) => { void copyCodes(codes, copiedPlan); }}
         onBack={() => { setCopyOpen(false); onBackToTimetable(); }}
         onClose={closeCopy}
         />

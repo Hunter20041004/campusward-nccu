@@ -412,6 +412,40 @@ test.describe('candidates and copy preview', () => {
     await expect(page.getByRole('status', { name: '資料操作結果' })).toContainText('已複製 1 個課號（主方案）');
   });
 
+  // 易用性審查第 5、7 名：幫我排滿排出 2–3 份方案並排比較，挑一份、其餘另存備案；複製課號預設主方案，最上面可以切換。
+  test('幫我排滿 lays out plans side by side, and the copy preview names and switches the plan', async ({ page, isMobile }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    await showSearch(page, isMobile);
+    await page.getByRole('searchbox', { name: '搜課' }).fill('統計學');
+    await page.getByRole('button', { name: '加入候選：統計學' }).click();
+    await page.getByRole('searchbox', { name: '搜課' }).fill('民法概要');
+    await page.getByRole('button', { name: '加入候選：民法概要' }).first().click();
+    if (isMobile) await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '課表' }).click();
+    await page.getByRole('radiogroup', { name: '年級' }).getByRole('radio', { name: '大二' }).click();
+    await page.getByRole('button', { name: '幫我排滿' }).click();
+    await page.getByRole('radio', { name: '12' }).click();
+    const plans = page.getByRole('list', { name: '排好的方案' });
+    await expect(plans.locator(':scope > li')).toHaveCount(2);
+    await expect(plans.locator(':scope > li').first()).toContainText('統計學');
+    await expectNoAxeViolations(page);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (isMobile) expect(await smallTargets(page)).toEqual([]);
+    await plans.getByRole('button', { name: /^用這份：方案 A/ }).click();
+    await expect(page.getByRole('status', { name: '最近的修改' })).toContainText('另存 1 份備案');
+    await expect(page.getByRole('group', { name: '方案' })).toContainText('排滿・換一批通識');
+
+    await page.getByRole('group', { name: '方案' }).getByRole('button', { name: '排滿・換一批通識' }).click();
+    await openView(page, isMobile, '匯出與資料');
+    await page.getByRole('button', { name: '複製課號清單' }).click();
+    const preview = page.getByRole('region', { name: '複製課號清單：主方案' });
+    await expect(preview.getByRole('radio', { name: /^主方案・\d 門$/ })).toBeChecked();
+    await expectNoAxeViolations(page);
+    if (isMobile) expect(await smallTargets(page)).toEqual([]);
+    await preview.getByText(/^排滿・換一批通識・/).click();
+    await expect(page.getByRole('region', { name: '複製課號清單：排滿・換一批通識' })).toBeVisible();
+  });
+
   // 易用性審查第 1 名：年級改在課表上方的系級列，按一下年級按鈕就有學分範圍。
   test('asks for the year next to the credits and goes to the class bar above the timetable', async ({ page, isMobile }) => {
     await page.goto('/');

@@ -97,6 +97,16 @@ function groupCourses(courses: readonly Course[]): CourseGroup[] {
 }
 
 /**
+ * 開課班級和學生系級的關係：class＝寫了這個系級（有分班時班別也要對上；任一邊沒分班都算）；
+ * department＝只寫系、看不出年級；其他（別系、別的年級）回傳 null。
+ */
+export function classUnitMatch(targetGroup: string, className: ClassName): 'class' | 'department' | null {
+  const units = parseClassUnits(targetGroup).filter(({ department }) => department === className.department);
+  if (units.some(({ grade, section }) => grade === className.grade && (!section || !className.section || section === className.section))) return 'class';
+  return units.some(({ grade }) => !grade) ? 'department' : null;
+}
+
+/**
  * 某系級本學期的必修（官方修別「必修」）。
  * required：開課班級寫了這個系級（有分班時班別也要對上；開課班級沒分班的都算）。
  * maybe：開課班級只寫系、不分年級（例「經濟系」）；不會自動排入，讓學生一門一門決定。
@@ -107,9 +117,9 @@ export function classRequiredCourses(courses: readonly Course[], className: Clas
   courses.forEach((course) => {
     if (course.official.requirementKind !== '必修') return;
     if (course.official.degreeLevel && !course.official.degreeLevel.includes('學士')) return;
-    const units = parseClassUnits(course.official.targetGroup).filter(({ department }) => department === className.department);
-    if (units.some(({ grade, section }) => grade === className.grade && (!section || !className.section || section === className.section))) required.push(course);
-    else if (units.some(({ grade }) => !grade)) maybe.push(course);
+    const match = classUnitMatch(course.official.targetGroup, className);
+    if (match === 'class') required.push(course);
+    else if (match === 'department') maybe.push(course);
   });
   const requiredGroups = groupCourses(required);
   const taken = new Set(requiredGroups.map(({ id }) => id));

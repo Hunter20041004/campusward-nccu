@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { rowToCourse, toScheduleCourse, type Course, type StudentRecord } from '@campusward/engine';
+import { addCourse, parseEnrollmentRules, rowToCourse, toScheduleCourse, type Course, type FillContext, type ScheduleEntry, type StudentRecord } from '@campusward/engine';
+import enrollmentRules from '../../../../data/rules/enrollment-11407.json' with { type: 'json' };
+import { within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { officialRow } from '../../../../packages/engine/test/fixtures/synthetic/official-rows.ts';
@@ -68,13 +70,13 @@ describe('GraduationPanel', () => {
     expect(await screen.findByText('已在候選')).toBeInTheDocument();
   });
 
-  test('applies the suggested identity only when the student confirms', async () => {
+  // 易用性審查第 6 名（使用者核可）：身分改由 App 在匯入時自動帶入、提示列可復原，這裡不再要學生按「套用」。
+  test('no longer asks the student to confirm the identity from the export', async () => {
     const props = setup();
-    const user = await upload();
-    expect(await screen.findByText(/學士班四年級、沒有加修/)).toBeInTheDocument();
+    await upload();
+    await screen.findByText(/學校審查資料日期/);
+    expect(screen.queryByRole('button', { name: '套用到我的條件' })).toBeNull();
     expect(props.onProfile).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: '套用到我的條件' }));
-    expect(props.onProfile).toHaveBeenCalledWith({ level: 'undergrad', year: 4, additionalMajor: 'none' });
   });
 
   test('never shows names, student numbers or scores from the export', async () => {
@@ -104,5 +106,63 @@ describe('GraduationPanel', () => {
     await user.type(screen.getByLabelText('要補的課名'), '合成必修甲');
     await user.click(screen.getByRole('button', { name: '找本學期開課' }));
     expect(screen.getByRole('button', { name: '把 合成必修甲（900777001）放進候選' })).toBeInTheDocument();
+  });
+});
+
+// 易用性審查第 6 名（2026-11-01，使用者核可）：每一列缺口都能直接排一門進課表，或一次全部補上；全部在本機挑。
+describe('putting a course into the timetable for each gap', () => {
+  const pe = courseOf({ subNum: '002008001', subNam: '體育－羽球初級', subGde: '體育', subPoint: '1.0', subTime: '三78' });
+  const generalCourse = courseOf({ subNum: '041001001', subNam: '哲學與人生', subGde: '通識', subKind: '', lmtKind: '人文通識', subTime: '一234' });
+  const clashing = courseOf({ subNum: '041002001', subNam: '藝術欣賞', subGde: '通識', subKind: '', lmtKind: '人文通識', subTime: '一234' });
+  const all = [missingOffering, other, pe, generalCourse, clashing];
+  // 合成匯出檔沒有通識缺口：補一個「一般通識欠 3 學分」。
+  const generalText = exportText.replace('"liberalGeneral":""', '"liberalGeneral":"[一般通識欠3學分]"');
+  const entryOf = (course: Course): ScheduleEntry => {
+    const scheduled = toScheduleCourse(course);
+    return { course: scheduled, item: addCourse([], scheduled)[0]! };
+  };
+  const fill = (entries: ScheduleEntry[] = []): FillContext => ({
+    entries,
+    catalog: all.map(toScheduleCourse),
+    profile: { level: 'undergrad', year: 4 },
+    preferences: { freeDays: [], noEarly: false },
+    rules: parseEnrollmentRules(enrollmentRules),
+    maximumCredits: 25,
+  });
+
+  test('each row — required, PE, general education — gets 排一門進去', async () => {
+    const onAddGapCourses = vi.fn();
+    setup({ courses: all, fill: fill(), onAddGapCourses });
+    const user = await upload(generalText);
+    await user.click(await screen.findByRole('button', { name: /^排一門進去（.*）：體育缺口$/ }));
+    expect(onAddGapCourses).toHaveBeenLastCalledWith([toScheduleCourse(pe).key], '已補缺口：排入「體育－羽球初級」');
+    await user.click(screen.getByRole('button', { name: /^排一門進去（.*）：一般通識缺口$/ }));
+    expect(onAddGapCourses).toHaveBeenLastCalledWith([toScheduleCourse(generalCourse).key], '已補缺口：排入「哲學與人生」');
+    await user.click(screen.getByRole('button', { name: /^排一門進去（.*）：合成必修甲缺口$/ }));
+    expect(onAddGapCourses).toHaveBeenLastCalledWith([toScheduleCourse(missingOffering).key], '已補缺口：排入「合成必修甲」');
+  });
+
+  test('「全部補上」 fills every gap it can in one change, without picking two clashing courses', async () => {
+    const onAddGapCourses = vi.fn();
+    setup({ courses: all, fill: fill(), onAddGapCourses });
+    const user = await upload(generalText);
+    await user.click(await screen.findByRole('button', { name: /全部補上/ }));
+    expect(onAddGapCourses).toHaveBeenCalledTimes(1);
+    const [keys, label] = onAddGapCourses.mock.calls[0]!;
+    expect(new Set(keys)).toEqual(new Set([missingOffering, pe, generalCourse].map((course) => toScheduleCourse(course).key)));
+    expect(label).toBe('已補缺口：排入 3 門');
+  });
+
+  test('a gap already covered by the timetable is marked 補缺口; one that cannot fit says why', async () => {
+    const entries = [entryOf(generalCourse), entryOf(courseOf({ subNum: '900999001', subNam: '佔住週三晚上', subTime: '三78' }))];
+    setup({ courses: all, fill: fill(entries), onAddGapCourses: vi.fn() });
+    await upload(generalText);
+    const general = (await screen.findByText(/一般通識欠 3 學分/)).closest('li')!;
+    expect(general).toHaveTextContent('已排入「哲學與人生」');
+    expect(within(general).getByText('補缺口')).toBeInTheDocument();
+    const physical = screen.getByText(/體育欠 1 門/).closest('li')!;
+    expect(physical).toHaveTextContent('每一門都衝堂');
+    expect(physical).toHaveTextContent('體育－羽球初級');
+    expect(within(physical).queryByRole('button', { name: /排一門進去/ })).toBeNull();
   });
 });

@@ -620,3 +620,99 @@ describe('class and preferences set once', () => {
     expect(titles()).toEqual(['週五通識', '週二通識']);
   });
 });
+
+// 易用性審查第 5–7 名（2026-11-01，使用者核可）：幫我排滿、畢業缺口直接排、複製課號看得到是哪個方案。
+describe('automation: fill the timetable, fill the gaps, copy the right plan', () => {
+  const rows = [
+    officialRow({ subNum: '703007001', subNam: '離散數學', subGde: '資訊二', subTime: '二234', tranTpe: '必修灌檔' }),
+    officialRow({ subNum: '703008001', subNam: '資料結構', subGde: '資訊二', subTime: '四234', tranTpe: '必修灌檔' }),
+    officialRow({ subNum: '703017001', subNam: '機率論', subGde: '資訊二', subTime: '三D56' }),
+    officialRow({ subNum: '703813001', subNam: '人工智慧導論', subGde: '資訊二', subKind: '選修', subTime: '一D56' }),
+    officialRow({ subNum: '900501001', subNam: '週五通識', subGde: '教務處通識教育中心', subKind: '', subTime: '五34', lmtKind: '人文通識' }),
+    officialRow({ subNum: '900502001', subNam: '週二通識', subGde: '教務處通識教育中心', subKind: '', subTime: '二D5', lmtKind: '人文通識' }),
+    officialRow({ subNum: '002008001', subNam: '體育－羽球初級', subGde: '體育', subPoint: '1.0', subTime: '三78' }),
+  ];
+  const planNames = () => within(screen.getByRole('group', { name: '方案' })).getAllByRole('button').map((button) => button.textContent);
+
+  test('幫我排滿: one click, one target, one plan; the other plans become backups, all in one undoable change', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('combobox', { name: '系級' }), '資訊二');
+    await user.click(screen.getByRole('button', { name: '幫我排滿' }));
+    await user.click(screen.getByRole('radio', { name: '15' }));
+    const plans = [...screen.getByRole('list', { name: '排好的方案' }).children] as HTMLElement[];
+    expect(plans).toHaveLength(2);
+    await user.click(within(plans[0]!).getByRole('button', { name: /^用這份：方案 A/ }));
+    const toast = screen.getByRole('status', { name: '最近的修改' });
+    expect(toast).toHaveTextContent('已排到 15 學分（加 5 門），另存 1 份備案');
+    expect(shown(screen.getAllByText(/共/))).toHaveTextContent('共 15 學分（12–25）');
+    // 原本是空的課表：不另存空的自動備案，另一份方案存成備案。
+    expect(planNames()).toEqual(['主方案', '排滿・換一批通識', '備案']);
+    await user.click(within(toast).getByRole('button', { name: '復原' }));
+    expect(shown(screen.getAllByText(/共/))).toHaveTextContent('共 0 學分');
+    expect(planNames()).toEqual(['主方案', '備案']);
+  });
+
+  test('a swapped course in a plan stays swapped when the rest of the page re-renders', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('combobox', { name: '系級' }), '資訊二');
+    await user.click(screen.getByRole('button', { name: '幫我排滿' }));
+    await user.click(screen.getByRole('radio', { name: '15' }));
+    await user.click(screen.getByRole('button', { name: '換一門：週二通識' }));
+    expect(screen.getByRole('list', { name: '方案 A・照優先順序的課' })).toHaveTextContent('週五通識');
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '候選' }));
+    expect(screen.getByRole('list', { name: '方案 A・照優先順序的課' })).toHaveTextContent('週五通識');
+  });
+
+  test('importing a student record sets the identity right away with undo; each gap can go straight into the timetable', async () => {
+    const user = userEvent.setup();
+    const exportJson = (await import('../../../packages/engine/test/fixtures/synthetic/student-export.json')).default;
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '畢業缺口' }));
+    await user.upload(shown(screen.getAllByLabelText('上傳全人系統匯出檔')), new File([JSON.stringify(exportJson)], 'e.json', { type: 'application/json' }));
+    const toast = await screen.findByRole('status', { name: '最近的修改' });
+    expect(toast).toHaveTextContent('已依全人系統資料設定身分：合成四乙・學士班四年級・沒有加修');
+    expect(shown(screen.getAllByText(/共/))).toHaveTextContent('共 0 學分（10–25）');
+    expect(screen.queryByRole('button', { name: '套用到我的條件' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /^排一門進去（.*）：體育缺口$/ }));
+    expect(screen.getByRole('status', { name: '最近的修改' })).toHaveTextContent('已補缺口：排入「體育－羽球初級」');
+    expect(shown(screen.getAllByText(/共/))).toHaveTextContent('共 1 學分');
+    const physical = shown(screen.getAllByText(/體育欠 1 門/)).closest('li')!;
+    expect(physical).toHaveTextContent('已排入「體育－羽球初級」');
+  });
+
+  test('the identity from an import can be undone from the toast', async () => {
+    const user = userEvent.setup();
+    const exportJson = (await import('../../../packages/engine/test/fixtures/synthetic/student-export.json')).default;
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '畢業缺口' }));
+    await user.upload(shown(screen.getAllByLabelText('上傳全人系統匯出檔')), new File([JSON.stringify(exportJson)], 'e.json', { type: 'application/json' }));
+    await user.click(within(await screen.findByRole('status', { name: '最近的修改' })).getByRole('button', { name: '復原' }));
+    expect(screen.getByRole('button', { name: '設定年級後可檢查學分上下限' })).toBeInTheDocument();
+    // 復原以後，系級列仍然可以一鍵用匯出檔的系級。
+    expect(screen.getByRole('button', { name: '用這個系級' })).toBeInTheDocument();
+  });
+
+  test('the copy preview defaults to the main plan even after switching to a backup, and leaves the class 灌檔 courses unticked', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('combobox', { name: '系級' }), '資訊二');
+    await user.click(within(screen.getByRole('region', { name: '資訊二 本學期必修' })).getByRole('button', { name: '全部排入' }));
+    await user.click(screen.getByRole('button', { name: '另存為新備案' }));
+    expect(within(screen.getByRole('group', { name: '方案' })).getByRole('button', { name: '備案 1' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '匯出與資料' }));
+    await user.click(screen.getByRole('button', { name: '複製課號清單' }));
+    const dialog = screen.getByRole('region', { name: '複製課號清單：主方案' });
+    expect(within(dialog).getByRole('radio', { name: '主方案・3 門' })).toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: /^703007001/ })).not.toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: /^703008001/ })).not.toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: /^703017001/ })).toBeChecked();
+    expect(within(dialog).getByRole('button', { name: /複製 1 個課號|仍要複製/ })).toBeInTheDocument();
+  });
+});

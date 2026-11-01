@@ -38,6 +38,20 @@ describe('usePlanner', () => {
     expect(result.current.credits).toBe(6);
   });
 
+  test('a profile change with a label can be undone (identity from an imported record)', () => {
+    const { result } = setup();
+    act(() => { result.current.setProfile({ level: 'undergrad', year: 1 }); });
+    expect(result.current.undoLabel).toBeNull();
+    act(() => { result.current.apply([{ type: 'addToSchedule', key: '1151:900001001' }], '加入'); });
+    act(() => { result.current.setProfile({ level: 'undergrad', year: 2, className: '資訊二' }, '已依全人系統資料設定為資訊二'); });
+    expect(result.current.undoLabel).toBe('已依全人系統資料設定為資訊二');
+    act(() => { result.current.undo(); });
+    expect(result.current.profile).toEqual({ level: 'undergrad', year: 1 });
+    // 只復原身分，課表不動。
+    expect(result.current.entries.map(({ course: c }) => c.code)).toEqual(['900001001']);
+    expect(result.current.undoLabel).toBeNull();
+  });
+
   test('undoes the last change', () => {
     const { result } = setup();
     act(() => { result.current.apply([{ type: 'addToSchedule', key: '1151:900001001' }], '已加入 合成課程概論'); });

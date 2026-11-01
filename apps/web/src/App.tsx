@@ -21,6 +21,9 @@ import {
   type ApplyOptions,
   type Change,
   type Course,
+  type FillContext,
+  type FillPlan,
+  type IdentityProfile,
   type ScheduleCourse,
   type StorageLike,
   type StudentRecord,
@@ -48,6 +51,7 @@ import { loadOrbPosition, ORB_POSITION_KEY, saveOrbPosition, type OrbPosition } 
 import { buildBriefing } from './ai/briefing.ts';
 import { Timetable } from './components/Timetable.tsx';
 import { ClassBar } from './components/ClassBar.tsx';
+import { FillPlanner } from './components/FillPlanner.tsx';
 import type { ClashFix } from './components/ClashFix.ts';
 import { UndoToast } from './components/UndoToast.tsx';
 import { gemini } from './ai/session.ts';
@@ -68,6 +72,13 @@ const NUDGE_KEY = 'campusward:v1:nudge-dismissed';
 const mobileOnly = (visible: boolean) => (visible ? 'flex' : 'hidden md:flex');
 
 const NO_COURSES: readonly Course[] = [];
+
+/** 畢業缺口缺的通識類別（補通識時排前面）。 */
+function gapCategoriesFor(record: StudentRecord | null, catalog: readonly ScheduleCourse[]): string[] {
+  if (!record) return [];
+  const categories = [...new Set(catalog.map(({ official }) => official?.generalEducation ?? '').filter(Boolean))];
+  return gapGeneralEducation(record.audit.gaps, categories);
+}
 const RULES = parseEnrollmentRules(enrollmentRules);
 
 export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide = true, buddyHub: givenHub }: { catalog?: CatalogSource; storage?: StorageLike; ai?: GeminiClient; guide?: boolean; buddyHub?: BuddyHub }) {
@@ -110,6 +121,22 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
       setRecordNotice('修課資料沒有存進這台裝置（可能是無痕模式或空間不足），重新整理後要重新匯入。');
     }
     setRecordState(next);
+  };
+  // 匯入全人系統資料：身分（系級、學制、年級、加修學系）直接帶入，提示列可以復原（易用性審查第 6 名，取代「套用到我的條件」）。
+  const importRecord = (next: StudentRecord | null) => {
+    setRecord(next);
+    if (!next) return;
+    const suggested = next.suggestedProfile;
+    const parsedClass = parseClassName(next.enrollment.className);
+    const profile: IdentityProfile = { ...planner.profile, ...suggested, ...(parsedClass ? { className: formatClassName(parsedClass) } : {}) };
+    const same = (['className', 'level', 'year', 'additionalMajor'] as const).every((field) => profile[field] === planner.profile[field]);
+    if (same) return;
+    const parts = [
+      profile.className,
+      profile.level ? `${{ undergrad: '學士班', graduate: '碩博士班' }[profile.level]}${profile.year ? `${'一二三四五六七'[profile.year - 1]}年級` : ''}` : '',
+      profile.additionalMajor ? { none: '沒有加修', minor: '輔系', double: '雙主修' }[profile.additionalMajor] : '',
+    ].filter(Boolean);
+    planner.setProfile(profile, `已依全人系統資料設定身分：${parts.join('・')}`);
   };
   // 另一個分頁清除或重新匯入修課資料時跟著更新（共用電腦上清除後，其他分頁也不能還顯示）。
   useEffect(() => {
@@ -260,6 +287,33 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const limits = creditLimits(planner.profile, RULES);
   const maximumCredits = limits?.maximum;
 
+  // 幫我排滿與畢業缺口「排一門進去」共用的本機規則：目前方案當固定點，偏好、學分上限、初選科目數上限、已修過都照算。
+  const catalogList = useMemo(() => [...planner.catalog.values()], [planner.catalog]);
+  const fillContext = useMemo<FillContext>(() => ({
+    entries: planner.entries,
+    catalog: catalogList,
+    profile: planner.profile,
+    preferences: planner.planner.preferences,
+    rules: RULES,
+    ...(maximumCredits !== undefined ? { maximumCredits } : {}),
+    ...(record ? { passed: (course: ScheduleCourse) => passedCourseTitle(record, course) !== null } : {}),
+    ...(gapCategoriesFor(record, catalogList).length ? { priorityCategories: gapCategoriesFor(record, catalogList) } : {}),
+  }), [catalogList, maximumCredits, planner.entries, planner.planner.preferences, planner.profile, record]);
+  // 挑一份當目前方案，其餘各自另存成備案；整批是一筆可復原的修改。原本有課才另存自動備案（全空的課表沒有東西要備份）。
+  const applyFill = (chosen: FillPlan, others: FillPlan[]) => {
+    const home = planner.planner.activePlanId;
+    const changes: Change[] = [
+      ...others.flatMap((plan): Change[] => [
+        { type: 'createPlan', name: `排滿・${plan.label}` },
+        ...plan.picks.map(({ key }): Change => ({ type: 'addToSchedule', key })),
+        { type: 'switchPlan', planId: home },
+      ]),
+      ...chosen.picks.map(({ key }): Change => ({ type: 'addToSchedule', key })),
+    ];
+    const label = `已排到 ${chosen.credits} 學分（加 ${chosen.picks.length} 門）${others.length ? `，另存 ${others.length} 份備案` : ''}`;
+    courseChange('add', changes, label, { autoBackup: planner.entries.length > 0 });
+  };
+
   const tools: Tool[] = ['search', 'candidates', 'conditions', 'data', ...(FEATURES.graduation ? ['graduation' as const] : [])];
   const aiEnabled = FEATURES.orb || FEATURES.qa || FEATURES.demo;
   const [aiOpen, setAiOpen] = useState(false);
@@ -331,12 +385,21 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     }, 0);
   };
   // 系級（易用性審查第 1 名）：本班必修、空堂找課的「本系」、學分上下限都依它；全人系統匯出檔讀到的系級按一次確認就帶入。
-  const identityClass = planner.profile.className ? parseClassName(planner.profile.className) : null;
+  // 同一個系級保持同一個物件：幫我排滿依它重算，換一門的結果才不會在每次重畫時被洗掉。
+  const identityClass = useMemo(() => (planner.profile.className ? parseClassName(planner.profile.className) : null), [planner.profile.className]);
   const recordClass = record ? parseClassName(record.enrollment.className) : null;
   const suggestedClass = record && recordClass ? { className: formatClassName(recordClass), profile: record.suggestedProfile } : null;
   const categories = useMemo(() => [...new Set(courses.map(({ official }) => official.generalEducation).filter(Boolean))], [courses]);
   const gapCategories = useMemo(() => (record ? gapGeneralEducation(record.audit.gaps, categories) : []), [categories, record]);
   const current = TOOLS.find(({ id }) => id === tool)!;
+  // 複製課號：自己的方案（自動備案不列，除非正在看它），預設主方案（易用性審查第 7 名：另存備案後不會不小心複製到備案）。
+  const copyPlans = planner.planner.plans
+    .filter(({ auto, id }) => !auto || id === planner.planner.activePlanId)
+    .map((plan) => ({ id: plan.id, name: plan.name, entries: plan.items.flatMap((item) => {
+      const course = planner.catalog.get(item.key);
+      return course ? [{ course, item }] : [];
+    }) }));
+  const mainPlanId = planner.planner.plans.find(({ auto }) => !auto)?.id;
 
   return (
     <BuddyProvider hub={buddyHub}>
@@ -396,6 +459,17 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   applyChange([{ type: 'createPlan', name }], `已另存「${name}」`);
                 }}
               />
+              {ready && (
+                <FillPlanner
+                  context={fillContext}
+                  className={identityClass}
+                  candidateKeys={planner.planner.candidates}
+                  credits={planner.credits}
+                  limits={limits}
+                  catalog={planner.catalog}
+                  onApply={applyFill}
+                />
+              )}
               <Timetable
                 entries={planner.entries}
                 conflicts={planner.conflicts}
@@ -492,7 +566,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   onProfile={planner.setProfile}
                   onPreferences={(change) => applyChange([{ type: 'setPreference', ...change }], '已更新偏好')}
                   record={record}
-                  onRecord={setRecord}
+                  onRecord={importRecord}
                   allCourses={courses}
                 />
               </div>
@@ -518,6 +592,9 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                     canRestoreImport={planner.canRestoreImport}
                     onRestoreImport={planner.restoreBeforeImport}
                     planName={planner.activePlan.name}
+                    plans={copyPlans}
+                    {...(mainPlanId ? { mainPlanId } : {})}
+                    {...(planner.profile.className ? { className: planner.profile.className } : {})}
                     limits={limits}
                     onBackToTimetable={() => showTimetable()}
                     onCopyPreview={setCopyPreviewOpen}
@@ -541,13 +618,16 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                       key={`graduation-${generation}`}
                       courses={courses}
                       record={record}
-                      onRecord={setRecord}
+                      onRecord={importRecord}
                       candidateKeys={candidateKeys}
                       scheduledKeys={scheduledKeys}
                       profile={planner.profile}
                       credits={planner.credits}
                       onCandidate={(course) => courseChange('candidate', [{ type: 'addCandidate', key: keyOf(course) }], `已放進候選「${course.title}」`)}
                       onProfile={planner.setProfile}
+                      fill={fillContext}
+                      {...(identityClass ? { department: identityClass.department } : {})}
+                      onAddGapCourses={(keys, label) => courseChange('add', keys.map((key): Change => ({ type: 'addToSchedule', key })), label, { autoBackup: false })}
                     />
                   )}
                 </div>

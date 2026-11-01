@@ -1,5 +1,19 @@
-import { matchMissingRequired, toScheduleCourse, type Course, type GapItem, type IdentityProfile, type StudentRecord } from '@campusward/engine';
-import { Plus } from 'lucide-react';
+import {
+  addCourse,
+  gapGeneralEducation,
+  matchMissingRequired,
+  pickGapCourse,
+  toScheduleCourse,
+  type AuditGap,
+  type Course,
+  type FillContext,
+  type GapItem,
+  type GapPick,
+  type GapTarget,
+  type IdentityProfile,
+  type StudentRecord,
+} from '@campusward/engine';
+import { CalendarPlus, ListChecks, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { StudentRecordCard } from './StudentRecordCard.tsx';
 
@@ -13,6 +27,12 @@ export interface GraduationPanelProps {
   credits: number;
   onCandidate: (course: Course) => void;
   onProfile: (profile: IdentityProfile) => void;
+  /** 「排一門進去」的本機規則（目前方案、偏好、學分上限…）；沒給就只能放進候選。 */
+  fill?: FillContext;
+  /** 學生系級的系（群修缺口用）。 */
+  department?: string;
+  /** 把補缺口的課排進目前方案（一筆可復原的修改）。 */
+  onAddGapCourses?: (keys: string[], label: string) => void;
 }
 
 const action = 'btn btn-sm min-h-11 gap-1.5';
@@ -52,8 +72,74 @@ function Offerings({ item, courses, candidateKeys, scheduledKeys, onCandidate }:
   );
 }
 
+interface GapRow {
+  id: string;
+  /** 按鈕與提示用的名稱，例「體育」「一般通識」「合成必修甲」。 */
+  label: string;
+  target: GapTarget | null;
+  /** 沒辦法排的原因（例：群修要先設定系級）。 */
+  note?: string;
+}
+
+/** 學校審查的缺口 → 可以排一門進去的目標（只寫學分數的畢業學分交給「幫我排滿」）。 */
+function gapRows(gaps: readonly AuditGap[], categories: readonly string[], department: string | undefined): Map<string, GapRow> {
+  const rows = new Map<string, GapRow>();
+  gaps.forEach((gap) => {
+    if (gap.area === 'pe') rows.set(gap.area, { id: gap.area, label: gap.label, target: { type: 'pe' } });
+    if (gap.area === 'general' || gap.area === 'liberal' || gap.area === 'chinese' || gap.area === 'english') {
+      const wanted = gapGeneralEducation([gap], categories);
+      rows.set(gap.area, { id: gap.area, label: gap.label, target: wanted.length ? { type: 'category', categories: wanted } : null });
+    }
+    if (gap.area === 'group') {
+      rows.set(gap.area, department
+        ? { id: gap.area, label: gap.label, target: { type: 'group', department } }
+        : { id: gap.area, label: gap.label, target: null, note: '在課表上方設定系級後，可以排本系群修' });
+    }
+  });
+  return rows;
+}
+
+function GapAction({ row, pick, titleOf, onAdd }: {
+  row: GapRow;
+  pick: GapPick | null;
+  titleOf: (key: string) => string;
+  onAdd?: (keys: string[], label: string) => void;
+}) {
+  if (row.note) return <p className="text-xs text-base-content/75">{row.note}</p>;
+  if (!pick) return null;
+  if (pick.status === 'covered') {
+    return (
+      <p className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="chip">補缺口</span>已排入「{titleOf(pick.key)}」
+      </p>
+    );
+  }
+  if (pick.status === 'none') {
+    // 必修本學期沒開：下面的開課清單已經寫了「本學期沒有同名開課」。
+    if (row.target?.type === 'title' && !pick.closest.length) return null;
+    return (
+      <p className="text-xs text-base-content/75">
+        {pick.reason}
+        {pick.closest.length > 0 && `；最接近的：${pick.closest.map(({ key, problems }) => `「${titleOf(key)}」（${problems.join('、')}）`).join('、')}`}
+      </p>
+    );
+  }
+  if (!onAdd) return null;
+  return (
+    <button
+      type="button"
+      className={`${action} mt-1`}
+      aria-label={`排一門進去（${titleOf(pick.key)}）：${row.label}缺口`}
+      onClick={() => onAdd([pick.key], `已補缺口：排入「${titleOf(pick.key)}」`)}
+    >
+      <CalendarPlus className="size-4" aria-hidden="true" />排一門進去
+      <span className="text-xs font-normal text-base-content/75">（{titleOf(pick.key)}）</span>
+    </button>
+  );
+}
+
 /** 畢業缺口：讀全人系統資料裡學校自己的畢業審查（設計 8.5）。資料與其他功能共用（StudentRecordCard）。 */
-export function GraduationPanel({ courses, record, onRecord, candidateKeys, scheduledKeys, profile, credits, onCandidate, onProfile }: GraduationPanelProps) {
+export function GraduationPanel({ courses, record, onRecord, candidateKeys, scheduledKeys, profile, credits, onCandidate, onProfile, fill, department, onAddGapCourses }: GraduationPanelProps) {
   const [manual, setManual] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
 
@@ -63,6 +149,35 @@ export function GraduationPanel({ courses, record, onRecord, candidateKeys, sche
   }, [courses, manual, record]);
   const audit = record?.audit;
   const noGaps = audit && !audit.missingRequired.length && !audit.gaps.length && !audit.unparsed.length;
+
+  // 每一列缺口（必修、體育、通識、群修）挑一門排得進去的課，規則同「幫我排滿」；全部在本機算，修課紀錄不送 AI。
+  const categories = useMemo(() => [...new Set(courses.map(({ official }) => official.generalEducation).filter(Boolean))], [courses]);
+  const rows = useMemo(() => {
+    const required: GapRow[] = missing.map((item) => ({ id: `required:${item.label}`, label: item.label, target: { type: 'title', title: item.label } }));
+    return [...required, ...gapRows(audit?.gaps ?? [], categories, department).values()];
+  }, [audit, categories, department, missing]);
+  const picks = useMemo(() => new Map(rows.map((row) => [row.id, fill && row.target ? pickGapCourse(fill, row.target) : null])), [fill, rows]);
+  const titleOf = (key: string) => fill?.catalog.find((course) => course.key === key)?.title ?? '課程';
+  // 「全部補上」：一列一列挑，後面的會避開前面挑好的課（不衝堂、同名只排一門、科目數上限）。
+  const fillAll = useMemo(() => {
+    if (!fill) return [];
+    const keys: string[] = [];
+    let entries = [...fill.entries];
+    rows.forEach((row) => {
+      if (!row.target) return;
+      const pick = pickGapCourse({ ...fill, entries }, row.target);
+      if (pick.status !== 'picked') return;
+      const course = fill.catalog.find(({ key }) => key === pick.key);
+      if (!course) return;
+      keys.push(pick.key);
+      entries = [...entries, { course, item: addCourse([], course)[0]! }];
+    });
+    return keys;
+  }, [fill, rows]);
+  const gapAction = (id: string) => {
+    const row = rows.find((candidate) => candidate.id === id);
+    return row ? <GapAction row={row} pick={picks.get(id) ?? null} titleOf={titleOf} {...(onAddGapCourses ? { onAdd: onAddGapCourses } : {})} /> : null;
+  };
 
   return (
     <section className="space-y-3">
@@ -93,11 +208,17 @@ export function GraduationPanel({ courses, record, onRecord, candidateKeys, sche
             </dl>
           )}
           {noGaps && <p>學校審查未列出缺口。</p>}
+          {onAddGapCourses && fillAll.length > 0 && (
+            <button type="button" className="btn btn-primary btn-sm min-h-11 gap-1.5" onClick={() => onAddGapCourses(fillAll, `已補缺口：排入 ${fillAll.length} 門`)}>
+              <ListChecks className="size-4" aria-hidden="true" />全部補上（{fillAll.length} 門）
+            </button>
+          )}
           {audit.gaps.length > 0 && (
-            <ul className="space-y-1">
+            <ul className="space-y-2">
               {audit.gaps.map((gap) => (
                 <li key={gap.area}>
                   <span className="font-bold">{gap.label}</span>：{gap.items.length ? gap.items.map((item) => `${item.label}欠 ${countLabel(item)}`).join('、') : gap.text}
+                  {gapAction(gap.area)}
                 </li>
               ))}
             </ul>
@@ -121,6 +242,7 @@ export function GraduationPanel({ courses, record, onRecord, candidateKeys, sche
                 {item.label}
                 {item.count > 1 && <span className="font-normal text-base-content/75"> · {countLabel(item)}（學校原文：缺{item.label}{item.count}）</span>}
               </p>
+              {gapAction(`required:${item.label}`)}
               <Offerings item={item} courses={courses} candidateKeys={candidateKeys} scheduledKeys={scheduledKeys} onCandidate={onCandidate} />
             </li>
           ))}

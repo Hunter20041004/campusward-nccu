@@ -145,6 +145,52 @@ describe('copy preview', () => {
     expect(screen.getByRole('status', { name: '資料操作結果' })).toHaveTextContent('已複製 2 個課號（主方案）');
   });
 
+  // 易用性審查第 7 名：最上面寫明、也能切換是哪個方案（預設主方案）；本班灌檔的課預設不勾並寫出依據。
+  test('shows and switches the plan at the top, defaulting to the main plan', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText');
+    const main = [entry('900002001'), entry('900003001')];
+    const backup = [entry('900002001'), entry('900003001'), entry('900004001')];
+    setup({
+      entries: backup,
+      planName: '備案 1',
+      plans: [{ id: 'plan-1', name: '主方案', entries: main }, { id: 'plan-2', name: '備案 1', entries: backup }],
+      mainPlanId: 'plan-1',
+    });
+    await user.click(screen.getByRole('button', { name: '複製課號清單' }));
+    const dialog = screen.getByRole('region', { name: '複製課號清單：主方案' });
+    const choice = within(dialog).getByRole('radiogroup', { name: '要複製的方案' });
+    expect(within(choice).getByRole('radio', { name: '主方案・2 門' })).toBeChecked();
+    expect(within(dialog).getAllByRole('checkbox')).toHaveLength(2);
+    await user.click(within(choice).getByRole('radio', { name: '備案 1・3 門' }));
+    const switched = screen.getByRole('region', { name: '複製課號清單：備案 1' });
+    expect(within(switched).getAllByRole('checkbox')).toHaveLength(3);
+    await user.click(within(switched).getByRole('button', { name: '複製 3 個課號' }));
+    expect(writeText).toHaveBeenLastCalledWith('900002001\n900003001\n900004001');
+    expect(screen.getByRole('status', { name: '資料操作結果' })).toHaveTextContent('已複製 3 個課號（備案 1）');
+  });
+
+  test('a course the department auto-enrolls for the student own class starts unticked, with the reason', async () => {
+    const user = userEvent.setup();
+    const official = (targetGroup: string) => ({
+      semesterSpan: '單學期科目', degreeLevel: '學士班', fee: '免費', targetGroup, requirementKind: '必修', generalEducation: '',
+      language: '中文', enrollmentType: '必修灌檔', remoteMode: '', core: false, emi: false,
+    });
+    const own = entry('703007001');
+    const other = entry('703016001');
+    setup({
+      entries: [{ ...own, course: { ...own.course, official: official('資訊二') } }, { ...other, course: { ...other.course, official: official('資訊三') } }],
+      className: '資訊二',
+    });
+    await user.click(screen.getByRole('button', { name: '複製課號清單' }));
+    const dialog = screen.getByRole('region', { name: /複製課號清單/ });
+    expect(within(dialog).getByRole('checkbox', { name: /^703007001/ })).not.toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: /^703016001/ })).toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: /^703007001/ }).closest('label')).toHaveTextContent('系所灌檔，不必登記');
+    expect(dialog).toHaveTextContent('依官方「必修灌檔」與開課班級「資訊二」');
+    expect(within(dialog).getByRole('button', { name: '複製 1 個課號' })).toBeEnabled();
+  });
+
   test('cannot copy when nothing is ticked', async () => {
     const user = userEvent.setup();
     setup({ entries: [entry('900002001')] });

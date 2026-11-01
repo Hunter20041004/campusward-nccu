@@ -76,6 +76,8 @@ describe('initial distribution caps', () => {
     ['PE (by code prefix)', [entry({ code: '002001001' }), entry({ code: '002002001' })]],
     ['college (by code prefix)', [entry({ code: '045001001' }), entry({ code: '045002001' })]],
     ['general plus college', [ge('社會通識'), ge('人文通識'), ge('自然通識'), ge('社會通識')]],
+    // 官方通識類別「跨領域(人文、社會)」沒有「通識」兩個字，也是一般通識（115-1 快照有 15 門）。
+    ['general including 跨領域', [ge('社會通識'), ge('人文通識'), ge('自然通識'), ge('跨領域(人文、社會)')]],
   ])('warns when %s courses exceed the cap', (_, entries) => {
     expect(ids(checkEnrollmentRules(entries, undergrad(2), rules))).toContain('distribution-cap');
   });
