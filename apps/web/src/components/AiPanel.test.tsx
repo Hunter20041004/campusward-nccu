@@ -93,3 +93,15 @@ describe('AiPanel', () => {
     expect(screen.getByLabelText('Gemini 金鑰')).toBeInTheDocument();
   });
 });
+
+test('hides features that are switched off', async () => {
+  const features = { orb: true, demo: false, qa: false, career: false, screenshot: false, graduation: true, liveCheck: true };
+  const syllabi = { terms: vi.fn(async () => []), loadIndex: vi.fn(), loadCourse: vi.fn() };
+  const { user } = setup([], { features, term: '1151', syllabi });
+  expect(screen.queryByRole('button', { name: '看示範' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: '問課綱' })).not.toBeInTheDocument();
+  await unlock(user);
+  expect(screen.getByLabelText('想怎麼排')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: '職涯方向找課' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: '截圖匯入' })).not.toBeInTheDocument();
+});

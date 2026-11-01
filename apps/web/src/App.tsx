@@ -15,6 +15,7 @@ import { SidePanel, type SideTab } from './components/SidePanel.tsx';
 import { Timetable } from './components/Timetable.tsx';
 import { UndoToast } from './components/UndoToast.tsx';
 import { gemini } from './ai/session.ts';
+import { FEATURES } from './features.ts';
 import type { GeminiClient } from './ai/gemini.ts';
 import { browserStorage, clearBrowserCaches } from './data/browserStorage.ts';
 import { httpCatalogSource, type CatalogSource } from './data/catalog.ts';
@@ -151,7 +152,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini }: { cat
                   }}
                 />
               )}
-              {ready && (
+              {FEATURES.graduation && ready && (
                 <GraduationPanel
                   courses={courses}
                   entries={planner.entries}

@@ -5,6 +5,7 @@ import type { GeminiClient } from '../ai/gemini.ts';
 import { aiSearch, planWithAi } from '../ai/orb.ts';
 import { OrbMark } from './OrbMark.tsx';
 import { httpSyllabusSource, type SyllabusSource } from '../qa/syllabusSource.ts';
+import { FEATURES, type Features } from '../features.ts';
 import { CareerSection } from './CareerSection.tsx';
 import { QaSection } from './QaSection.tsx';
 import { ScreenshotImport } from './ScreenshotImport.tsx';
@@ -18,6 +19,7 @@ export interface AiPanelProps {
   term?: string;
   termLabel: string;
   syllabi?: SyllabusSource;
+  features?: Features;
   planner: PlannerState;
   catalog: ReadonlyMap<string, ScheduleCourse>;
   courses: readonly Course[];
@@ -53,7 +55,7 @@ function AnswerText({ text, catalog }: { text: string; catalog: ReadonlyMap<stri
   );
 }
 
-export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSource, planner, catalog, courses, ready, onApply }: AiPanelProps) {
+export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSource, features = FEATURES, planner, catalog, courses, ready, onApply }: AiPanelProps) {
   const [accepted, setAccepted] = useState(false);
   const [hasKey, setHasKey] = useState(() => client.hasKey());
   const [keyError, setKeyError] = useState('');
@@ -160,7 +162,7 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
         </form>
       )}
 
-      {accepted && hasKey && (
+      {features.orb && accepted && hasKey && (
         <form className="space-y-2" onSubmit={(event) => { event.preventDefault(); void send(); }}>
           <label className="block">
             <span className="sr-only">想怎麼排</span>
@@ -183,16 +185,16 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
         </form>
       )}
 
-      {ready && term && <QaSection source={syllabi} term={term} courses={courses} client={client} aiReady={accepted && hasKey} />}
+      {features.qa && ready && term && <QaSection source={syllabi} term={term} courses={courses} client={client} aiReady={accepted && hasKey} />}
 
       {accepted && hasKey && ready && (
         <>
-          <CareerSection client={client} termLabel={termLabel} courses={courses} candidateKeys={new Set(planner.candidates)} onAddCandidates={(changes, label) => { onApply(changes, label); }} />
-          <ScreenshotImport client={client} termLabel={termLabel} planner={planner} courses={courses} onAddCandidates={(changes, label) => { onApply(changes, label); }} />
+          {features.career && <CareerSection client={client} termLabel={termLabel} courses={courses} candidateKeys={new Set(planner.candidates)} onAddCandidates={(changes, label) => { onApply(changes, label); }} />}
+          {features.screenshot && <ScreenshotImport client={client} termLabel={termLabel} planner={planner} courses={courses} onAddCandidates={(changes, label) => { onApply(changes, label); }} />}
         </>
       )}
 
-      {!hasKey && (
+      {features.demo && !hasKey && (
         <button type="button" className={`${action} self-start`} onClick={demo} disabled={!ready}>看示範</button>
       )}
 

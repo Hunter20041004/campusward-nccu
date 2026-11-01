@@ -1,6 +1,7 @@
 import { checkCourseLive, NCCU_HOSTS, safeExternalUrl, type Course, type LiveCheck, type LiveField } from '@campusward/engine';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
+import { FEATURES } from '../features.ts';
 
 const FIELD_LABELS: Record<LiveField, string> = {
   title: '課名', teacher: '教師', credits: '學分', scheduleText: '上課時間', classroom: '教室', meetings: '節次', restrictionText: '修課限制',
@@ -105,7 +106,7 @@ export function CourseDetails({ course, id, fetchImpl = (url) => fetch(url, { he
         <OfficialLink href={course.links.remaining} label="即時餘額" />
         <OfficialLink href={course.links.teacher} label="教師資訊" />
       </div>
-      <LiveCheckButton course={course} fetchImpl={fetchImpl} />
+      {FEATURES.liveCheck && <LiveCheckButton course={course} fetchImpl={fetchImpl} />}
     </section>
   );
 }
