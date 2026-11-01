@@ -44,3 +44,12 @@ describe('searchSyllabi', () => {
     expect(searchSyllabi(index, '   ')).toEqual([]);
   });
 });
+
+// 2026-11-01 真實語料實測：全部索引 gzip 3.72 MB，超過 3 MB；不索引「每週進度」原文（沒有週次表的課）後 2.95 MB。
+test('keeps weekly prose in the course file but out of the index', () => {
+  const prose = JSON.stringify({ code: '900009001', title: '合成討論課', description: '', objectives: '', grading: '', prerequisite: '', weekly: [], weeklyText: '每週閱讀獨特關鍵詞量子貓', hash: 'd'.repeat(64) });
+  const built = buildSyllabusArtifacts([corpus, prose].join('\n'));
+  expect(JSON.parse(built.courses.get('900009001')!).passages.map(({ section }: { section: string }) => section)).toEqual(['課名', '每週進度']);
+  expect(searchSyllabi(loadSyllabusIndex(built.index), '量子貓')).toEqual([]);
+  expect(searchSyllabi(loadSyllabusIndex(built.index), '合成討論課')[0]?.code).toBe('900009001');
+});

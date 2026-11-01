@@ -58,3 +58,7 @@ describe('tokenizeForSearch', () => {
     expect(toSearchTerm('ai')).toBe('00610069');
   });
 });
+
+test('accepts a long weekly topic (a real syllabus had 2,144 characters in one week)', () => {
+  expect(parseSyllabusLine(JSON.stringify({ ...entry, weekly: [{ week: 15, topic: '讀'.repeat(2144) }] }))).not.toBeNull();
+});

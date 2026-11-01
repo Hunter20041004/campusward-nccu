@@ -13,7 +13,7 @@ const EntrySchema = z.object({
   objectives: Text,
   grading: Text,
   prerequisite: z.string().max(2000),
-  weekly: z.array(z.object({ week: z.number().int().min(0).max(99), topic: z.string().max(2000) }).strict()).max(60),
+  weekly: z.array(z.object({ week: z.number().int().min(0).max(99), topic: z.string().max(10_000) }).strict()).max(60),
   weeklyText: Text,
   hash: z.string().regex(/^[0-9a-f]{64}$/),
 }).strict();
