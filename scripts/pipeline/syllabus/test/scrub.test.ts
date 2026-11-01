@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { MARK, RULES, scrub, STUDENT_ID_CONTEXT_RULE } from '../scrub.ts';
+import { EXTRA_RULES, MARK, RULES, scrub, STUDENT_ID_CONTEXT_RULE } from '../scrub.ts';
 import { COLLAPSE_CASE, COURSE_CODE_WITHOUT_STUDENT_ID, NEGATIVE_CASES, POSITIVE_CASES } from './fixtures/synthetic/contacts.ts';
 
 test('rules run in the reference order: links and e-mails before phones', () => {
@@ -9,6 +9,7 @@ test('rules run in the reference order: links and e-mails before phones', () => 
   ]);
   for (const [, pattern] of RULES) expect(pattern.flags).toBe('giu');
   expect(STUDENT_ID_CONTEXT_RULE).toBe('student_id_context');
+  expect(EXTRA_RULES.map(([name]) => name)).toEqual(['link_key']);
 });
 
 describe('each rule removes its kind of contact', () => {

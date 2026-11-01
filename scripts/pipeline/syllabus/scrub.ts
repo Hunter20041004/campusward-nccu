@@ -38,6 +38,14 @@ export const RULES: readonly (readonly [string, RegExp])[] = Object.freeze([
 const escaped = MARK.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const ADJACENT_MARKS = new RegExp(`(?:${escaped}[\\s,;，；、/]*){2,}`, 'gu');
 
+/**
+ * 參考規則之外補的規則（115-1 實跑時提交前祕密掃描發現）：分享連結裡的存取金鑰等同密碼，
+ * 只把金鑰值換掉，網址其餘部分保留。
+ */
+export const EXTRA_RULES: readonly (readonly [string, RegExp])[] = Object.freeze([
+  rule('link_key', String.raw`(?<=[?&](?:resourcekey|token|access_token|pwd|passcode|sig|key)=)(?!〔)[^&\s<>"'）)」]+`),
+]);
+
 export const STUDENT_ID_CONTEXT_RULE = 'student_id_context';
 const STUDENT_ID_MENTION = /學號|student\s*(?:id|no\.?|number)/iu;
 const BARE_STUDENT_ID = /(?<!\d)1[01]\d{7}(?!\d)/gu;
@@ -48,7 +56,7 @@ export function scrub(input: string): { text: string; hits: ScrubHits } {
   const hits: ScrubHits = {};
   if (!input) return { text: input, hits };
   let text = input;
-  for (const [name, pattern] of RULES) {
+  for (const [name, pattern] of [...RULES, ...EXTRA_RULES]) {
     let count = 0;
     text = text.replace(pattern, () => { count += 1; return MARK; });
     if (count) hits[name] = count;

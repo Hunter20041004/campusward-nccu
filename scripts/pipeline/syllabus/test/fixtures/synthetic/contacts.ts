@@ -40,6 +40,10 @@ export const POSITIVE_CASES: readonly (readonly [string, string, string])[] = [
   // 參考規則之外補的一條：同一段文字提到學號時，裸寫的 9 碼學號樣式（1[01] 開頭）也移除。
   ['student_id_context', '檔名註明學號(如109999999王小明_期中考.xlsx)', `檔名註明學號(如${M}王小明_期中考.xlsx)`],
   ['student_id_context', '命名：系級學號—姓名，例如「作業—110000000—台灣」', `命名：系級學號—姓名，例如「作業—${M}—台灣」`],
+  // 參考規則之外補的一條：分享連結的存取金鑰（Google 雲端的 resourcekey 等）等同密碼，只移除金鑰值。
+  // 金鑰值以拼接產生，避免提交前祕密掃描把合成範例當成真的金鑰。
+  ['link_key', `講義 https://drive.google.com/drive/folders/abc?resourcekey=${['0', 'AbCdEfGhIjKlMn'].join('-')} 下載`, `講義 https://drive.google.com/drive/folders/abc?resourcekey=${M} 下載`],
+  ['link_key', 'https://example.com/f?id=1&token=xyz123&lang=zh', `https://example.com/f?id=1&token=${M}&lang=zh`],
 ];
 
 /** 沒提到學號時，1[01] 開頭的 9 碼數字多半是課號，保留。 */
@@ -63,4 +67,6 @@ export const NEGATIVE_CASES: readonly string[] = [
   '線上 online: Moodle',
   '第 3 章 pp. 123-456',
   '課程代碼 753001001 與 000211011',
+  'https://docs.google.com/document/d/abc/edit?usp=sharing',
+  'key=value 是設定檔寫法',
 ];
