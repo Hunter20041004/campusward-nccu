@@ -1,8 +1,10 @@
 import {
+  candidateScheduleSummary,
   checkEnrollmentRules,
   clearStudentRecord,
   creditLimits,
   findClashes,
+  findOtherSections,
   findRetakes,
   loadStudentRecord,
   passedAs as passedCourseTitle,
@@ -19,7 +21,7 @@ import {
 } from '@campusward/engine';
 import enrollmentRules from '../../../data/rules/enrollment-11407.json' with { type: 'json' };
 import { Search } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header.tsx';
 import { MobileNav, type MobileView } from './components/MobileNav.tsx';
 import { AiPanel } from './components/AiPanel.tsx';
@@ -45,10 +47,13 @@ import type { GeminiClient } from './ai/gemini.ts';
 import { browserStorage, clearBrowserCaches } from './data/browserStorage.ts';
 import { httpCatalogSource, type CatalogSource } from './data/catalog.ts';
 import { useCatalog } from './data/useCatalog.ts';
+import { DAY_LABELS } from './components/labels.ts';
 import { usePlanner } from './data/usePlanner.ts';
 import { renderWallpaper, wallpaperLayout } from './data/wallpaper.ts';
 
 const GUIDE_KEY = 'campusward:guide';
+/** 小山的衝堂提醒按掉後記住是哪一組衝堂（設計：同一組衝堂只提醒一次）；清除本機資料時一併清掉。 */
+const NUDGE_KEY = 'campusward:v1:nudge-dismissed';
 
 // 手機一次只顯示一個區塊（搜課或右側工具）；桌機三欄同時顯示。
 const mobileOnly = (visible: boolean) => (visible ? 'flex' : 'hidden md:flex');
@@ -136,6 +141,15 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     const key = toScheduleCourse(course).key;
     return clashesOfCourse(planner.catalog.get(key) ?? toScheduleCourse(course));
   }, [clashesOfCourse, planner.catalog]);
+  // 課表面板：完整課程資料（老師、教室、課綱）與「換一班」。
+  const courseByKey = useMemo(() => new Map(courses.map((course) => [toScheduleCourse(course).key, course])), [courses]);
+  const otherSections = (key: string) => findOtherSections(planner.entries, key, planner.catalog.values());
+  const swapSection = (fromKey: string, toKey: string) => {
+    const to = planner.catalog.get(toKey);
+    if (!to) return;
+    const when = to.meetings.length ? candidateScheduleSummary(to, DAY_LABELS) : '時間未定';
+    courseChange('add', [{ type: 'removeFromSchedule', key: fromKey }, { type: 'addToSchedule', key: toKey }], `已把「${titleOf(fromKey)}」換成${to.teacher ?? ''} ${when} 那一班`);
+  };
   const quoted = (titles: readonly string[]) => titles.map((title) => `「${title}」`).join('、');
   const addLabelFor = (course: ScheduleCourse) => {
     const clashes = clashesOfCourse(course);
@@ -202,7 +216,37 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const [aiOpen, setAiOpen] = useState(false);
   const conflictPairs = planner.conflicts.map(({ courseKeys }) => [titleOf(courseKeys[0] ?? ''), titleOf(courseKeys[1] ?? '')] as const);
   const conflictSignature = planner.conflicts.map(({ courseKeys }) => courseKeys.join('+')).join('|');
-  const [dismissedNudge, setDismissedNudge] = useState('');
+  const [dismissedNudge, setDismissedNudgeState] = useState(() => {
+    try {
+      return storageRef.current?.getItem(NUDGE_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  });
+  const setDismissedNudge = (signature: string) => {
+    setDismissedNudgeState(signature);
+    try {
+      storageRef.current?.setItem(NUDGE_KEY, signature);
+    } catch {
+      // 存不了就只在這次有效。
+    }
+  };
+  // 課卡面板、手機「更多」、複製課號預覽打開時，提醒泡泡先讓開（不擋住操作）。
+  const [cardOpen, setCardOpen] = useState(false);
+  const setCardOpenFor = useCallback((key: string | null) => setCardOpen(key !== null), []);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [copyPreviewOpen, setCopyPreviewOpen] = useState(false);
+  const [cardFocus, setCardFocus] = useState<{ key: string; nonce: number } | null>(null);
+  // 沒有金鑰時，按衝堂提醒直接打開衝堂那門課的面板（可以「換一班」），不先跳 AI 設定。
+  const openClashingCourse = () => {
+    const keys = planner.conflicts.flatMap(({ courseKeys }) => courseKeys);
+    const key = keys.find((candidate) => findOtherSections(planner.entries, candidate, planner.catalog.values()).length > 0) ?? keys[0];
+    setDismissedNudge(conflictSignature);
+    if (!key) return;
+    showTool('timetable');
+    setCardFocus((previous) => ({ key, nonce: (previous?.nonce ?? 0) + 1 }));
+  };
+  const nudgeHidden = (cardOpen && tool === 'timetable') || menuOpen || copyPreviewOpen || guideOpen || pendingBackup !== null;
   const nudge = conflictSignature && dismissedNudge !== conflictSignature
     ? `有 ${planner.conflicts.length} 個衝堂，要我幫忙看看嗎？`
     : null;
@@ -235,7 +279,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
 
   return (
     <BuddyProvider hub={buddyHub}>
-    <div className="min-h-dvh pb-28 md:pb-6">
+    {/* 手機底部有分頁列和小山按鈕（離底 80–144px）：留足空白，列表最後的「加入」不會被蓋住。 */}
+    <div className="min-h-dvh pb-44 md:pb-6">
       <Header termLabel={ready ? data.label : data.status === 'loading' ? '載入中' : '—'} onGuide={() => setGuideOpen(true)} />
       <main data-mobile-view={mobileView} className="mx-auto max-w-[1600px] px-4 pt-2 md:px-6">
         {data.status === 'error' && (
@@ -250,7 +295,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
             <button type="button" className="btn btn-sm min-h-11" onClick={planner.dismissNotice}>知道了</button>
           </p>
         )}
-        <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_3.5rem] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_3.5rem]">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_3.5rem] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_3.5rem]">
           <section aria-labelledby="search-title" className={`relief flex-col p-4 md:sticky md:top-20 md:h-[calc(100dvh-6rem)] ${mobileOnly(mobileView === 'search')}`}>
             <h2 id="search-title" className="flex items-center gap-2 px-1 text-xl font-bold text-mist-ink">
               <Search className="size-5" aria-hidden="true" />課程搜尋<span aria-hidden="true" className="h-5 w-0.5 rounded bg-mist-ink/50" />
@@ -316,6 +361,11 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   onStatus={(key, status) => applyChange([{ type: 'setStatus', key, status }], `已將「${titleOf(key)}」標為${{ planned: '排入', registered: '已灌檔', enrolled: '已選上' }[status]}`)}
                   onAttendance={(key, attendance) => applyChange([{ type: 'setAttendance', key, attendance }], `「${titleOf(key)}」改為${attendance === 'async' ? '非同步' : '同步'}上課`)}
                   onRemove={(key) => courseChange('remove', [{ type: 'removeFromSchedule', key }], `已移出「${titleOf(key)}」`)}
+                  courseOf={(key) => courseByKey.get(key)}
+                  otherSections={otherSections}
+                  onSwap={swapSection}
+                  onSelect={setCardOpenFor}
+                  focus={cardFocus}
                 />
                 {planner.entries.length > 0 && <RulesPanel conflicts={planner.conflicts} reminders={reminders} retakes={retakes} />}
               </div>
@@ -358,6 +408,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                       setRecord(null);
                       ai.removeKey();
                       buddyHub.setQuiet(false);
+                      setDismissedNudge('');
                       void clearBrowserCaches();
                       setGeneration((value) => value + 1);
                     }}
@@ -366,6 +417,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                     planName={planner.activePlan.name}
                     limits={limits}
                     onBackToTimetable={() => showTool('timetable')}
+                    onCopyPreview={setCopyPreviewOpen}
                     onWallpaper={() => {
                       void renderWallpaper(wallpaperLayout(planner.entries, data.label)).then((blob) => {
                         const url = URL.createObjectURL(blob);
@@ -415,7 +467,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
         onCancel={() => setPendingBackup(null)}
       />
       <UndoToast label={planner.undoLabel} onUndo={undoLast} onExpire={planner.clearUndo} />
-      <MobileNav view={mobileView} tools={tools} onView={(next) => (next === 'search' ? setMobileView('search') : showTool(next))} />
+      <MobileNav view={mobileView} tools={tools} onMenu={setMenuOpen} onView={(next) => (next === 'search' ? setMobileView('search') : showTool(next))} />
       {aiEnabled && (
         <FloatingOrb
           open={aiOpen}
@@ -423,6 +475,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
           onClose={() => setAiOpen(false)}
           nudge={nudge}
           onDismissNudge={() => setDismissedNudge(conflictSignature)}
+          {...(ai.hasKey() ? {} : { onNudge: openClashingCourse })}
+          nudgeHidden={nudgeHidden}
         >
           <AiPanel
                     key={`ai-${generation}`}

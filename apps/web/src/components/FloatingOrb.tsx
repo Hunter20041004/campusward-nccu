@@ -1,5 +1,5 @@
 import { Pause, Play, X } from 'lucide-react';
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useBuddyHub } from '../buddy/BuddyContext.tsx';
 import { Xiaoshan } from '../buddy/Xiaoshan.tsx';
 
@@ -7,15 +7,30 @@ import { Xiaoshan } from '../buddy/Xiaoshan.tsx';
  * 小山（2026-11-01 使用者要求，原名「AI 光球」，同日改名統一叫小山）：右下角浮動按鈕，任何畫面都能叫出；
  * 面板關掉時只隱藏，AI 結果與輸入保留。面板關著時右下角那隻跟著你的操作反應，打開後換面板標題那隻；
  * 有值得注意的事（例如衝堂）時，在旁邊冒一句提醒，可以按掉（參考 Claude Duet 的主動提醒）。
+ * 提醒幾秒後收成按鈕上的小點，不一直擋住畫面；其他面板或選單打開時（nudgeHidden）先藏起來。
  */
-export function FloatingOrb({ open, onOpen, onClose, nudge, onDismissNudge, children }: {
+export const NUDGE_FOLD_MS = 8000;
+
+export function FloatingOrb({ open, onOpen, onClose, nudge, onNudge, onDismissNudge, nudgeHidden = false, children }: {
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
   nudge?: string | null;
+  /** 按提醒泡泡時做的事；沒給就打開小山。 */
+  onNudge?: () => void;
   onDismissNudge?: () => void;
+  /** 課卡面板、手機「更多」選單等打開時為 true：泡泡不蓋住它們。 */
+  nudgeHidden?: boolean;
   children: React.ReactNode;
 }) {
+  const [folded, setFolded] = useState<string | null>(null);
+  useEffect(() => {
+    if (!nudge || open || nudgeHidden || folded === nudge) return;
+    const timer = setTimeout(() => setFolded(nudge), NUDGE_FOLD_MS);
+    return () => clearTimeout(timer);
+  }, [folded, nudge, nudgeHidden, open]);
+  const showBubble = Boolean(nudge) && !open && !nudgeHidden && folded !== nudge;
+  const showDot = Boolean(nudge) && !open && folded === nudge;
   const panel = useRef<HTMLElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const hub = useBuddyHub();
@@ -53,9 +68,9 @@ export function FloatingOrb({ open, onOpen, onClose, nudge, onDismissNudge, chil
         </div>
         <div className="flex min-h-0 flex-1 flex-col px-4 pt-2 pb-3">{children}</div>
       </section>
-      {nudge && !open && (
+      {showBubble && (
         <div role="status" className="raised fixed right-5 bottom-40 z-30 flex max-w-64 items-start gap-1 rounded-2xl rounded-br-sm py-2 pr-1 pl-3 text-sm md:right-26 md:bottom-12">
-          <button type="button" className="min-h-11 flex-1 text-left font-bold" onClick={onOpen}>{nudge}</button>
+          <button type="button" className="min-h-11 flex-1 text-left font-bold" onClick={onNudge ?? onOpen}>{nudge}</button>
           <button type="button" className="btn btn-ghost btn-sm min-h-11 min-w-11 px-2" aria-label="不用了，關掉提醒" onClick={onDismissNudge}>
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -67,10 +82,17 @@ export function FloatingOrb({ open, onOpen, onClose, nudge, onDismissNudge, chil
         aria-label="小山"
         aria-expanded={open}
         aria-controls="ai-orb-panel"
+        aria-describedby={showDot ? 'ai-orb-nudge' : undefined}
         onClick={open ? close : onOpen}
         className={`btn fixed right-5 bottom-20 z-30 size-16 rounded-full p-0 md:right-6 md:bottom-6 ${open ? 'tab-selected' : ''}`}
       >
         <Xiaoshan size={52} role="orb" seed={2} />
+        {showDot && (
+          <>
+            <span data-nudge-dot aria-hidden="true" className="absolute top-1 right-1 size-3.5 rounded-full border-2 border-base-100 bg-coral-ink" />
+            <span id="ai-orb-nudge" className="sr-only">{nudge}</span>
+          </>
+        )}
       </button>
     </>
   );

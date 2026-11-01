@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { NCCU_HOSTS, safeExternalUrl, trustedNccuUrl } from '../src/official/url.ts';
+import { NCCU_HOSTS, reviewSearchUrls, safeExternalUrl, trustedNccuUrl } from '../src/official/url.ts';
 import { officialSyllabusState } from '../src/official/syllabus.ts';
 
 // 移植自舊專案 tests/nccu-url.test.mjs
@@ -59,4 +59,25 @@ test('marks a successful lookup without a URL as not uploaded', () => {
 test('keeps a failed official lookup unverified', () => {
   expect(officialSyllabusState({ sourceUrl: '', lookupStatus: 'error', checkedAt: null }))
     .toEqual({ status: 'unverified', url: '', checkedAt: null });
+});
+
+describe('reviewSearchUrls', () => {
+  // 引擎型別不含 DOM 的 URLSearchParams：自己取查詢參數。
+  const param = (url: string, name: string) => {
+    const match = new RegExp(`[?&]${name}=([^&#]*)`).exec(url);
+    return match ? decodeURIComponent(match[1]!.replace(/\+/g, ' ')) : null;
+  };
+  test('builds Dcard and Google search links from the title and teacher only', () => {
+    const urls = reviewSearchUrls({ title: '統計學 (一)', teacher: '王合成' });
+    expect(param(urls.dcard, 'query')).toBe('統計學 (一) 王合成');
+    expect(new URL(urls.dcard).hostname).toBe('www.dcard.tw');
+    expect(param(urls.google, 'q')).toBe('政大 統計學 (一) 王合成 心得');
+    expect(new URL(urls.google).hostname).toBe('www.google.com');
+  });
+
+  test('leaves out a missing teacher and encodes characters that could break the address', () => {
+    const urls = reviewSearchUrls({ title: 'A&B #1', teacher: '' });
+    expect(param(urls.dcard, 'query')).toBe('A&B #1');
+    expect(urls.dcard).not.toContain('#1');
+  });
 });

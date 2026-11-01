@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { FloatingOrb } from './FloatingOrb.tsx';
@@ -42,4 +42,27 @@ test('Escape while picking a character with the input method does not close the 
   expect(onClose).not.toHaveBeenCalled();
   fireEvent.keyDown(screen.getByLabelText('輸入'), { key: 'Escape' });
   expect(onClose).toHaveBeenCalled();
+});
+
+test('the nudge folds into a small dot on the button after a few seconds, and opening from the dot works', async () => {
+  vi.useFakeTimers();
+  try {
+    const onOpen = vi.fn();
+    render(<FloatingOrb open={false} onOpen={onOpen} onClose={vi.fn()} nudge="有 1 個衝堂，要我幫忙看看嗎？">內容</FloatingOrb>);
+    expect(screen.getByRole('button', { name: '有 1 個衝堂，要我幫忙看看嗎？' })).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(8000); });
+    expect(screen.queryByRole('button', { name: '有 1 個衝堂，要我幫忙看看嗎？' })).toBeNull();
+    const orb = screen.getByRole('button', { name: '小山' });
+    expect(orb.querySelector('[data-nudge-dot]')).not.toBeNull();
+    expect(orb).toHaveAccessibleDescription('有 1 個衝堂，要我幫忙看看嗎？');
+    fireEvent.click(orb);
+    expect(onOpen).toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('the nudge stays hidden while something else is open on top', () => {
+  render(<FloatingOrb open={false} onOpen={vi.fn()} onClose={vi.fn()} nudge="提醒" nudgeHidden>內容</FloatingOrb>);
+  expect(screen.queryByText('提醒')).not.toBeInTheDocument();
 });

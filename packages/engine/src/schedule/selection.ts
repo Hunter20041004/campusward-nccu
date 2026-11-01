@@ -136,6 +136,24 @@ export function findClashes(entries: readonly ScheduleEntry[], course: ScheduleC
   return [...new Set(keys)];
 }
 
+const sameTitle = (title: string) => title.normalize('NFKC').replace(/\s+/g, '');
+const firstMeeting = (course: ScheduleCourse) => Math.min(Infinity, ...course.meetings.map(({ day, start }) => day * 1440 + start));
+
+/**
+ * 「換一班」：同課名的其他班中，換掉 key 那一班後不會和課表其他課衝堂的（用 findClashes 同一套判斷）。
+ * 已在課表上的班不列；依每週最早的上課時間排序。key 不在課表上時回傳空陣列。
+ */
+export function findOtherSections(entries: readonly ScheduleEntry[], key: string, catalog: Iterable<ScheduleCourse>): ScheduleCourse[] {
+  const current = entries.find((entry) => entry.course.key === key);
+  if (!current) return [];
+  const title = sameTitle(current.course.title);
+  const scheduled = new Set(entries.map((entry) => entry.course.key));
+  const rest = entries.filter((entry) => entry.course.key !== key);
+  return [...catalog]
+    .filter((course) => !scheduled.has(course.key) && sameTitle(course.title) === title && findClashes(rest, course).length === 0)
+    .sort((a, b) => firstMeeting(a) - firstMeeting(b));
+}
+
 export function formatCourseEventReminder(course: { title: string }, event: Partial<CourseEvent>): string {
   const label = String(event.label ?? '').trim();
   const weekLabel = event.week && !label.includes(`第 ${event.week} 週`) ? `第 ${event.week} 週` : '';

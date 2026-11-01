@@ -367,3 +367,96 @@ describe('planner fixes', () => {
     expect(within(screen.getByRole('group', { name: '方案' })).getAllByRole('button').map((button) => button.textContent)).toEqual(['主方案', '備案']);
   });
 });
+
+describe('timetable course panel and the conflict nudge', () => {
+  const rows = [
+    officialRow({ subNum: '042112001', subNam: '臺灣政治', subTime: '三78E', teaNam: '李合成' }),
+    officialRow({ subNum: '000603001', subNam: '民法概要', subTime: '三78', teaNam: '詹合成', subClassroom: '法學院101' }),
+    officialRow({ subNum: '000603011', subNam: '民法概要', subTime: '一D56', teaNam: '吳合成', subClassroom: '法學院202' }),
+    officialRow({ subNum: '000603021', subNam: '民法概要', subTime: '三E', teaNam: '周合成' }),
+  ];
+  const search = async (user: ReturnType<typeof userEvent.setup>, text: string) => {
+    const box = screen.getByRole('searchbox', { name: '搜課' });
+    await user.clear(box);
+    await user.type(box, text);
+  };
+  const addClash = async (user: ReturnType<typeof userEvent.setup>) => {
+    await screen.findByText('115-1');
+    await search(user, '臺灣政治');
+    await user.click(await screen.findByRole('button', { name: '加入課表：臺灣政治' }));
+    await search(user, '000603001');
+    await user.click(await screen.findByRole('button', { name: '加入課表：民法概要' }));
+  };
+  const nudgeText = '有 1 個衝堂，要我幫忙看看嗎？';
+
+  test('a course card shows its details and swaps to another section in one undoable change, without an automatic backup', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await addClash(user);
+    const grid = screen.getByRole('group', { name: '每週課表' });
+    await user.click(within(grid).getByRole('button', { name: /民法概要.*衝堂/ }));
+    const panel = screen.getByRole('group', { name: '民法概要 的操作' });
+    expect(panel).toHaveTextContent('詹合成');
+    expect(panel).toHaveTextContent('法學院101');
+    const swap = within(panel).getByRole('region', { name: '換一班' });
+    expect(swap).toHaveTextContent('吳合成');
+    expect(swap).not.toHaveTextContent('周合成');
+    await user.click(within(swap).getByRole('button', { name: /換這班：吳合成/ }));
+    const toast = screen.getByRole('status', { name: '最近的修改' });
+    expect(toast).toHaveTextContent('已把「民法概要」換成吳合成 週一 D56 那一班');
+    expect(screen.queryByRole('list', { name: '提醒' })?.textContent ?? '').not.toContain('每週時段重疊');
+    expect(within(grid).queryByRole('button', { name: /衝堂/ })).toBeNull();
+    expect(within(screen.getByRole('group', { name: '方案' })).getAllByRole('button').map((button) => button.textContent)).toEqual(['主方案', '備案']);
+    await user.click(within(toast).getByRole('button', { name: '復原' }));
+    expect(within(grid).getByRole('button', { name: /民法概要.*衝堂/ })).toBeInTheDocument();
+  });
+
+  test('without a Gemini key, the nudge opens the clashing course with its other sections instead of the AI setup', async () => {
+    const user = userEvent.setup();
+    const ai = { hasKey: () => false, setKey: vi.fn(), removeKey: vi.fn(), generate: vi.fn() };
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} ai={ai} guide={false} />);
+    await addClash(user);
+    await user.click(screen.getByRole('button', { name: nudgeText }));
+    expect(screen.getByRole('button', { name: '小山' })).toHaveAttribute('aria-expanded', 'false');
+    const panel = screen.getByRole('group', { name: '民法概要 的操作' });
+    expect(within(panel).getByRole('region', { name: '換一班' })).toHaveTextContent('吳合成');
+    expect(ai.generate).not.toHaveBeenCalled();
+  });
+
+  test('the nudge steps aside while a course panel or the phone menu is open', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await addClash(user);
+    expect(screen.getByRole('button', { name: nudgeText })).toBeInTheDocument();
+    await user.click(within(screen.getByRole('group', { name: '每週課表' })).getByRole('button', { name: /臺灣政治/ }));
+    expect(screen.queryByRole('button', { name: nudgeText })).toBeNull();
+    await user.click(screen.getByRole('button', { name: '關閉操作' }));
+    expect(screen.getByRole('button', { name: nudgeText })).toBeInTheDocument();
+    await user.click(within(screen.getByRole('navigation', { name: '主要分頁' })).getByRole('button', { name: '更多' }));
+    expect(screen.queryByRole('button', { name: nudgeText })).toBeNull();
+  });
+
+  test('a dismissed nudge stays dismissed after a reload until the clashes change, and clearing local data forgets it', async () => {
+    const user = userEvent.setup();
+    const storage = memoryStorage();
+    const first = render(<App catalog={fakeCatalog({}, rows)} storage={storage} guide={false} />);
+    await addClash(user);
+    await user.click(screen.getByRole('button', { name: '不用了，關掉提醒' }));
+    first.unmount();
+    const second = render(<App catalog={fakeCatalog({}, rows)} storage={storage} guide={false} />);
+    await screen.findByText('115-1');
+    await screen.findByRole('group', { name: '每週課表' });
+    expect(screen.queryByRole('button', { name: nudgeText })).toBeNull();
+    // 衝堂組合變了（多一門和臺灣政治衝堂的課）就再提醒。
+    await search(user, '000603021');
+    await user.click(await screen.findByRole('button', { name: '加入課表：民法概要' }));
+    expect(await screen.findByRole('button', { name: /個衝堂，要我幫忙看看嗎？/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '不用了，關掉提醒' }));
+    expect(storage.getItem('campusward:v1:nudge-dismissed')).toBeTruthy();
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '匯出與資料' }));
+    await user.click(await screen.findByRole('button', { name: '清除本機資料' }));
+    await user.click(screen.getByRole('button', { name: '確認清除' }));
+    expect(storage.getItem('campusward:v1:nudge-dismissed') ?? '').toBe('');
+    second.unmount();
+  });
+});

@@ -1,7 +1,8 @@
-import { checkCourseLive, NCCU_HOSTS, safeExternalUrl, type Course, type LiveCheck, type LiveField } from '@campusward/engine';
+import { candidateScheduleSummary, checkCourseLive, NCCU_HOSTS, REVIEW_HOSTS, reviewSearchUrls, safeExternalUrl, toScheduleCourse, type Course, type LiveCheck, type LiveField } from '@campusward/engine';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { FEATURES } from '../features.ts';
+import { DAY_LABELS, formatCredits } from './labels.ts';
 
 const FIELD_LABELS: Record<LiveField, string> = {
   title: '課名', teacher: '教師', credits: '學分', scheduleText: '上課時間', classroom: '教室', meetings: '節次', restrictionText: '修課限制',
@@ -39,22 +40,30 @@ function LiveCheckButton({ course, fetchImpl }: { course: Course; fetchImpl: (ur
   );
 }
 
-function OfficialLink({ href, label }: { href: string | undefined; label: string }) {
-  // 所有外部連結都經引擎的 safeExternalUrl（只放行 https 政大網域）。
-  const safe = safeExternalUrl(href, NCCU_HOSTS);
+function SafeLink({ href, label, hosts = NCCU_HOSTS, note = '開新分頁，政大官方網站' }: { href: string | undefined; label: string; hosts?: readonly string[]; note?: string }) {
+  // 所有外部連結都經引擎的 safeExternalUrl（官方連結只放行 https 政大網域；心得搜尋只放行 Dcard 與 Google）。
+  const safe = safeExternalUrl(href, hosts);
   if (!safe) return null;
   return (
     <a href={safe} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1 rounded-field px-1 text-sm font-medium text-mist-ink underline underline-offset-4">
       {label}
       <ExternalLink className="size-3.5" aria-hidden="true" />
-      <span className="sr-only">（開新分頁，政大官方網站）</span>
+      <span className="sr-only">（{note}）</span>
     </a>
   );
 }
 
-export function CourseDetails({ course, id, fetchImpl = (url) => fetch(url, { headers: { accept: 'application/json' }, credentials: 'omit', referrerPolicy: 'no-referrer' }) }: { course: Course; id: string; fetchImpl?: (url: URL) => Promise<Response> }) {
+export function CourseDetails({ course, id, withBasics = false, fetchImpl = (url) => fetch(url, { headers: { accept: 'application/json' }, credentials: 'omit', referrerPolicy: 'no-referrer' }) }: { course: Course; id: string; /** 課表面板用：在最前面加教師、課號、學分、時間（搜尋列表本身已有這些欄位）。 */ withBasics?: boolean; fetchImpl?: (url: URL) => Promise<Response> }) {
   const { official, notes } = course;
+  const reviews = reviewSearchUrls(course);
+  const basics: [string, string][] = withBasics ? [
+    ['教師', course.teacher],
+    ['課號', course.code],
+    ['學分', formatCredits(course.credits)],
+    ['時間', candidateScheduleSummary(toScheduleCourse(course), DAY_LABELS, undefined, { clock: true })],
+  ] : [];
   const rows = ([
+    ...basics,
     ['教室', course.classroom],
     ['修別', official.requirementKind],
     ['開課班級', official.targetGroup],
@@ -102,9 +111,12 @@ export function CourseDetails({ course, id, fetchImpl = (url) => fetch(url, { he
         </div>
       )}
       <div className="flex flex-wrap gap-x-3">
-        <OfficialLink href={course.links.syllabus} label="課綱" />
-        <OfficialLink href={course.links.remaining} label="即時餘額" />
-        <OfficialLink href={course.links.teacher} label="教師資訊" />
+        <SafeLink href={course.links.syllabus} label="課綱" />
+        <SafeLink href={course.links.remaining} label="即時餘額" />
+        <SafeLink href={course.links.teacher} label="教師資訊" />
+        {/* 心得搜尋：只把課名與教師放進搜尋網址、開新分頁，本站不抓取也不儲存（隱私說明頁有寫）。 */}
+        <SafeLink href={reviews.dcard} label="在 Dcard 搜尋心得" hosts={REVIEW_HOSTS} note="開新分頁，外部網站，會送出課名與教師" />
+        <SafeLink href={reviews.google} label="Google 搜尋" hosts={REVIEW_HOSTS} note="開新分頁，外部網站，會送出課名與教師" />
       </div>
       {FEATURES.liveCheck && <LiveCheckButton course={course} fetchImpl={fetchImpl} />}
     </section>

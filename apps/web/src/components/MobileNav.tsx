@@ -5,8 +5,12 @@ import { TOOLS, type Tool } from './ToolRail.tsx';
 export type MobileView = 'search' | Tool;
 
 /** 手機底部分頁：搜課、課表，其他工具收在「更多」；小山（AI 小助手）是浮在右下角的按鈕。 */
-export function MobileNav({ view, tools, onView }: { view: MobileView; tools: readonly Tool[]; onView: (view: MobileView) => void }) {
-  const [more, setMore] = useState(false);
+export function MobileNav({ view, tools, onView, onMenu }: { view: MobileView; tools: readonly Tool[]; onView: (view: MobileView) => void; /** 「更多」選單開關：讓小山的提醒泡泡先讓開。 */ onMenu?: (open: boolean) => void }) {
+  const [more, setMoreState] = useState(false);
+  const setMore = (open: boolean) => {
+    setMoreState(open);
+    onMenu?.(open);
+  };
   const others = TOOLS.filter(({ id }) => id !== 'timetable' && tools.includes(id));
   const items: { id: MobileView; label: string; icon: React.ReactNode }[] = [
     { id: 'search', label: '搜課', icon: <Search className="size-5" aria-hidden="true" /> },

@@ -38,3 +38,10 @@ test('says where the imported student record is kept and how to delete it', () =
   expect(screen.getByText(/整理後的資料存在這台瀏覽器/)).toHaveTextContent('不送給 AI、不放進匯出檔');
   expect(screen.getByText(/整理後的資料存在這台瀏覽器/)).toHaveTextContent('清除修課資料');
 });
+
+test('says that review searches send the course title and teacher to Dcard or Google, and lists the small 小山 settings kept on the device', () => {
+  render(<PrivacyPage />);
+  expect(screen.getByText(/在 Dcard 搜尋心得.*Google 搜尋.*課名與教師/)).toBeInTheDocument();
+  expect(screen.getByText(/www\.dcard\.tw/)).toBeInTheDocument();
+  expect(screen.getByText(/哪一組衝堂提醒已經關掉/)).toBeInTheDocument();
+});

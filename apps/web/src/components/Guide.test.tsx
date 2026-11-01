@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import { NCCU_PERIODS } from '@campusward/engine';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
 import { GUIDE_SLIDES, Guide } from './Guide.tsx';
@@ -61,4 +62,36 @@ test('keeps the page dots at a full touch size and lets them wrap', () => {
   const dot = screen.getByRole('button', { name: /^第 1 頁/ });
   expect(dot).toHaveClass('shrink-0', 'size-11');
   expect(dot.parentElement).toHaveClass('flex-wrap');
+});
+
+test('the legend lists every NCCU period with its clock time', async () => {
+  render(<Guide open onClose={vi.fn()} />);
+  await userEvent.setup().click(screen.getByRole('tab', { name: '圖例' }));
+  const table = screen.getByRole('table', { name: '政大節次與時間' });
+  const rows = within(table).getAllByRole('row').slice(1).map((row) => row.textContent);
+  expect(rows).toContain('108:10–09:00');
+  expect(rows).toContain('D13:10–14:00');
+  expect(rows).toContain('A06:10–07:00');
+  expect(rows).toHaveLength(NCCU_PERIODS.length);
+});
+
+test('uses phone wording on a phone and desktop wording on a computer', async () => {
+  const user = userEvent.setup();
+  const first = render(<Guide open onClose={vi.fn()} phone />);
+  expect(screen.getByText(/底部「搜課」/)).toBeInTheDocument();
+  expect(screen.queryByText(/左邊/)).toBeNull();
+  for (let index = 1; index < GUIDE_SLIDES.length; index += 1) {
+    expect(document.body.textContent).not.toMatch(/左邊|右邊|右側圖示列/);
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+  }
+  first.unmount();
+  render(<Guide open onClose={vi.fn()} phone={false} />);
+  expect(screen.getByText(/左邊「課程搜尋」/)).toBeInTheDocument();
+});
+
+test('every slide stays short', () => {
+  for (const slide of GUIDE_SLIDES) {
+    expect(slide.body.length).toBeLessThanOrEqual(130);
+    expect((slide.phone ?? slide.body).length).toBeLessThanOrEqual(130);
+  }
 });

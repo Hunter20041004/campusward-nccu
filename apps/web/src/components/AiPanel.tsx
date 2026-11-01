@@ -1,8 +1,9 @@
-import { safeExternalUrl, toScheduleCourse, type AiApplyResult, type Change, type Course, type CourseCorrection, type PlannerState, type ScheduleCourse } from '@campusward/engine';
+import { safeExternalUrl, type AiApplyResult, type Change, type Course, type CourseCorrection, type PlannerState, type ScheduleCourse } from '@campusward/engine';
 import { BookOpenText, CalendarDays, Compass, ImageUp, KeyRound, Send, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { GeminiClient } from '../ai/gemini.ts';
-import { aiSearch, planWithAi } from '../ai/orb.ts';
+import { planWithAi } from '../ai/orb.ts';
+import { pickDemoCourse } from '../ai/demo.ts';
 import { AnswerText } from './AnswerText.tsx';
 import { httpSyllabusSource, type SyllabusSource } from '../qa/syllabusSource.ts';
 import { FEATURES, type Features } from '../features.ts';
@@ -213,13 +214,17 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
     setHasKey(false);
   };
 
-  // 示範：不呼叫 AI，播放一份預先寫好的變更方案（從本學期快照挑一門不衝堂的通識），一樣可以復原。
+  // 示範：不呼叫 AI，播放一份預先寫好的變更方案（依官方通識類別，從本學期快照挑一門不衝堂的通識），一樣可以復原。
   const demo = () => {
     if (busy) return;
     setMode('plan');
     say('you', '看示範');
-    const scheduled = new Set(planner.plans.find(({ id }) => id === planner.activePlanId)?.items.map(({ key }) => key));
-    const pick = aiSearch(courses, '通識').map((course) => toScheduleCourse(course).key).find((key) => catalog.has(key) && !scheduled.has(key));
+    const items = planner.plans.find(({ id }) => id === planner.activePlanId)?.items ?? [];
+    const entries = items.flatMap((item) => {
+      const course = catalog.get(item.key);
+      return course ? [{ course, item }] : [];
+    });
+    const pick = pickDemoCourse(courses, catalog, entries);
     if (!pick) {
       reply({ kind: 'answered', answer: '示範：這學期的資料裡找不到可以示範的課。' });
       return;

@@ -1,26 +1,63 @@
 import { ArrowLeft, ArrowRight, CalendarCheck, ClipboardCopy, FileUser, Heart, Layers, Lock, MousePointerClick, Search, SlidersHorizontal, TriangleAlert, Undo2 } from 'lucide-react';
+import { NCCU_PERIODS, formatClock } from '@campusward/engine';
 import { useEffect, useRef, useState } from 'react';
 import { OrbMark } from './OrbMark.tsx';
 
 export interface GuideSlide {
   title: string;
+  /** 桌機的說法（左邊搜課、右側圖示列）。 */
   body: string;
+  /** 手機的說法（底部「搜課／課表／更多」）；沒寫就和桌機相同。 */
+  phone?: string;
   picture: 'search' | 'details' | 'add' | 'block' | 'conflict' | 'backup' | 'conditions' | 'record' | 'orb' | 'register';
 }
 
-/** 使用導覽（2026-11-01 使用者要求涵蓋每個功能）。內容只寫畫面上真的有的功能。 */
+/** 使用導覽（2026-11-01 使用者要求涵蓋每個功能）。內容只寫畫面上真的有的功能；手機與桌機各自講得到的位置，每頁一兩句。 */
 export const GUIDE_SLIDES: GuideSlide[] = [
-  { title: '搜課與多條件搜尋', body: '在左邊「課程搜尋」輸入課名、教師或課號。按「多條件搜尋」可以只看某幾天、早上／中午／下午／晚上，或某個通識類別；結果每頁 25 筆，底下可以換頁或改每頁筆數。', picture: 'search' },
-  { title: '課程詳情與官方資料', body: '點課名展開詳細資料：修課限制、教室、修別、授課語言、考試與活動，還有官方課綱、即時餘額、教師資訊的連結。按「向官方確認最新資料」會只把這門課的課號送到政大公開查詢，看學校有沒有更新。', picture: 'details' },
-  { title: '加入課表、收藏候選', body: '按「加入」放進右邊的模擬課表；按愛心先收藏到候選清單，右側圖示列（手機在「更多」）的「候選」可以看清單、看會不會衝堂，再決定加入課表或移除。匯入全人系統資料後，你已經修過的課會標「已修過」。', picture: 'add' },
-  { title: '在課表上調整一門課', body: '點課表上的方塊：可以鎖定（AI 和移出都不會動它）、標成「已灌檔」或「已選上」、可非同步的課改成非同步上課，或移出課表。手機上可以在「行程」和「方格」兩種看法之間切換。', picture: 'block' },
-  { title: '衝堂與選課規則', body: '時間重疊的課會變成珊瑚紅，提醒寫出是哪兩門。學分上下限（先在「條件」設定年級，課表上方會寫出範圍，例如「共 13 學分（12–25）」）、通識分發上限、同名課只會選上一門等選課須知規則，會附條文出處；規則只提醒、不擋你排課。', picture: 'conflict' },
-  { title: '備案、比較與復原', body: '「＋備案」把目前的課表另存一份，上方可以切換、和另一個方案比較差了哪些課與學分。每次修改後 15 秒內可以按「復原」；一次改動三門以上的課，或小山要拿掉課之前，會先自動另存一份「自動備案」（滿了會先問你）。只移出一門課不會另存，按「復原」就能拿回來。', picture: 'backup' },
-  { title: '條件：身分、資格、偏好', body: '右側圖示列的「條件」：設定學制、年級與加修學系（決定學分上下限）；有修課限制的課會問你符不符合；偏好可以設定想空下來的星期與每週實習天數，系統會算出還能實習幾天。身分與資格只有你能改，AI 不會動。', picture: 'conditions' },
-  { title: '全人系統資料', body: '在「條件」或「畢業缺口」匯入全人系統下載的檔案一次：可以一鍵帶入年級與加修學系、勾選已修過的擋修條件、提醒可能重複修習、搜課標「已修過」，並列出學校畢業審查還缺的課與本學期有開的班。只存在這台瀏覽器、不含分數，不送 AI。', picture: 'record' },
-  { title: '小山', body: '右下角的小山是你的 AI 小助手，隨時可以叫出來；它會跟著你打字、加課、復原做反應，太久沒動會打瞌睡；嫌它會動可以按暫停讓它安靜。在底部輸入框說出需求（例如「週三下午加一門通識，不要早八」），第一次用時小山會問年齡確認與你自己的 Gemini 金鑰，設定好就幫你排；改之前會檢查衝堂、鎖定的課與學分，回覆下方可以直接看課表或復原。上方可以切換問課綱、職涯找課、截圖匯入；沒有金鑰可以看示範、查課綱。', picture: 'orb' },
-  { title: '匯出、登記與隱私', body: '「匯出與資料」可以先預覽、勾選要登記的課，再依序複製課號清單貼到學校選課系統登記、存成手機桌布、匯出或匯入資料檔，也可以一鍵清除這台裝置上的所有資料。Campusward 不是政大官方服務，選課結果以學校系統為準；送出哪些資料寫在「隱私說明」。', picture: 'register' },
+  {
+    title: '搜課與多條件搜尋',
+    body: '在左邊「課程搜尋」輸入課名、教師、課號或系所。「多條件搜尋」可以限定星期、時段、通識類別、系級，或隱藏會衝堂的課；點課表空格也能找那一節的課。',
+    phone: '在底部「搜課」輸入課名、教師、課號或系所。「多條件搜尋」可以限定星期、時段、通識類別、系級，或隱藏會衝堂的課；點課表空格也能找那一節的課。',
+    picture: 'search',
+  },
+  { title: '課程詳情與官方資料', body: '點課名展開詳細資料：修課限制、教室、考試與活動，還有課綱、即時餘額與 Dcard、Google 心得搜尋。「向官方確認最新資料」只把課號送到政大公開查詢。', picture: 'details' },
+  {
+    title: '加入課表、收藏候選',
+    body: '按「加入」放進右邊的模擬課表；按愛心收藏到候選，右側圖示列的「候選」可以比較後再加入。匯入全人系統資料後，修過的課會標「已修過」。',
+    phone: '按「加入」放進底部「課表」；按愛心收藏到候選，「更多」裡的「候選」可以比較後再加入。匯入全人系統資料後，修過的課會標「已修過」。',
+    picture: 'add',
+  },
+  {
+    title: '在課表上調整一門課',
+    body: '點課表上的方塊：看老師、教室與課綱，鎖定、標成「已灌檔／已選上」、移出，或用「換一班」換到不衝堂的同名班。',
+    phone: '在「課表」點一門課：看老師、教室與課綱，鎖定、標成「已灌檔／已選上」、移出，或用「換一班」換到不衝堂的同名班。上方可以切換「行程」和「方格」。',
+    picture: 'block',
+  },
+  { title: '衝堂與選課規則', body: '時間重疊的課變珊瑚紅並寫出是哪兩門。設定年級後，課表上方會寫學分範圍（例如 12–25）；通識上限等規則附選課須知出處，只提醒、不擋你排課。', picture: 'conflict' },
+  { title: '備案、比較與復原', body: '「＋備案」另存目前的課表，可以切換、比較。每次修改 15 秒內可以「復原」；一次改三門以上，或小山要拿掉課之前，會先自動另存一份「自動備案」。', picture: 'backup' },
+  {
+    title: '條件：身分、資格、偏好',
+    body: '右側圖示列的「條件」：設定學制、年級與加修學系（決定學分上下限）、修課限制的資格，以及想空下來的星期與實習天數。這些只有你能改，AI 不會動。',
+    phone: '「更多」裡的「條件」：設定學制、年級與加修學系（決定學分上下限）、修課限制的資格，以及想空下來的星期與實習天數。這些只有你能改，AI 不會動。',
+    picture: 'conditions',
+  },
+  {
+    title: '全人系統資料',
+    body: '在「條件」或「畢業缺口」匯入全人系統檔案一次：帶入年級、標出修過與可能重複修習的課、列出畢業還缺的課。只存在這台瀏覽器、不含分數，不送 AI。',
+    phone: '在「更多」裡的「條件」或「畢業缺口」匯入全人系統檔案一次：帶入年級、標出修過與可能重複修習的課、列出畢業還缺的課。只存在這台瀏覽器、不含分數，不送 AI。',
+    picture: 'record',
+  },
+  { title: '小山', body: '右下角的小山是 AI 小助手：說出需求（例如「週三下午加一門通識」），它用你自己的 Gemini 金鑰幫你排，改之前檢查衝堂與學分，改完可以復原。沒有金鑰也能看示範、查課綱。', picture: 'orb' },
+  {
+    title: '匯出、登記與隱私',
+    body: '「匯出與資料」可以預覽並複製課號清單、存成手機桌布、匯出或清除這台裝置的資料。Campusward 不是政大官方服務，選課以學校系統為準。',
+    phone: '「更多」裡的「匯出與資料」可以預覽並複製課號清單、存成手機桌布、匯出或清除這台裝置的資料。Campusward 不是政大官方服務，選課以學校系統為準。',
+    picture: 'register',
+  },
 ];
+
+/** 手機版面（<768px，底部分頁）用手機的說法。 */
+const isPhone = () => typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches;
 
 const LEGEND: { swatch: string; label: string; note: string }[] = [
   { swatch: 'course-mist', label: '必修課', note: '霧藍方塊；搜課列表左側霧藍色條' },
@@ -68,11 +105,13 @@ function Picture({ kind }: { kind: GuideSlide['picture'] }) {
   );
 }
 
-export function Guide({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function Guide({ open, onClose, phone: phoneProp }: { open: boolean; onClose: () => void; /** 測試用；沒給就依螢幕寬度判斷。 */ phone?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [index, setIndex] = useState(0);
   const [tab, setTab] = useState<'steps' | 'legend'>('steps');
   const slide = GUIDE_SLIDES[index]!;
+  const [phoneNow, setPhoneNow] = useState(isPhone);
+  const phone = phoneProp ?? phoneNow;
   const last = index === GUIDE_SLIDES.length - 1;
 
   useEffect(() => {
@@ -81,6 +120,7 @@ export function Guide({ open, onClose }: { open: boolean; onClose: () => void })
     if (open && !dialog.open) {
       setIndex(0);
       setTab('steps');
+      setPhoneNow(isPhone());
       if (typeof dialog.showModal === 'function') dialog.showModal();
       else dialog.setAttribute('open', '');
     }
@@ -137,6 +177,21 @@ export function Guide({ open, onClose }: { open: boolean; onClose: () => void })
                   </li>
                 ))}
               </ul>
+              {/* 政大節次對照：和課表、搜課結果用同一份節次資料（引擎 NCCU_PERIODS）。 */}
+              <table className="mt-4 w-full text-sm">
+                <caption className="mb-2 text-left font-bold">政大節次與時間</caption>
+                <thead className="sr-only">
+                  <tr><th scope="col">節次</th><th scope="col">時間</th></tr>
+                </thead>
+                <tbody className="well grid grid-cols-2 gap-x-4 rounded-2xl px-3 py-2 sm:grid-cols-4">
+                  {NCCU_PERIODS.map((period) => (
+                    <tr key={period.code} className="flex items-baseline gap-2 py-0.5">
+                      <th scope="row" className="w-4 text-left font-bold">{period.code}</th>
+                      <td className="tabular text-base-content/85">{formatClock(period.start)}–{formatClock(period.end)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
               <div className="mt-4 flex justify-end">
                 <button type="button" className="btn btn-primary min-h-11" onClick={onClose}>開始使用</button>
               </div>
@@ -148,7 +203,7 @@ export function Guide({ open, onClose }: { open: boolean; onClose: () => void })
             <Picture kind={slide.picture} />
           </div>
           <h2 id="guide-title" className="mt-5 text-xl font-bold">{slide.title}</h2>
-          <p className="mt-2 leading-relaxed text-base-content/85">{slide.body}</p>
+          <p className="mt-2 leading-relaxed text-base-content/85">{phone ? slide.phone ?? slide.body : slide.body}</p>
           <div className="mt-4 flex flex-wrap justify-center gap-1" role="group" aria-label="導覽頁面">
             {GUIDE_SLIDES.map((item, dot) => (
               <button

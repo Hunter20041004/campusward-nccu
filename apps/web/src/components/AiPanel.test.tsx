@@ -120,6 +120,18 @@ describe('AiPanel', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  test('the demo finds a general-education course whose title does not say 通識', async () => {
+    const realistic = [courseOf('900001001', '統計學', '一234'), courseOf('900004001', '哲學與人生', '二D56', '人文通識')];
+    const realCatalog = new Map(realistic.map((course) => [toScheduleCourse(course).key, toScheduleCourse(course)]));
+    const planner = createPlannerState();
+    const onApply = vi.fn((changes: Change[]) => applyAiChangeSet(planner, changes, realCatalog, { profile: {} }));
+    setup([], { courses: realistic, catalog: realCatalog, onApply });
+    await userEvent.setup().click(screen.getByRole('button', { name: '看示範' }));
+    expect(onApply).toHaveBeenCalledWith([{ type: 'addToSchedule', key: '1151:900004001' }], '示範：AI 已修改課表');
+    expect(await screen.findByText(/我幫你加了「哲學與人生」/)).toBeInTheDocument();
+    expect(screen.queryByText(/找不到可以示範的課/)).not.toBeInTheDocument();
+  });
+
   test('removes the key', async () => {
     const { user, client } = setup();
     await unlock(user);

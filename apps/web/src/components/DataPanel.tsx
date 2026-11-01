@@ -19,6 +19,8 @@ export interface DataPanelProps {
   limits: { minimum: number; maximum: number } | null;
   /** 預覽裡按「回課表處理」。 */
   onBackToTimetable: () => void;
+  /** 複製課號預覽開關：讓小山的提醒泡泡先讓開。 */
+  onCopyPreview?: (open: boolean) => void;
   now?: () => Date;
 }
 
@@ -35,13 +37,17 @@ function download(name: string, text: string) {
 
 const action = 'btn btn-sm min-h-11 gap-1.5';
 
-export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper, canRestoreImport, onRestoreImport, planName, limits, onBackToTimetable, now = () => new Date() }: DataPanelProps) {
+export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper, canRestoreImport, onRestoreImport, planName, limits, onBackToTimetable, onCopyPreview, now = () => new Date() }: DataPanelProps) {
   const [message, setMessage] = useState('');
   const [preview, setPreview] = useState<Extract<ImportPreview, { valid: true }> | null>(null);
   const [importError, setImportError] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
 
-  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyOpen, setCopyOpenState] = useState(false);
+  const setCopyOpen = (open: boolean) => {
+    setCopyOpenState(open);
+    onCopyPreview?.(open);
+  };
   const copyButton = useRef<HTMLButtonElement>(null);
   const closeCopy = () => {
     setCopyOpen(false);

@@ -164,6 +164,31 @@ test.describe('mobile', () => {
     await expectNoAxeViolations(page);
     await page.screenshot({ path: '.impeccable/review/mobile.png', fullPage: true });
   });
+
+  test('the grid view scrolls inside its own box and keeps the bottom tabs on screen', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    const nav = page.getByRole('navigation', { name: '主要分頁' });
+    await nav.getByRole('button', { name: '搜課' }).click();
+    await addCourse(page, '統計學');
+    await addCourse(page, '會計學');
+    await nav.getByRole('button', { name: '課表' }).click();
+    await page.getByRole('button', { name: '方格' }).click();
+    await expect(page.getByRole('group', { name: '每週課表' })).toBeVisible();
+    for (const width of [375, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0);
+      const box = (await nav.boundingBox())!;
+      expect(box.x).toBe(0);
+      expect(box.width).toBe(width);
+      expect(box.y + box.height).toBeLessThanOrEqual(844);
+      // 方格比螢幕寬時，是方格自己的框可以左右捲，不是整頁。
+      expect(await page.getByRole('group', { name: '每週課表' }).evaluate((grid) => {
+        const box = grid.parentElement!;
+        return box.scrollWidth > box.clientWidth && getComputedStyle(box).overflowX === 'auto';
+      })).toBe(true);
+    }
+  });
 });
 
 test.describe('graduation gaps', () => {
@@ -475,5 +500,128 @@ test.describe('the buddy (小山)', () => {
     expect(await orbEyes(page)).toBe(eyes);
     expect(await orbBody(page)).toBe(body);
     await context.close();
+  });
+});
+
+// 稽核第三批（2026-11-01）：課卡面板（詳細資料、換一班）、小山提醒不擋操作、導覽依裝置換說法。
+/** 元素中心點最上層是不是它自己（沒有被小山按鈕、泡泡或分頁列蓋住）。 */
+const notCovered = (locator: ReturnType<Page['locator']>) => locator.evaluate((element) => {
+  const rect = element.getBoundingClientRect();
+  const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  return rect.bottom <= window.innerHeight && rect.top >= 0 && hit !== null && element.contains(hit) ? 'ok' : `covered by ${hit?.closest('button,[role]')?.getAttribute('aria-label') ?? hit?.textContent?.slice(0, 20)}`;
+});
+
+test.describe('timetable course panel', () => {
+  test('a clashing card opens in view with its details, and swaps to the other section in one undoable step', async ({ page, isMobile }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    const nav = page.getByRole('navigation', { name: '主要分頁' });
+    if (isMobile) await nav.getByRole('button', { name: '搜課' }).click();
+    await addCourse(page, '統計學');
+    await page.getByRole('searchbox', { name: '搜課' }).fill('900006001');
+    await page.getByRole('button', { name: '加入課表：民法概要' }).click();
+    if (isMobile) {
+      await nav.getByRole('button', { name: '課表' }).click();
+      await page.getByRole('list', { name: '每日行程' }).getByRole('button', { name: /民法概要/ }).click();
+    } else {
+      const grid = page.getByRole('group', { name: '每週課表' });
+      // 衝堂並排的兩張卡，課名完整看得到（不被截斷）。
+      for (const title of ['統計學', '民法概要']) {
+        const card = grid.getByRole('button', { name: new RegExp(`${title}.*衝堂`) });
+        expect(await card.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+        await expect(card).toHaveAttribute('title', title);
+      }
+      await grid.getByRole('button', { name: /民法概要.*衝堂/ }).click();
+    }
+    const panel = page.getByRole('group', { name: '民法概要 的操作' });
+    await expect(panel).toContainText('詹範例');
+    await expect(panel).toContainText('法學院101');
+    await expect(panel).toContainText('900006001');
+    await expect(panel.getByRole('link', { name: /在 Dcard 搜尋心得/ })).toHaveAttribute('href', /^https:\/\/www\.dcard\.tw\/search\?query=/);
+    await expect(panel.getByRole('link', { name: /Google 搜尋/ })).toHaveAttribute('rel', 'noopener noreferrer');
+    // 打開面板時小山的提醒泡泡讓開；面板捲進畫面，「換這班」沒被蓋住。
+    await expect(page.getByRole('button', { name: /個衝堂，要我幫忙看看嗎？/ })).toHaveCount(0);
+    // 點了之後面板自己捲進畫面：標題不被頂列、底部分頁列或小山蓋住。
+    await expect.poll(() => notCovered(panel.getByRole('heading', { name: '民法概要' }))).toBe('ok');
+    const swap = panel.getByRole('button', { name: '換這班：吳範例 週四 34' });
+    await swap.scrollIntoViewIfNeeded();
+    await expect.poll(() => notCovered(swap)).toBe('ok');
+    await expectNoAxeViolations(page);
+    if (isMobile) expect(await smallTargets(page)).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0);
+
+    await swap.click();
+    const toast = page.getByRole('status', { name: '最近的修改' });
+    await expect(toast).toContainText('已把「民法概要」換成吳範例 週四 34 那一班');
+    await expect(page.getByRole('group', { name: '方案' }).getByRole('button')).toHaveText(['主方案', '備案']);
+    if (!isMobile) await expect(page.getByRole('group', { name: '每週課表' }).getByRole('button', { name: /衝堂/ })).toHaveCount(0);
+    await toast.getByRole('button', { name: '復原' }).click();
+    if (isMobile) await expect(page.getByRole('list', { name: '每日行程' })).toContainText('衝堂');
+    else await expect(page.getByRole('group', { name: '每週課表' }).getByRole('button', { name: /民法概要.*衝堂/ })).toBeVisible();
+  });
+});
+
+test.describe('the conflict nudge', () => {
+  test('folds into a dot, steps aside for the phone menu, and stays dismissed after a reload', async ({ page, isMobile }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    const nav = page.getByRole('navigation', { name: '主要分頁' });
+    if (isMobile) await nav.getByRole('button', { name: '搜課' }).click();
+    await addCourse(page, '統計學');
+    await addCourse(page, '會計學');
+    const bubble = page.getByRole('button', { name: '有 1 個衝堂，要我幫忙看看嗎？' });
+    await expect(bubble).toBeVisible();
+    if (isMobile) {
+      await nav.getByRole('button', { name: '更多' }).click();
+      await expect(bubble).toHaveCount(0);
+      await expect.poll(() => notCovered(page.getByRole('list', { name: '更多工具' }).getByRole('button', { name: '條件' }))).toBe('ok');
+      await nav.getByRole('button', { name: '更多' }).click();
+      await expect(bubble).toBeVisible();
+    }
+    // 約 8 秒後收成按鈕上的小點。
+    await expect(bubble).toHaveCount(0, { timeout: 12_000 });
+    await expect(page.locator('[data-nudge-dot]')).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    await expect(bubble).toBeVisible();
+    await page.getByRole('button', { name: '不用了，關掉提醒' }).click();
+    await page.reload();
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    await page.waitForTimeout(500);
+    await expect(bubble).toHaveCount(0);
+    await expect(page.locator('[data-nudge-dot]')).toHaveCount(0);
+  });
+
+  test('on a phone, the last 加入 button in a long result list can scroll clear of the 小山 button', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'mobile only');
+    await page.goto('/');
+    await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '搜課' }).click();
+    await page.getByRole('searchbox', { name: '搜課' }).fill('合成');
+    await expect(page.getByRole('article').nth(3)).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const last = page.getByRole('button', { name: /^加入課表：/ }).last();
+    await expect.poll(() => notCovered(last)).toBe('ok');
+  });
+});
+
+test.describe('usage guide wording and periods', () => {
+  test('usage guide speaks about the bottom tabs on a phone and lists the period times', async ({ page, isMobile }) => {
+    await page.goto('/');
+    const guide = page.getByRole('dialog');
+    await expect(guide.getByRole('heading', { name: '搜課與多條件搜尋' })).toBeVisible();
+    if (isMobile) {
+      await expect(guide).toContainText('底部「搜課」');
+      await expect(guide).not.toContainText('左邊');
+    } else {
+      await expect(guide).toContainText('左邊「課程搜尋」');
+    }
+    await guide.getByRole('tab', { name: '圖例' }).click();
+    const periods = guide.getByRole('table', { name: '政大節次與時間' });
+    await expect(periods.getByRole('row')).toHaveCount(17);
+    await expect(periods).toContainText('D13:10–14:00');
+    await expect.poll(() => guide.evaluate((element) => getComputedStyle(element).opacity)).toBe('1');
+    await page.waitForTimeout(300);
+    await expectNoAxeViolations(page);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0);
   });
 });

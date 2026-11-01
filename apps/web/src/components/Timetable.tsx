@@ -1,16 +1,20 @@
 import {
   NCCU_PERIODS,
   buildScheduleAgenda,
+  candidateScheduleSummary,
   formatClock,
   occupiedMeetings,
   periodsForRange,
   type Attendance,
   type Conflict,
+  type Course,
   type PlanItemStatus,
+  type ScheduleCourse,
   type ScheduleEntry,
 } from '@campusward/engine';
-import { CalendarDays, FileUp, LayoutGrid, Lock, Search, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { ArrowLeftRight, CalendarDays, FileUp, LayoutGrid, Lock, Search, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CourseDetails } from './CourseDetails.tsx';
 import { DAY_LABELS } from './labels.ts';
 
 export interface TimetableProps {
@@ -26,6 +30,15 @@ export interface TimetableProps {
   onStatus: (key: string, status: PlanItemStatus) => void;
   onAttendance: (key: string, attendance: Attendance) => void;
   onRemove: (key: string) => void;
+  /** 課表上的課在本學期快照裡的完整資料（老師、教室、課綱連結）；給了就在面板顯示。 */
+  courseOf?: (key: string) => Course | undefined;
+  /** 「換一班」：同課名、換了不會衝堂的其他班（App 用引擎 findOtherSections 算）。 */
+  otherSections?: (key: string) => readonly ScheduleCourse[];
+  onSwap?: (fromKey: string, toKey: string) => void;
+  /** 打開或關掉某門課的面板：讓小山的提醒泡泡先讓開。 */
+  onSelect?: (key: string | null) => void;
+  /** 從外面打開某門課的面板（例如沒有金鑰時按小山的衝堂提醒）；nonce 變了就再打開一次。 */
+  focus?: { key: string; nonce: number } | null;
 }
 
 const DAY_CHARS = ['', '一', '二', '三', '四', '五', '六', '日'];
@@ -63,37 +76,90 @@ function layoutBlocks(entries: readonly ScheduleEntry[], periods: readonly strin
   });
 }
 
-function CourseActions({ entry, onToggleLock, onStatus, onAttendance, onRemove, onClose }: {
+const sectionSchedule = (course: ScheduleCourse) => candidateScheduleSummary(course, DAY_LABELS);
+
+function SwapSections({ entry, sections, onSwap, classroomOf }: { entry: ScheduleEntry; sections: readonly ScheduleCourse[]; onSwap: (fromKey: string, toKey: string) => void; classroomOf: (key: string) => string | undefined }) {
+  return (
+    <section aria-labelledby={`swap-${entry.course.key}`} className="space-y-1.5">
+      <h4 id={`swap-${entry.course.key}`} className="flex items-center gap-1.5 text-sm font-bold">
+        <ArrowLeftRight className="size-4 text-mist-ink" aria-hidden="true" />換一班
+      </h4>
+      {sections.length === 0 ? (
+        <p className="text-sm text-base-content/80">沒有其他不衝堂的同名班。</p>
+      ) : (
+        <ul className="well divide-y divide-base-300 rounded-2xl px-3">
+          {sections.map((section) => {
+            const label = `${section.teacher ?? ''} ${sectionSchedule(section)}`.trim();
+            return (
+              <li key={section.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                <div className="min-w-0 flex-1 basis-40 text-sm">
+                  <p className="font-bold">{section.teacher || '教師未定'}</p>
+                  <p>
+                    {candidateScheduleSummary(section, DAY_LABELS, undefined, { clock: true }).split('・').map((part) => {
+                      const [codes, clock] = part.split('（');
+                      return <span key={part} className="mr-2 inline-block">{codes}{clock && <span className="whitespace-nowrap">（{clock}</span>}</span>;
+                    })}
+                    <span className="inline-block text-xs text-base-content/75">{[classroomOf(section.key), section.code].filter(Boolean).join(' · ')}</span>
+                  </p>
+                </div>
+                <button type="button" className="btn btn-sm min-h-11 gap-1" aria-label={`換這班：${label}`} onClick={() => onSwap(entry.course.key, section.key)}>
+                  <ArrowLeftRight className="size-4" aria-hidden="true" />換這班
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function CourseActions({ entry, details, sections, onSwap, courseOf, onToggleLock, onStatus, onAttendance, onRemove, onClose }: {
   entry: ScheduleEntry;
+  details: Course | undefined;
+  sections: readonly ScheduleCourse[] | undefined;
+  onSwap: TimetableProps['onSwap'];
+  courseOf: TimetableProps['courseOf'];
   onClose: () => void;
 } & Pick<TimetableProps, 'onToggleLock' | 'onStatus' | 'onAttendance' | 'onRemove'>) {
   const { course, item } = entry;
+  const ref = useRef<HTMLDivElement>(null);
+  // 點課卡後把面板捲進畫面（手機底部有分頁列和小山，scroll-margin 留出它們的高度）。
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [course.key]);
   return (
-    <div role="group" aria-label={`${course.title} 的操作`} className="well mt-3 flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3">
-      <p className="w-full text-sm font-medium sm:w-auto sm:flex-1">{course.title}</p>
-      <button type="button" className="btn btn-sm min-h-11 gap-1" aria-pressed={item.locked} onClick={() => onToggleLock(course.key)}>
-        <Lock className="size-4" aria-hidden="true" />
-        {item.locked ? '解鎖' : '鎖定'}
-      </button>
-      <label className="flex items-center gap-2 text-sm">
-        <span>狀態</span>
-        <select className="select select-sm min-h-11 w-auto" value={item.status} onChange={(event) => onStatus(course.key, event.target.value as PlanItemStatus)}>
-          {(Object.keys(STATUS_LABELS) as PlanItemStatus[]).map((status) => <option key={status} value={status}>{STATUS_LABELS[status]}</option>)}
-        </select>
-      </label>
-      {course.delivery.asyncAllowed && (
-        <button type="button" className="btn btn-sm min-h-11" onClick={() => onAttendance(course.key, item.attendance === 'async' ? 'sync' : 'async')}>
-          {item.attendance === 'async' ? '改為同步上課' : '改為非同步上課'}
+    <div ref={ref} role="group" aria-label={`${course.title} 的操作`} className="raised mt-3 scroll-mt-24 scroll-mb-44 space-y-3 rounded-2xl px-4 py-3 md:scroll-mb-6">
+      <div className="flex items-start gap-2">
+        <h3 className="min-w-0 flex-1 break-words pt-2 text-base font-bold leading-snug">{course.title}</h3>
+        <button type="button" className="btn btn-ghost btn-sm min-h-11 min-w-11" aria-label="關閉操作" onClick={onClose}>
+          <X className="size-4" aria-hidden="true" />
         </button>
-      )}
-      {item.locked ? (
-        <span className="text-sm text-base-content/80">已鎖定，解鎖後才能移出</span>
-      ) : (
-        <button type="button" className="btn btn-danger btn-sm min-h-11" onClick={() => onRemove(course.key)}>移出課表</button>
-      )}
-      <button type="button" className="btn btn-ghost btn-sm min-h-11 min-w-11" aria-label="關閉操作" onClick={onClose}>
-        <X className="size-4" aria-hidden="true" />
-      </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className="btn btn-sm min-h-11 gap-1" aria-pressed={item.locked} onClick={() => onToggleLock(course.key)}>
+          <Lock className="size-4" aria-hidden="true" />
+          {item.locked ? '解鎖' : '鎖定'}
+        </button>
+        <label className="flex items-center gap-2 text-sm">
+          <span>狀態</span>
+          <select className="select select-sm min-h-11 w-auto" value={item.status} onChange={(event) => onStatus(course.key, event.target.value as PlanItemStatus)}>
+            {(Object.keys(STATUS_LABELS) as PlanItemStatus[]).map((status) => <option key={status} value={status}>{STATUS_LABELS[status]}</option>)}
+          </select>
+        </label>
+        {course.delivery.asyncAllowed && (
+          <button type="button" className="btn btn-sm min-h-11" onClick={() => onAttendance(course.key, item.attendance === 'async' ? 'sync' : 'async')}>
+            {item.attendance === 'async' ? '改為同步上課' : '改為非同步上課'}
+          </button>
+        )}
+        {item.locked ? (
+          <span className="text-sm text-base-content/80">已鎖定，解鎖後才能移出或換班</span>
+        ) : (
+          <button type="button" className="btn btn-danger btn-sm min-h-11" onClick={() => onRemove(course.key)}>移出課表</button>
+        )}
+      </div>
+      {!item.locked && sections && onSwap && <SwapSections entry={entry} sections={sections} onSwap={onSwap} classroomOf={(key) => courseOf?.(key)?.classroom} />}
+      {details && <CourseDetails course={details} id={`timetable-details-${course.key}`} withBasics />}
     </div>
   );
 }
@@ -121,7 +187,23 @@ function EmptyState({ onStartSearch, onImport }: Pick<TimetableProps, 'onStartSe
 
 export function Timetable(props: TimetableProps) {
   const { entries, conflicts, newKeys } = props;
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelectedState] = useState<string | null>(null);
+  const { onSelect } = props;
+  const setSelected = (key: string | null) => {
+    setSelectedState(key);
+    onSelect?.(key);
+  };
+  const focus = props.focus;
+  useEffect(() => {
+    if (!focus) return;
+    setSelectedState(focus.key);
+    onSelect?.(focus.key);
+  }, [focus, onSelect]);
+  // 面板關掉（例如課被移出、換班）時也告訴外層。
+  const selectedEntry = entries.find(({ course }) => course.key === selected);
+  useEffect(() => {
+    if (selected && !selectedEntry) onSelect?.(null);
+  }, [onSelect, selected, selectedEntry]);
   const [mobileMode, setMobileMode] = useState<'agenda' | 'grid'>('agenda');
   const periods = useMemo(() => visiblePeriods(entries), [entries]);
   const blocks = useMemo(() => layoutBlocks(entries, periods), [entries, periods]);
@@ -132,7 +214,6 @@ export function Timetable(props: TimetableProps) {
   const conflicted = useMemo(() => new Set(conflicts.flatMap(({ courseKeys }) => courseKeys)), [conflicts]);
   const agenda = useMemo(() => buildScheduleAgenda(entries), [entries]);
   const unscheduled = entries.filter((entry) => occupiedMeetings(entry).length === 0);
-  const selectedEntry = entries.find(({ course }) => course.key === selected);
 
   // 名稱由看得到的文字組成（WCAG 2.5.3），星期與衝堂、鎖定等狀態以只給螢幕閱讀器的文字接在後面。
   const blockExtra = (block: Block) => [
@@ -206,6 +287,7 @@ export function Timetable(props: TimetableProps) {
                     type="button"
                     aria-pressed={isSelected}
                     data-conflict={isConflict ? 'true' : undefined}
+                    title={course.title}
                     onClick={() => setSelected(isSelected ? null : course.key)}
                     className={`relative z-10 m-0.5 flex flex-col items-start overflow-hidden rounded-lg px-1.5 py-1 text-left text-xs leading-tight transition-shadow duration-150 ${
                       isConflict ? 'course-conflict' : course.official?.requirementKind === '必修' ? 'course-mist' : 'course-apricot'
@@ -218,7 +300,8 @@ export function Timetable(props: TimetableProps) {
                       marginLeft: `calc(${(100 / block.lanes) * block.lane}% + 0.125rem)`,
                     }}
                   >
-                    <span className="line-clamp-2 font-medium">{course.title}</span>
+                    {/* 並排（衝堂）時欄位很窄：課名照字換行、不截斷，才看得出是哪兩門。 */}
+                    <span className={`font-medium ${block.lanes > 1 ? '[overflow-wrap:anywhere]' : 'line-clamp-2'}`}>{course.title}</span>
                     <span className="mt-0.5 flex flex-wrap items-center gap-1">
                       <span className="tabular">{block.codes}</span>
                       {newKeys.has(course.key) && <span className="rounded-full bg-base-100/90 px-1.5 font-bold text-mist-ink">新</span>}
@@ -276,7 +359,12 @@ export function Timetable(props: TimetableProps) {
 
           {selectedEntry && (
             <CourseActions
+              key={selectedEntry.course.key}
               entry={selectedEntry}
+              details={props.courseOf?.(selectedEntry.course.key)}
+              courseOf={props.courseOf}
+              sections={props.otherSections?.(selectedEntry.course.key)}
+              onSwap={props.onSwap && ((from, to) => { props.onSwap?.(from, to); setSelected(to); })}
               onToggleLock={props.onToggleLock}
               onStatus={props.onStatus}
               onAttendance={props.onAttendance}

@@ -7,6 +7,7 @@ import {
   candidateScheduleSummary,
   findClashes,
   findConflicts,
+  findOtherSections,
   formatCourseEventReminder,
   lockCandidateCourse,
   refreshItems,
@@ -88,6 +89,33 @@ describe('findClashes', () => {
   test('a course that can only be taken asynchronously by default does not clash weekly', () => {
     const flexible = course('y', 'Y', [{ day: 3, start: 970, end: 1080 }], { delivery: ASYNC_DEFAULT });
     expect(findClashes([entry(politics)], flexible)).toEqual([]);
+  });
+});
+
+describe('findOtherSections', () => {
+  const entry = (scheduled: ScheduleCourse) => ({ course: scheduled, item: item(scheduled.key) });
+  const politics = course('1151:042112001', '臺灣政治', [{ day: 3, start: 970, end: 1140 }]);
+  const law = course('1151:000603001', '民法概要', [{ day: 3, start: 970, end: 1080 }]);
+  const lawMonday = course('1151:000603011', '民法概要', [{ day: 1, start: 790, end: 960 }], { teacher: '王老師' });
+  const lawFriday = course('1151:000603021', ' 民法概要 ', [{ day: 5, start: 490, end: 600 }]);
+  const lawSameTime = course('1151:000603031', '民法概要', [{ day: 3, start: 1030, end: 1140 }]);
+  const lawStatsTime = course('1151:000603041', '民法概要', [{ day: 2, start: 490, end: 600 }]);
+  const stats = course('1151:000001001', '統計學', [{ day: 2, start: 490, end: 660 }]);
+  const other = course('1151:000999001', '刑法概要', [{ day: 4, start: 490, end: 600 }]);
+  const catalog = [politics, law, lawSameTime, lawFriday, other, lawMonday, lawStatsTime, stats];
+
+  test('lists other sections with the same title that fit the rest of the plan, earliest first', () => {
+    const plan = [entry(politics), entry(law), entry(stats)];
+    expect(findOtherSections(plan, law.key, catalog).map(({ key }) => key)).toEqual([lawMonday.key, lawFriday.key]);
+  });
+
+  test('ignores the clash with the section being replaced, and skips sections already in the plan', () => {
+    const plan = [entry(law), entry(lawMonday)];
+    expect(findOtherSections(plan, law.key, catalog).map(({ key }) => key)).toEqual([lawStatsTime.key, lawSameTime.key, lawFriday.key]);
+  });
+
+  test('returns nothing for a course that is not in the plan', () => {
+    expect(findOtherSections([entry(politics)], law.key, catalog)).toEqual([]);
   });
 });
 

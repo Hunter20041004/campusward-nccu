@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Conflict, PlanItem, ScheduleCourse, ScheduleEntry } from '@campusward/engine';
+import { rowToCourse, type Conflict, type PlanItem, type ScheduleCourse, type ScheduleEntry } from '@campusward/engine';
+import { officialRow } from '../../../../packages/engine/test/fixtures/synthetic/official-rows.ts';
 import { describe, expect, test, vi } from 'vitest';
 import { Timetable, type TimetableProps } from './Timetable.tsx';
 
@@ -119,6 +120,69 @@ describe('course actions', () => {
     const actions = screen.getByRole('group', { name: '夜間課 的操作' });
     expect(within(actions).queryByRole('button', { name: '移出課表' })).toBeNull();
     expect(actions).toHaveTextContent('已鎖定，解鎖後才能移出');
+  });
+});
+
+describe('course panel', () => {
+  const statsDetails = rowToCourse(officialRow({ subNum: '900001001', subNam: '統計學', teaNam: '陳合成', subTime: '一234', subClassroom: '綜合210' }), { year: 115, semester: 1 }).course!;
+  const otherStats = entry('900001011', '統計學', [{ day: 2, start: 790, end: 960 }]).course;
+  const otherDetails = rowToCourse(officialRow({ subNum: '900001011', subNam: '統計學', teaNam: '林合成', subTime: '二D56', subClassroom: '研究200' }), { year: 115, semester: 1 }).course!;
+  const withDetails = (props: Partial<TimetableProps> = {}) => setup({
+    courseOf: (key) => (key === stats.course.key ? statsDetails : key === otherStats.key ? otherDetails : undefined),
+    otherSections: (key) => (key === stats.course.key ? [{ ...otherStats, teacher: '林合成' }] : []),
+    onSwap: vi.fn(),
+    ...props,
+  });
+
+  test('shows the teacher, classroom, code, credits and official links of the selected course', async () => {
+    const user = userEvent.setup();
+    withDetails();
+    await user.click(within(grid()).getByRole('button', { name: /統計學/ }));
+    const panel = screen.getByRole('group', { name: '統計學 的操作' });
+    expect(within(panel).getByRole('heading', { name: '統計學' })).toBeInTheDocument();
+    for (const text of ['陳合成', '綜合210', '900001001', '3 學分']) expect(panel).toHaveTextContent(text);
+    expect(within(panel).getByRole('link', { name: /課綱/ })).toHaveAttribute('href', expect.stringContaining('newdoc.nccu.edu.tw'));
+  });
+
+  test('offers other sections that fit and swaps with one click', async () => {
+    const user = userEvent.setup();
+    const onSwap = vi.fn();
+    withDetails({ onSwap });
+    await user.click(within(grid()).getByRole('button', { name: /統計學/ }));
+    const swap = screen.getByRole('region', { name: '換一班' });
+    expect(swap).toHaveTextContent('林合成');
+    expect(swap).toHaveTextContent('週二 D56（13:10–16:00）');
+    expect(swap).toHaveTextContent('研究200');
+    await user.click(within(swap).getByRole('button', { name: '換這班：林合成 週二 D56' }));
+    expect(onSwap).toHaveBeenCalledWith(stats.course.key, otherStats.key);
+  });
+
+  test('says when no other section fits, and a locked course cannot be swapped', async () => {
+    const user = userEvent.setup();
+    withDetails();
+    await user.click(within(grid()).getByRole('button', { name: /會計學/ }));
+    expect(screen.getByRole('region', { name: '換一班' })).toHaveTextContent('沒有其他不衝堂的同名班');
+    await user.click(within(grid()).getByRole('button', { name: /夜間課/ }));
+    expect(screen.queryByRole('region', { name: '換一班' })).toBeNull();
+  });
+
+  test('tells the page which course is open so floating hints can step aside', async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    setup({ onSelect });
+    await user.click(within(grid()).getByRole('button', { name: /統計學/ }));
+    expect(onSelect).toHaveBeenLastCalledWith(stats.course.key);
+    await user.click(screen.getByRole('button', { name: '關閉操作' }));
+    expect(onSelect).toHaveBeenLastCalledWith(null);
+  });
+
+  test('clashing cards keep their full title readable', () => {
+    setup();
+    for (const title of ['統計學', '會計學']) {
+      const block = within(grid()).getByRole('button', { name: new RegExp(title) });
+      expect(block).toHaveAttribute('title', expect.stringContaining(title));
+      expect(block.querySelector('.line-clamp-2')).toBeNull();
+    }
   });
 });
 
