@@ -44,6 +44,18 @@ export const POSITIVE_CASES: readonly (readonly [string, string, string])[] = [
   // 金鑰值以拼接產生，避免提交前祕密掃描把合成範例當成真的金鑰。
   ['link_key', `講義 https://drive.google.com/drive/folders/abc?resourcekey=${['0', 'AbCdEfGhIjKlMn'].join('-')} 下載`, `講義 https://drive.google.com/drive/folders/abc?resourcekey=${M} 下載`],
   ['link_key', 'https://example.com/f?id=1&token=xyz123&lang=zh', `https://example.com/f?id=1&token=${M}&lang=zh`],
+  // 獨立審查補的規則（2026-11-01）：Classroom 的加入碼（cjc 參數、「代碼：」）等同門禁密碼。
+  ['link_key', '課程網站 https://classroom.google.com/c/QWxQ0zZ9?cjc=qw3rty7 加入', `課程網站 https://classroom.google.com/c/QWxQ0zZ9?cjc=${M} 加入`],
+  ['classroom_code', '請加入 Google Classroom 課程網站 (代碼: qw3rty7)', `請加入 Google Classroom 課程網站 (代碼: ${M})`],
+  ['classroom_code', '課程邀請碼：ab12cd', `課程邀請碼：${M}`],
+  // 沒有區碼也沒有「電話」標籤的 8 碼市話：前後文提到研究室、影印、聯絡等字時才移除。
+  ['landline_context', '影印店(臺北市測試路一段1號1樓; 27770000, 營業到晚上)', `影印店(臺北市測試路一段1號1樓; ${M}, 營業到晚上)`],
+  ['landline_context', '研究室 2777-0001', `研究室 ${M}`],
+  // 助教（多半是研究生）的姓名緊接在被移除的聯絡方式旁邊時，姓名一起移除。
+  ['ta_name', '有問題可以跟這門課的助教聯絡: 林小魚/ fish.test@nccu.edu.tw (Newest)!', `有問題可以跟這門課的助教聯絡: ${M} (Newest)!`],
+  ['ta_name', '請寄給本課程助教王大明(daming.test@gmail.com)進行報名登記', `請寄給本課程助教${M}進行報名登記`],
+  ['ta_name', '教學助理：陳小華，信箱 hua.test@nccu.edu.tw', `教學助理：${M}`],
+  ['ta_name', 'TA: Amy Test (amy.test@nccu.edu.tw)', `TA: ${M}`],
 ];
 
 /** 沒提到學號時，1[01] 開頭的 9 碼數字多半是課號，保留。 */
@@ -69,4 +81,17 @@ export const NEGATIVE_CASES: readonly string[] = [
   '課程代碼 753001001 與 000211011',
   'https://docs.google.com/document/d/abc/edit?usp=sharing',
   'key=value 是設定檔寫法',
+  // 頁碼、字數、DOI 裡的 8 碼數字不是電話（即使附近有「研究室」）。
+  '研究室推薦閱讀 pp. 2289-2301',
+  '研究室報告 2500-3000 字',
+  '聯絡研究的 doi:10.1000/j.2345-6789',
+  '期中考 20261003 舉行',
+  // 沒提到 Classroom 或加入碼時，「代碼」後面的英數字保留。
+  '科目代碼: 000211011',
+  '課程代碼: ABC1234',
+  // 助教旁邊沒有被移除的聯絡方式時，不動。
+  '助教會在課堂上公布分組名單',
 ];
+
+/** 「助教信箱：〔聯絡資訊已移除〕」的「信箱」不是人名，不能被當成姓名移除。 */
+export const TA_NOT_A_NAME = `助教信箱：${M}`;

@@ -78,11 +78,19 @@ export function weekTable(rows: readonly (readonly string[])[], header = ['週�
   return `<table class="table">${head}<tbody>${rows.map((cells) => `<tr>${cells.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('\n')}</tbody></table>`;
 }
 
-/** 尚未上傳課綱的頁面是 Big5 編碼；這裡用「尚未上傳」的 Big5 位元組組出一頁非 UTF-8 內容。 */
-export function big5NotUploadedPage(): Uint8Array {
+function big5Page(body: readonly number[]): Uint8Array {
   const prefix = new TextEncoder().encode('<html><head><meta charset="big5"></head><body><p>');
-  // 「尚未上傳」的 Big5：A9 7C A5 BC A4 57 B6 C7
-  const body = Uint8Array.from([0xa9, 0x7c, 0xa5, 0xbc, 0xa4, 0x57, 0xb6, 0xc7]);
   const suffix = new TextEncoder().encode('</p></body></html>');
   return Uint8Array.from([...prefix, ...body, ...suffix]);
+}
+
+/** 尚未上傳課綱的頁面是 Big5 編碼，內文是官方的固定字樣「本科目尚無教學大綱上傳」。 */
+export function big5NotUploadedPage(): Uint8Array {
+  // 「本科目尚無教學大綱上傳」的 Big5 位元組
+  return big5Page([0xa5, 0xbb, 0xac, 0xec, 0xa5, 0xd8, 0xa9, 0x7c, 0xb5, 0x4c, 0xb1, 0xd0, 0xbe, 0xc7, 0xa4, 0x6a, 0xba, 0xf5, 0xa4, 0x57, 0xb6, 0xc7]);
+}
+
+/** 其他 Big5 頁（例如維護公告「系統維護中」）：不是「尚未上傳」，不能當成沒有課綱。 */
+export function big5MaintenancePage(): Uint8Array {
+  return big5Page([0xa8, 0x74, 0xb2, 0xce, 0xba, 0xfb, 0xc5, 0x40, 0xa4, 0xa4]);
 }

@@ -28,12 +28,12 @@ export interface CorpusMeta {
   notUploaded: number;
   /** 快照沒有可信任的課綱網址，或官方回 404。 */
   missing: number;
-  /** 重試 3 次仍失敗或超過大小上限。 */
+  /** 重試 3 次仍失敗、超過大小上限，或取得的頁面認不出來（維護頁、錯誤頁）。 */
   failed: number;
   scrubHits: ScrubHits;
 }
 
-export type RecordResult = { status: 'ok'; record: CorpusRecord; hits: ScrubHits } | { status: 'notUploaded' };
+export type RecordResult = { status: 'ok'; record: CorpusRecord; hits: ScrubHits } | { status: 'notUploaded' } | { status: 'unrecognized' };
 
 export function buildRecord(code: string, bytes: Uint8Array): RecordResult {
   const parsed = parseSyllabus(bytes);
@@ -94,13 +94,16 @@ export async function buildCorpus(options: BuildOptions): Promise<{ corpus: stri
     if (page.status === 'missing') missingCount += 1;
     else if (page.status === 'failed') failures.push(`${page.code}：${page.reason}`);
     else {
-      pages += 1;
       if (page.changed) changed += 1;
       const built = buildRecord(page.code, page.bytes);
-      if (built.status === 'ok') {
-        records.push(built.record);
-        scrubHits = addHits(scrubHits, built.hits);
-      } else notUploaded += 1;
+      if (built.status === 'unrecognized') failures.push(`${page.code}：認不出的頁面（不是課綱範本，也不是「尚無教學大綱」公告）`);
+      else {
+        pages += 1;
+        if (built.status === 'ok') {
+          records.push(built.record);
+          scrubHits = addHits(scrubHits, built.hits);
+        } else notUploaded += 1;
+      }
     }
     onPage?.(done, targets.length, { code: page.code, status: page.status, ...(page.status === 'ok' ? { changed: page.changed } : {}) });
   }

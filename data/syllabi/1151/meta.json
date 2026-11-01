@@ -7,16 +7,20 @@
   "missing": 0,
   "failed": 0,
   "scrubHits": {
-    "email": 71,
+    "classroom_code": 3,
+    "email": 79,
     "email_obfuscated": 4,
-    "extension": 5,
-    "landline": 1,
+    "extension": 8,
+    "landline": 4,
+    "landline_context": 2,
     "line": 1,
-    "link_key": 8,
+    "link_key": 11,
     "meeting_link": 4,
+    "mobile": 1,
     "nccu_local": 2,
-    "phone_labelled": 1,
-    "social": 2,
-    "student_id_context": 9
+    "phone_labelled": 5,
+    "social": 5,
+    "student_id_context": 9,
+    "ta_name": 2
   }
 }

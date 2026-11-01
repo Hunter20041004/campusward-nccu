@@ -112,3 +112,26 @@ export function findPersonalContacts(files: SourceFile[]): Violation[] {
       return hits;
     });
 }
+
+// 課綱語料的第二道防線（獨立審查 2026-11-01）：管線去個資只換掉聯絡方式時，助教姓名會留在標記旁邊；
+// Google Classroom 的加入碼（cjc 參數、「代碼：」）等同門禁密碼。這裡獨立比對，不沿用管線的規則。
+const REMOVED = '〔聯絡資訊已移除〕';
+const TA_NAME_PATTERNS = [
+  new RegExp(String.raw`(?:助教|教學助理)[^\n。；;〔〕"]{0,8}?(?!信箱|郵件|電郵|電話|手機|聯絡|聯繫|辦公室|研究室)\p{Script=Han}{2,4}\s*[/:：,，、(（]?\s*${REMOVED}`, 'gu'),
+  new RegExp(String.raw`\b(?:TA|Teaching [Aa]ssistant)s?\s*[:：]?\s*[A-Z][A-Za-z'\-]+(?:[ \-][A-Z][A-Za-z'\-]+){0,3}\s*[/:,(（]?\s*${REMOVED}`, 'gu'),
+];
+const JOIN_CODE_PARAM = /[?&](?:cjc|invite|invite_code)=(?!〔)[A-Za-z0-9]/g;
+const CLASSROOM_MENTION = /classroom|邀請碼|加入碼|class\s*code|join\s*code/i;
+const CLASSROOM_CODE = /(?:代碼|邀請碼|加入碼|課程碼|class\s*code|join\s*code)\s*[:：]?\s*(?!〔)(?=[A-Za-z0-9]{0,7}[A-Za-z])[A-Za-z0-9]{6,8}(?![A-Za-z0-9])/gi;
+
+export function findSyllabusLeaks(files: SourceFile[]): Violation[] {
+  return files
+    .filter((file) => !CONTACT_SKIPPED.test(file.path))
+    .flatMap((file) => [
+      ...TA_NAME_PATTERNS.flatMap((pattern) => scan(file, pattern, 'ta-name', () => '助教姓名緊接在已移除的聯絡方式旁邊')),
+      ...scan(file, JOIN_CODE_PARAM, 'join-code', () => '網址帶課程空間加入碼'),
+      ...file.text.split('\n').flatMap((lineText, index) => (CLASSROOM_MENTION.test(lineText)
+        ? [...lineText.matchAll(CLASSROOM_CODE)].map(() => ({ check: 'join-code', path: file.path, line: index + 1, detail: 'Classroom 加入碼' }))
+        : [])),
+    ]);
+}

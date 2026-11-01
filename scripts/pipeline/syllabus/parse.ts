@@ -21,7 +21,11 @@ export interface SyllabusFields {
   weeklyText: string;
 }
 
-export type ParseResult = { status: 'ok'; fields: SyllabusFields } | { status: 'notUploaded' };
+/**
+ * notUploaded：官方「本科目尚無教學大綱上傳」頁。unrecognized：既不是課綱範本、也不是這個公告（維護頁、錯誤頁），
+ * 呼叫端算成失敗，失敗門檻才擋得住整批壞頁。
+ */
+export type ParseResult = { status: 'ok'; fields: SyllabusFields } | { status: 'notUploaded' } | { status: 'unrecognized' };
 
 const H_DESCRIPTION = '課程簡介';
 const H_OBJECTIVES = '課程目標與學習成效';
@@ -47,26 +51,57 @@ function chineseNumber(text: string): number | null {
   const match = /^([一二三四五六七八九])?(十)?([一二三四五六七八九])?$/.exec(text);
   if (!match || !text) return null;
   const [, tens, ten, ones] = match;
+  // 「一五」「一六」：逐字寫的十位數（只有「一」開頭才當成十幾，避免把「二三」這類詞當成週次）。
+  if (!ten && tens === '一' && ones) return 10 + CN_DIGITS[ones]!;
   if (!ten) return tens && !ones ? CN_DIGITS[tens]! : null;
   return (tens ? CN_DIGITS[tens]! : 1) * 10 + (ones ? CN_DIGITS[ones]! : 0);
 }
 
 const WEEK_ARABIC = /^\s*(?:week|wk\.?|w\.?|session|class|lecture|第)?\s*(\d{1,2})\s*(?:週|周|[.、:：(（)）*]|$|\s)/i;
-const WEEK_CHINESE = /^\s*第?\s*([一二三四五六七八九十]{1,3})\s*(?:週|周)?\s*(?:[.、:：(（]|$|\s)/;
-const NUMERIC_DATE = /^\s*\d{1,2}\s*[/／\-.]\s*\d{1,2}/;
+// 中文週次後面可以直接接日期（「三9/23」「十一11/18」）。
+const WEEK_CHINESE = /^\s*第?\s*([一二三四五六七八九十]{1,3})\s*(?:週|周)?\s*(?:[.、:：(（]|$|\s|(?=\d))/;
+// 「.」前後不能有空白：「1. 9/11」是第 1 週加日期，不是日期。年份可寫在前面（2026/9/8、115/9/10）。
+const NUMERIC_DATE = /^\s*(?:\d{3,4}\s*[/／\-.]\s*)?\d{1,2}(?:\s*[/／-]\s*|\.)\d{1,2}/;
 const MONTH_DATE = /^\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*\d{1,2}(?!\d)/i;
-/** 整格只有日期（可帶星期括號），例如 9/15、10/6(一)。 */
-const DATE_CELL = /^\s*\d{1,2}\s*[/／\-.]\s*\d{1,2}\s*(?:[(（][^)）]*[)）])?\s*$/;
+/** 週次區間（1-7、9-15、1~2、5–6）：取起始週。課綱裡以「-」寫的日期幾乎都用「/」，這種寫法是週次。 */
+const WEEK_RANGE = /^\s*(\d{1,2})\s*[-~～–—]\s*(\d{1,2})\s*$/;
+/** 被排版拆開的兩位數週次（「1 1」＝ 11）。 */
+const SPLIT_WEEK = /^(\d) (\d)$/;
 
-/** 明確寫出的週次（第一週、第1週、Week 2、W.1、Session 3、純數字）；日期不算。 */
+// 整格只有日期：可帶年份（2026/9/8、9/8/2026、115/9/10）、星期括號、區間（9/7~9/10、Sep 07-10、Oct. 27 - Oct. 30）。
+const DATE_SEP = String.raw`(?:\s*[/／-]\s*|\.)`;
+const ONE_DATE = String.raw`(?:(?:\d{2,4}${DATE_SEP})?\d{1,2}${DATE_SEP}\d{1,2}(?:${DATE_SEP}\d{2,4})?`
+  + String.raw`|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?)`
+  + String.raw`(?:\s*[(（][^)）]*[)）])?`;
+const DATE_TAIL = String.raw`(?:\s*(?:[~～\-–—]|to)\s*(?:${ONE_DATE}|\d{1,2}(?:\s*[(（][^)）]*[)）])?))?`;
+const PURE_DATE = new RegExp(String.raw`^\s*${ONE_DATE}${DATE_TAIL}\s*$`, 'i');
+/** 主題欄要跳過的日期格：上面的日期，前面還可以帶週次（(W1) 9/8）。 */
+const DATE_CELL = new RegExp(String.raw`^\s*(?:[(（]?w\d{1,2}[)）]?\s*)?${ONE_DATE}${DATE_TAIL}\s*$`, 'i');
+
+/** 只有單元編號的格子（一、二、3）：不是主題。 */
+const UNIT_CELL = /^\s*[一二三四五六七八九十\d]{1,3}\s*$/;
+
+function weekRange(text: string): number | null {
+  const range = WEEK_RANGE.exec(text);
+  if (!range) return null;
+  const [from, to] = [Number(range[1]), Number(range[2])];
+  return from >= 1 && from <= to && to <= 25 ? from : null;
+}
+
+/** 明確寫出的週次（第一週、第1週、Week 2、W.1、Session 3、純數字、週次區間）；日期不算。 */
 function weekLabel(text: string): number | null {
+  const range = weekRange(text);
+  if (range !== null) return range;
+  if (PURE_DATE.test(text)) return null; // 09.07、9/15 這類整格日期
+  const split = SPLIT_WEEK.exec(text);
+  if (split) return Number(split[1]! + split[2]!);
   const arabic = WEEK_ARABIC.exec(text);
   if (arabic) return Number(arabic[1]);
   const chinese = WEEK_CHINESE.exec(text);
   return chinese ? chineseNumber(chinese[1]!) : null;
 }
 
-const isDate = (text: string) => NUMERIC_DATE.test(text) || MONTH_DATE.test(text);
+const isDate = (text: string) => weekRange(text) === null && (NUMERIC_DATE.test(text) || MONTH_DATE.test(text));
 
 /** 週次欄 → 第幾週；只有日期的列以順序（ordinal）當週次；不是週次回傳 null。 */
 export function weekNumber(cell: string, ordinal: number): number | null {
@@ -142,8 +177,8 @@ function weekRows(table: Element): WeekTopic[] {
       rest = texts.slice(1);
     }
     if (week === null) continue;
-    // 主題欄空白或只是日期時，改用下一欄。
-    const topic = rest.slice(0, 2).find((text) => text && !DATE_CELL.test(text)) ?? '';
+    // 主題欄空白、只是日期或只是單元編號（一、二、3）時，改用後面的欄位（最多看三欄）。
+    const topic = rest.slice(0, 3).find((text) => text && !DATE_CELL.test(text) && !UNIT_CELL.test(text)) ?? '';
     if (topic) rows.push({ week, topic });
   }
   return rows;
@@ -162,14 +197,39 @@ function withNested(table: Element): Element[] {
   return found;
 }
 
-/** 最大的週次表（至少 3 列）。 */
-function bestWeekTable(tables: readonly Element[]): WeekTopic[] {
-  let best: WeekTopic[] = [];
-  for (const table of tables.flatMap(withNested)) {
-    const rows = weekRows(table);
-    if (rows.length >= 3 && rows.length > best.length) best = rows;
+const containsTable = (table: Element) => withNested(table).length > 1;
+
+function isInside(node: Element, ancestor: Element): boolean {
+  for (let parent = node.parent; parent; parent = parent.parent) if (parent === ancestor) return true;
+  return false;
+}
+
+/** 表頭（前兩列）寫明是進度表：週次、日期、Week、Date、Session。 */
+function hasScheduleHeader(table: Element): boolean {
+  return directRows(table).slice(0, 2).some((cells) => cells.some((cell) => /週次|周次|週別|^[週周]$|week|日期|date|堂次|session/i.test(oneLine(cell).normalize('NFKC'))));
+}
+
+/**
+ * 進度表：以最大的週次表（至少 3 列）為主，再併入其他表格裡還沒出現的週次——老師常把進度拆成好幾張表
+ * （從 Word 貼上、每個單元一張）。另一張表的週次大多已出現（例如書目編號）就不併；排版用的外框表不併。
+ */
+function weekSchedule(tables: readonly Element[]): WeekTopic[] {
+  const candidates = tables.flatMap(withNested).map((table) => ({ table, rows: weekRows(table) }));
+  let best: (typeof candidates)[number] | undefined;
+  for (const candidate of candidates) {
+    if (candidate.rows.length >= 3 && candidate.rows.length > (best?.rows.length ?? 0)) best = candidate;
   }
-  return best;
+  if (!best) return [];
+  const covered = new Set(best.rows.map(({ week }) => week));
+  const merged = [...best.rows];
+  for (const { table, rows } of candidates) {
+    if (table === best.table || !rows.length || containsTable(table) || isInside(table, best.table)) continue;
+    const extra = rows.filter(({ week }) => !covered.has(week));
+    if (extra.length * 2 < rows.length) continue;
+    merged.push(...extra);
+    for (const { week } of extra) covered.add(week);
+  }
+  return merged.length === best.rows.length ? merged : merged.sort((a, b) => a.week - b.week);
 }
 
 // ---------- 區塊 ----------
@@ -237,13 +297,16 @@ function collectSections(root: AnyNode): Map<string, Section> {
 // ---------- 主程式 ----------
 
 const decoder = new TextDecoder('utf-8', { fatal: true });
+const big5 = new TextDecoder('big5');
+const NOT_UPLOADED_NOTICE = /尚無教學大綱/;
 
 export function parseSyllabus(bytes: Uint8Array): ParseResult {
   let html: string;
   try {
     html = decoder.decode(bytes);
   } catch {
-    return { status: 'notUploaded' }; // 「尚未上傳」頁是 Big5
+    // 「尚無教學大綱上傳」頁是 Big5；其他非 UTF-8 頁不認得。
+    return NOT_UPLOADED_NOTICE.test(big5.decode(bytes)) ? { status: 'notUploaded' } : { status: 'unrecognized' };
   }
   const $ = cheerio.load(html);
   $('script, style, noscript, template').remove();
@@ -256,7 +319,9 @@ export function parseSyllabus(bytes: Uint8Array): ParseResult {
   removeComments($.root()[0]!);
 
   const sections = collectSections($.root()[0]!);
-  if (!KNOWN.some((name) => sections.has(name)) && !$('#CourseName').length) return { status: 'notUploaded' };
+  if (!KNOWN.some((name) => sections.has(name)) && !$('#CourseName').length) {
+    return NOT_UPLOADED_NOTICE.test($.root().text()) ? { status: 'notUploaded' } : { status: 'unrecognized' };
+  }
 
   const title = [$('#CourseName').first(), $('#CourseNameEn').first()]
     .map((element) => (element.length ? oneLine(element[0]!) : ''))
@@ -271,23 +336,27 @@ export function parseSyllabus(bytes: Uint8Array): ParseResult {
   const grading = section(H_GRADING);
   const weeklySection = section(H_WEEKLY);
 
-  let weekly = bestWeekTable(weeklySection.tables);
-  if (!weekly.length) {
-    const elsewhere = [...sections].filter(([name]) => name !== H_WEEKLY && !NEVER_WEEKLY.test(name)).flatMap(([, { tables }]) => tables);
-    weekly = bestWeekTable(elsewhere);
-  }
+  const ownWeekly = weekSchedule(weeklySection.tables);
+  // 每週區塊沒有週次表時，才到其他區塊找；那裡的表格必須有「週次／日期」表頭，評分配分表、作業清單不算。
+  const weekly = ownWeekly.length ? ownWeekly : weekSchedule(
+    [...sections].filter(([name]) => name !== H_WEEKLY && !NEVER_WEEKLY.test(name)).flatMap(([, { tables }]) => tables).filter(hasScheduleHeader),
+  );
   const join = (prose: string, tables: readonly Element[]) => normalizeText([prose, tableText(tables)].filter(Boolean).join('\n'));
+  // 每週區塊自己的文字一律保留；週次表取自本區塊時，表格內容已在 weekly 裡，不重複。
+  const weeklyText = ownWeekly.length ? weeklySection.prose : join(weeklySection.prose, weeklySection.tables);
+  const description = section(H_DESCRIPTION);
+  const objectives = section(H_OBJECTIVES);
 
   return {
     status: 'ok',
     fields: {
       title,
-      description: section(H_DESCRIPTION).prose,
-      objectives: section(H_OBJECTIVES).prose,
+      description: join(description.prose, description.tables),
+      objectives: join(objectives.prose, objectives.tables),
       grading: join(grading.prose, grading.tables),
       prerequisite,
       weekly,
-      weeklyText: weekly.length ? '' : join(weeklySection.prose, weeklySection.tables),
+      weeklyText,
     },
   };
 }

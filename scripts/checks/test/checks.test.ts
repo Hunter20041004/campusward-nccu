@@ -4,6 +4,7 @@ import {
   findHardcodedTerms,
   findPersonalContacts,
   findStudentIds,
+  findSyllabusLeaks,
   findUnpinnedWorkflows,
   type SourceFile,
 } from '../checks.ts';
@@ -167,4 +168,34 @@ test.each([
   ['(at)', ['teacher', 'nccu.edu.tw'].join('(at)')],
 ])('flags an email written with %s', (_, text) => {
   expect(findPersonalContacts([file('data/syllabi/1151/corpus.jsonl', `信箱 ${text}`)]).map(({ check }) => check)).toEqual(['email']);
+});
+
+// 獨立審查（2026-11-01）：去個資只換掉聯絡方式時，助教姓名還留在標記旁邊；Classroom 加入碼等同門禁密碼。
+// 姓名、加入碼都是虛構的，以拼接產生。
+const MARK = '〔聯絡資訊已移除〕';
+const fakeCode = ['qw3', 'rty7'].join('');
+describe('findSyllabusLeaks', () => {
+  test.each([
+    ['a TA name before a removed contact', `有問題可以跟助教聯絡: ${['林', '小魚'].join('')}/ ${MARK}`],
+    ['a TA name with the contact in brackets', `寄給本課程助教${['王', '大明'].join('')}(${MARK})報名`],
+    ['an English TA name', `TA: ${['Amy', 'Test'].join(' ')} (${MARK})`],
+    ['a Classroom cjc join code', `https://classroom.google.com/c/QWxQ0zZ9?cjc=${fakeCode}`],
+    ['a Classroom code written out', `google classroom 課程網站 (代碼: ${fakeCode})`],
+  ])('flags %s', (_, text) => {
+    expect(findSyllabusLeaks([file('data/syllabi/1151/corpus.jsonl', text)]).map(({ check }) => check)).toHaveLength(1);
+  });
+
+  test.each([
+    `助教聯絡: ${MARK}`,
+    `助教信箱：${MARK}`,
+    `https://classroom.google.com/c/QWxQ0zZ9?cjc=${MARK}`,
+    `google classroom (代碼: ${MARK})`,
+    '科目代碼: 000211011',
+  ])('accepts already-scrubbed text: %s', (text) => {
+    expect(findSyllabusLeaks([file('data/syllabi/1151/corpus.jsonl', text)])).toEqual([]);
+  });
+
+  test('skips synthetic fixtures', () => {
+    expect(findSyllabusLeaks([file('scripts/pipeline/syllabus/test/fixtures/synthetic/contacts.ts', `cjc=${fakeCode}`)])).toEqual([]);
+  });
 });

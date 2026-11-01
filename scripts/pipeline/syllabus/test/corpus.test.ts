@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { buildCorpus, buildRecord, serializeCorpus, type CorpusRecord } from '../corpus.ts';
-import { big5NotUploadedPage, syllabusPage, weekTable } from './fixtures/synthetic/page.ts';
+import { big5MaintenancePage, big5NotUploadedPage, syllabusPage, weekTable } from './fixtures/synthetic/page.ts';
 
 const MARK = '〔聯絡資訊已移除〕';
 const encode = (text: string) => new TextEncoder().encode(text);
@@ -89,5 +89,26 @@ describe('buildCorpus', () => {
     });
     expect(Object.keys(meta)).toEqual(['term', 'fetchedAt', 'pages', 'parsed', 'notUploaded', 'missing', 'failed', 'scrubHits']);
     expect(readFileSync(join(dir, 'cache', '000300001.html')).length).toBeGreaterThan(0);
+  });
+
+  test('maintenance or error pages served with 200 count as failures, not as "not uploaded"', async () => {
+    const pages: Record<string, Uint8Array> = {
+      '000200001': encode(syllabusPage({ titleZh: '甲', weekly: weeks })),
+      '000300001': encode('<html><body><p>系統維護中</p></body></html>'),
+      '000400001': big5MaintenancePage(),
+    };
+    const courses = Object.keys(pages).map((code) => ({ code, links: { syllabus: `https://newdoc.nccu.edu.tw/teaschm/1151/${code}.html` } }));
+    let clock = 0;
+    const { meta, failures } = await buildCorpus({
+      term: '1151',
+      courses,
+      cacheDir: join(dir, 'cache'),
+      fetchedAt: '2026-11-01T00:00:00.000Z',
+      fetchImpl: async (target) => new Response(pages[/(\d{9})\.html$/.exec(target)![1]!]!),
+      now: () => clock,
+      sleep: async (ms) => { clock += ms; },
+    });
+    expect(meta).toMatchObject({ pages: 1, parsed: 1, notUploaded: 0, failed: 2 });
+    expect(failures.map((line) => line.slice(0, 9))).toEqual(['000300001', '000400001']);
   });
 });

@@ -53,3 +53,27 @@ test('keeps weekly prose in the course file but out of the index', () => {
   expect(searchSyllabi(loadSyllabusIndex(built.index), '量子貓')).toEqual([]);
   expect(searchSyllabi(loadSyllabusIndex(built.index), '合成討論課')[0]?.code).toBe('900009001');
 });
+
+// 第三輪審查（2026-11-01）：學科核心詞在大語料裡會變成常見詞；課名不能因此搜不到。
+describe('large corpus pruning', () => {
+  const many = Array.from({ length: 250 }, (_, index) => JSON.stringify({
+    code: `9${String(index).padStart(5, '0')}001`, title: index === 7 ? '統計' : `合成課${index}`,
+    description: '統計方法與資料分析的基礎介紹。', objectives: '', grading: '期末考 50%', prerequisite: '', weekly: [], weeklyText: '', hash: 'e'.repeat(64),
+  })).join('\n');
+  const index = loadSyllabusIndex(buildSyllabusArtifacts(many).index);
+
+  test('still finds a course by a common subject word in its title', () => {
+    expect(searchSyllabi(index, '統計')[0]).toMatchObject({ code: '900007001', section: '課名' });
+  });
+});
+
+describe('question filler', () => {
+  const index = loadSyllabusIndex(buildSyllabusArtifacts([
+    line('900005001', '課程發展', '學習規劃一門課。'),
+    line('900006001', '經濟學', '經濟發展、社會發展、區域發展。'),
+  ].join('\n')).index);
+
+  test('keeps topic words that only look like filler in the middle of a question', () => {
+    expect(searchSyllabi(index, '有教課程發展的課嗎？')[0]?.code).toBe('900005001');
+  });
+});

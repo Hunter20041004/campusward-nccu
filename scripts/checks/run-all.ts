@@ -5,6 +5,7 @@ import {
   findHardcodedTerms,
   findPersonalContacts,
   findStudentIds,
+  findSyllabusLeaks,
   findUnpinnedWorkflows,
   type SourceFile,
 } from './checks.ts';
@@ -31,6 +32,7 @@ const violations = [
   ...findUnpinnedWorkflows(files),
   ...findBrandViolations(files),
   ...findPersonalContacts(files),
+  ...findSyllabusLeaks(files),
 ];
 
 for (const v of violations) console.error(`${v.path}:${v.line} [${v.check}] ${v.detail}`);

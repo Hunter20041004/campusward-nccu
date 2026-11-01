@@ -2,14 +2,13 @@
 // 讀 data/snapshots/<學期>/courses.json，寫 data/syllabi/<學期>/corpus.jsonl 與 meta.json；
 // 原始頁只放 .cache/syllabi/<學期>/（不進版控）。每秒最多 1 個請求，全校約 2,900 頁需時約 50 分鐘。
 // 加 --offline 只用快取重建（改了解析或去個資規則後用），不送任何請求，抓取時間沿用上一版。
+// 失敗太多或寫入門數比上一版少太多時不覆蓋（guard.ts）；被換掉的快取頁留在 <課號>.prev.html，改回原檔名即可離線重建。
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildCorpus, serializeMeta } from './corpus.ts';
+import { buildCorpus, serializeMeta, type CorpusMeta } from './corpus.ts';
 import type { CourseLinks } from './fetch.ts';
-
-/** 失敗超過這個比例就不覆蓋上一版。 */
-const MAX_FAILED_RATIO = 0.02;
+import { writeBlocker } from './guard.ts';
 
 const termIndex = process.argv.indexOf('--term');
 const term = termIndex >= 0 ? process.argv[termIndex + 1] : undefined;
@@ -26,7 +25,8 @@ if (!existsSync(snapshotPath)) {
 const offline = process.argv.includes('--offline');
 const dir = join('data', 'syllabi', term);
 const metaPath = join(dir, 'meta.json');
-const previousFetchedAt = existsSync(metaPath) ? (JSON.parse(readFileSync(metaPath, 'utf8')) as { fetchedAt?: string }).fetchedAt : undefined;
+const previous = existsSync(metaPath) ? (JSON.parse(readFileSync(metaPath, 'utf8')) as Partial<CorpusMeta>) : undefined;
+const previousFetchedAt = previous?.fetchedAt;
 if (offline && !previousFetchedAt) {
   console.error('離線重建需要上一版 meta.json 的抓取時間，請先完整抓一次。');
   process.exit(1);
@@ -49,8 +49,9 @@ const { corpus, meta, failures, changed } = await buildCorpus({
 });
 
 if (failures.length) console.warn(`抓取失敗 ${failures.length} 頁：\n${failures.join('\n')}`);
-if (meta.failed > courses.length * MAX_FAILED_RATIO) {
-  console.error(`失敗 ${meta.failed} 頁超過 ${MAX_FAILED_RATIO * 100}%，保留上一版語料。`);
+const blocker = writeBlocker(meta, courses.length, typeof previous?.parsed === 'number' ? { parsed: previous.parsed } : undefined);
+if (blocker) {
+  console.error(blocker);
   process.exit(1);
 }
 

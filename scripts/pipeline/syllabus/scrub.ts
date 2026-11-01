@@ -43,8 +43,27 @@ const ADJACENT_MARKS = new RegExp(`(?:${escaped}[\\s,;，；、/]*){2,}`, 'gu');
  * 只把金鑰值換掉，網址其餘部分保留。
  */
 export const EXTRA_RULES: readonly (readonly [string, RegExp])[] = Object.freeze([
-  rule('link_key', String.raw`(?<=[?&](?:resourcekey|token|access_token|pwd|passcode|sig|key)=)(?!〔)[^&\s<>"'）)」]+`),
+  // cjc／invite：Google Classroom 等課程空間的加入碼（獨立審查 2026-11-01 補）。
+  rule('link_key', String.raw`(?<=[?&](?:resourcekey|token|access_token|pwd|passcode|sig|key|cjc|invite|invite_code)=)(?!〔)[^&\s<>"'）)」]+`),
+  // 沒有區碼也沒有標籤的 8 碼台北市話（2[2-9] 開頭）。只在前面 30 字內提到電話、研究室、影印、聯絡等字時才移除，
+  // 頁碼（pp. 2289-2301）、字數（2500-3000 字）、DOI（.2345-6789）、日期（20261003）都不動。
+  rule('landline_context',
+    String.raw`(?<=(?:電話|tel|phone|聯絡|聯繫|研究室|辦公室|影印|傳真|fax|總機|撥打|call)[^\n。]{0,30}?)`,
+    String.raw`(?<![\d\-./]|pp?\.\s?)2[2-9]\d{2}[\s\-]?\d{4}(?![\d\-]|\s*(?:字|頁|words?|pages?))`),
+  // 助教（多半是研究生）的姓名緊接在已移除的聯絡方式旁邊時，連同姓名換成一個標記（聯絡方式已在前面換成標記）。
+  // 「信箱、電話」這類詞不是姓名；英文名須大寫開頭，所以這條不加 i 旗標。
+  ['ta_name', new RegExp([
+    String.raw`(?:(?<=(?:助教|教學助理)[^\n。；;〔〕]{0,8}?)(?!信箱|郵件|電郵|電話|手機|聯絡|聯繫|辦公室|研究室|專線|分機|帳號)\p{Script=Han}{2,4}(?:同學|先生|小姐)?`,
+    String.raw`|(?<=\b(?:TA|T\.A\.|Teaching [Aa]ssistant)s?\s*[:：]?\s*)[A-Z][A-Za-z'\-]+(?:[ \-][A-Z][A-Za-z'\-]+){0,3})`,
+    String.raw`(?=\s*(?:[/:：,，、]\s*)?(?:(?:信箱|電子郵件|[Ee]-?mail|電話|手機|聯絡方式)\s*[:：]?\s*)?[(（]?\s*${MARK})`,
+    String.raw`\s*(?:[/:：,，、]\s*)?(?:(?:信箱|電子郵件|[Ee]-?mail|電話|手機|聯絡方式)\s*[:：]?\s*)?(?:[(（]\s*${MARK}\s*[)）]?|${MARK})`,
+  ].join(''), 'gu')],
 ]);
+
+/** Classroom 的「代碼：〈加入碼〉」：同一段文字提到 Classroom 或加入碼時才移除，避免誤刪一般的課程代碼。 */
+export const CLASSROOM_CODE_RULE = 'classroom_code';
+const CLASSROOM_MENTION = /classroom|邀請碼|加入碼|class\s*code|join\s*code/iu;
+const CLASSROOM_CODE = /(?<=(?:代碼|邀請碼|加入碼|課程碼|class\s*code|join\s*code)\s*[:：]?\s*)(?!〔)(?=[a-z0-9]{0,7}[a-z])[a-z0-9]{6,8}(?![a-z0-9])/giu;
 
 export const STUDENT_ID_CONTEXT_RULE = 'student_id_context';
 const STUDENT_ID_MENTION = /學號|student\s*(?:id|no\.?|number)/iu;
@@ -63,6 +82,11 @@ export function scrub(input: string): { text: string; hits: ScrubHits } {
   }
   // 參考規則之外補的一條（115-1 實跑發現）：老師舉例檔名時會裸寫學號（「學號(如1xxxxxxxx王小魚.xlsx)」），
   // 前面沒有緊接標籤，student_id 抓不到。只在同一段文字提到學號時才移除，避免誤刪 1[01] 開頭的課號。
+  if (CLASSROOM_MENTION.test(input)) {
+    let count = 0;
+    text = text.replace(CLASSROOM_CODE, () => { count += 1; return MARK; });
+    if (count) hits[CLASSROOM_CODE_RULE] = count;
+  }
   if (STUDENT_ID_MENTION.test(input)) {
     let count = 0;
     text = text.replace(BARE_STUDENT_ID, () => { count += 1; return MARK; });

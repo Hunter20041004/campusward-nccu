@@ -1,4 +1,4 @@
-// 課綱問答驗收（計畫 4.5）：30 題，每題的「相關課程」由語料本身的條件決定（課名或指定欄位含關鍵詞），
+// 課綱問答驗收（計畫 4.5）：34 題，每題的「相關課程」由語料本身的條件決定（課名或指定欄位含關鍵詞），
 // 不靠人工判分。量前 5 門課裡有沒有相關的課（命中率），以及前 5 門裡相關課的比例（準確率）。
 // npx tsx scripts/verification/syllabus-recall.ts
 import { readFileSync } from 'node:fs';
@@ -37,6 +37,11 @@ const QUESTIONS: { question: string; phrase: string; fields: Field[] }[] = [
   ['田野調查', '田野', ['description', 'objectives', 'weekly']],
   ['使用 R 語言', 'r 語言', ['description', 'objectives', 'weekly']],
   ['個案討論教學', '個案', ['description', 'objectives']],
+  // 第三輪審查補：單一學科詞與句中像填充詞的主題詞，以課名判定。
+  ['統計學', '統計', ['title']],
+  ['哲學', '哲學', ['title']],
+  ['心理學', '心理', ['title']],
+  ['有教課程設計的課嗎', '課程設計', ['title', 'description', 'objectives']],
 ].map(([question, phrase, fields]) => ({ question: question as string, phrase: phrase as string, fields: fields as Field[] }));
 
 const text = (entry: SyllabusEntry, field: Field) => (field === 'weekly' ? entry.weekly.map(({ topic }) => topic).join(' ') : entry[field]).normalize('NFKC').toLowerCase();

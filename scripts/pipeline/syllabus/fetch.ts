@@ -4,7 +4,7 @@
 // 「有沒有變」以內容 sha256 判斷，不信任伺服器的 ETag。
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { trustedNccuUrl } from '../../../packages/engine/src/index.ts';
 
@@ -112,8 +112,23 @@ function readCache(cacheDir: string, target: Target): Cached | null {
   }
 }
 
+/**
+ * 寫入快取前，先把內容不同的舊頁留一份在 <課號>.prev.html／.prev.json：官方站整批回 404 或維護頁時，
+ * 語料門檻會擋下寫入，但快取已被換掉；有這份備份，把 .prev 改回原檔名就能離線重建。
+ */
+function keepPrevious(cacheDir: string, code: string, newHash?: string) {
+  const htmlPath = join(cacheDir, `${code}.html`);
+  const metaPath = join(cacheDir, `${code}.json`);
+  if (!existsSync(htmlPath) || !existsSync(metaPath)) return;
+  const bytes = readFileSync(htmlPath);
+  if (newHash && sha256(bytes) === newHash) return;
+  copyFileSync(htmlPath, join(cacheDir, `${code}.prev.html`));
+  copyFileSync(metaPath, join(cacheDir, `${code}.prev.json`));
+}
+
 function writeCache(cacheDir: string, code: string, entry: CacheEntry, bytes?: Uint8Array) {
   const htmlPath = join(cacheDir, `${code}.html`);
+  keepPrevious(cacheDir, code, 'sha256' in entry ? entry.sha256 : undefined);
   if (bytes) writeFileSync(htmlPath, bytes);
   else rmSync(htmlPath, { force: true });
   writeFileSync(join(cacheDir, `${code}.json`), `${JSON.stringify(entry)}\n`);

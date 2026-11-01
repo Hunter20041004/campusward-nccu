@@ -12,11 +12,14 @@ export interface SyllabusHit {
   score: number;
 }
 
-// 問句的填充詞（「哪些課」「有教…的課嗎」）會比對到大量段落、蓋過真正的關鍵詞，查詢前去掉。
-const FILLER = /哪些|哪一?門|什麼|有沒有|有教|想學|想要|有關|相關|的課程?|課程|課嗎|的課|嗎|呢|[?？。，,！!]/g;
+// 問句的填充詞（「哪些課」「有教…的課嗎」）會比對到大量段落、蓋過真正的關鍵詞。只在句首、句尾去掉，
+// 句中的「課程」「相關」可能是主題詞（課程發展、相關分析），不動。
+const LEADING = /^(?:請問|我想|想要|想學|有沒有|有教|有|哪些|哪一?門|什麼)+/;
+const TRAILING = /(?:的課程|的課|課程|相關的課|課嗎|嗎|呢|有哪些)+$/;
 
 export function searchSyllabi(index: SyllabusIndex, query: string, limit = 20): SyllabusHit[] {
-  const cleaned = query.normalize('NFKC').replace(FILLER, ' ').trim() || query;
+  const trimmed = query.normalize('NFKC').replace(/[?？。，,！!\s]+$/u, '').trim();
+  const cleaned = trimmed.replace(LEADING, '').replace(TRAILING, '').trim() || trimmed || query;
   if (!tokenizeForSearch(cleaned).length) return [];
   return index.search.search(cleaned, { combineWith: 'OR' }).slice(0, limit).flatMap((result) => {
     const id = Number(result.id);

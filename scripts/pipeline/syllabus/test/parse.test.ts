@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { parseSyllabus, weekNumber, type SyllabusFields } from '../parse.ts';
-import { big5NotUploadedPage, syllabusPage, weekTable, type PageOptions } from './fixtures/synthetic/page.ts';
+import { big5MaintenancePage, big5NotUploadedPage, syllabusPage, weekTable, type PageOptions } from './fixtures/synthetic/page.ts';
 
 const encode = (html: string) => new TextEncoder().encode(html);
 
@@ -25,6 +25,21 @@ describe('weekNumber', () => {
     expect(weekNumber('10／06（一）', 4)).toBe(4);
     expect(weekNumber('Sep. 16', 2)).toBe(2);
     expect(weekNumber('Oct 7', 5)).toBe(5);
+  });
+
+  // 獨立審查（2026-11-01）找到的寫法：MM.DD 日期不是週次、週次區間取起始週、「1. 9/11」是第 1 週、
+  // 被空白拆開的「1 1」是 11、中文週次後面直接接日期。
+  test.each([
+    ['1-7', 1], ['9-15', 9], ['13 - 15', 13], ['1~2', 1], ['5–6', 5], ['1. 9/11', 1], ['1 1', 11], ['1 4', 14],
+    ['三9/23', 3], ['十一11/18', 11], ['一五 12/16', 15],
+  ])('%s → %i', (cell, expected) => {
+    expect(weekNumber(cell, 99)).toBe(expected);
+  });
+
+  test('MM.DD dates take their position instead of being read as a week', () => {
+    expect(weekNumber('09.07', 1)).toBe(1);
+    expect(weekNumber('09.14', 2)).toBe(2);
+    expect(weekNumber('10.05(一)', 5)).toBe(5);
   });
 
   test.each(['週次', 'Week', '人文關懷課程', '', '週一', '期中考'])('not a week: %s', (cell) => {
@@ -122,7 +137,7 @@ describe('parseSyllabus', () => {
   test('looks for a week table in another section, but never the bibliography', () => {
     const elsewhere = parsed({ weekly: '<p>詳見下方</p>', teaching: weekTable(sixteenWeeks) });
     expect(elsewhere.weekly).toHaveLength(16);
-    expect(elsewhere.weeklyText).toBe('');
+    expect(elsewhere.weeklyText).toBe('詳見下方'); // 每週區塊自己的文字一律保留（獨立審查 2026-11-01）
     const bibliography = parsed({ weekly: '<p>詳見書目</p>', bibliography: weekTable(sixteenWeeks) });
     expect(bibliography.weekly).toEqual([]);
     expect(bibliography.weeklyText).toBe('詳見書目');
@@ -130,13 +145,89 @@ describe('parseSyllabus', () => {
     expect(officeHours.weekly).toEqual([]);
   });
 
+  test('keeps a description or objectives written inside a table', () => {
+    const fields = parsed({
+      description: '<p>前言。</p><table><tr><td>一、本課程介紹測試的觀念</td></tr><tr><td>二、以實作練習</td></tr></table>',
+      objectives: '<table><tr><td>目標</td><td>能寫出可重現的測試</td></tr></table>',
+    });
+    expect(fields.description).toBe('前言。\n一、本課程介紹測試的觀念\n二、以實作練習');
+    expect(fields.objectives).toBe('目標 | 能寫出可重現的測試');
+  });
+
+  test('skips a topic cell that is a date with a year, a date range or a month range', () => {
+    const rows = [
+      ['1', '2030/9/8', '導論'], ['2', '9/15/2030', '方法'], ['3', '119/9/22', '實作'], ['4', '9/29~10/2', '討論'],
+      ['5', 'Oct 06-09', '報告'], ['6', '10/13-10/16', '期中考'], ['7', '(W7) 10/20', '回饋'], ['8', 'Oct. 27 - Oct. 30', '總結'],
+    ];
+    expect(parsed({ weekly: weekTable(rows, ['週次', '日期', '主題']) }).weekly.map(({ topic }) => topic))
+      .toEqual(['導論', '方法', '實作', '討論', '報告', '期中考', '回饋', '總結']);
+  });
+
+  test('skips a date and then a unit-number column to reach the topic', () => {
+    const rows = [['1', '119/9/10', '一', '導論'], ['2', '119/9/17', '一', '方法'], ['3', '119/9/24', '二', '實作']];
+    expect(parsed({ weekly: weekTable(rows, ['週次', '日期', '單元', '主題']) }).weekly.map(({ topic }) => topic)).toEqual(['導論', '方法', '實作']);
+  });
+
+  test('joins a schedule split over several tables, without repeating weeks', () => {
+    const part = (from: number, to: number) => weekTable(Array.from({ length: to - from + 1 }, (_, index) => [`${from + index}`, `單元 ${from + index}`]));
+    const split = parsed({ weekly: `<p>單元一</p>${part(1, 4)}<p>單元二</p>${part(5, 9)}${part(10, 14)}${part(15, 18)}` });
+    expect(split.weekly.map(({ week }) => week)).toEqual(Array.from({ length: 18 }, (_, index) => index + 1));
+    const withSingle = parsed({ weekly: `${part(1, 5)}${part(6, 8)}${part(9, 9)}${part(11, 13)}` });
+    expect(withSingle.weekly.map(({ week }) => week)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13]);
+    const modules = parsed({ weekly: `${part(1, 5)}${part(6, 8)}${part(9, 13)}${part(14, 17)}` });
+    expect(modules.weekly).toHaveLength(17);
+    expect(modules.weekly[16]).toEqual({ week: 17, topic: '單元 17' });
+  });
+
+  test('reads Chinese week numbers written right before the date', () => {
+    const rows = ['一 9/9', '二 9/16', '三9/23', '四9/30', '十一11/18', '一五 12/16'].map((cell, index) => [cell, `主題${index}`]);
+    expect(parsed({ weekly: weekTable(rows) }).weekly.map(({ week }) => week)).toEqual([1, 2, 3, 4, 11, 15]);
+  });
+
+  test('a week cell like "1. 9/11" keeps its topic', () => {
+    const rows = [['1. 9/11', 'Lecture 0: 基本介紹'], ['2. 9/18', 'Lecture 1: 資料'], ['3. 9/25', 'Lecture 2: 圖表']];
+    expect(parsed({ weekly: weekTable(rows, ['週次', '主題']) }).weekly).toEqual([
+      { week: 1, topic: 'Lecture 0: 基本介紹' }, { week: 2, topic: 'Lecture 1: 資料' }, { week: 3, topic: 'Lecture 2: 圖表' },
+    ]);
+  });
+
+  test('weeks written as ranges or as MM.DD dates are numbered correctly', () => {
+    const ranges = parsed({ weekly: weekTable([['1-7', '第一部分'], ['8', '期中考'], ['9-15', '第二部分'], ['16', '期末考']]) });
+    expect(ranges.weekly.map(({ week }) => week)).toEqual([1, 8, 9, 16]);
+    const dots = parsed({ weekly: weekTable([['09.07', '導論'], ['09.14', '方法'], ['09.21', '實作'], ['09.28', '放假']], ['日期', '主題']) });
+    expect(dots.weekly.map(({ week }) => week)).toEqual([1, 2, 3, 4]);
+  });
+
+  test('never takes a grading table from another section as the schedule, and keeps the weekly prose', () => {
+    const grading = `<table><tr><td>項目</td><td>配分</td></tr><tr><td>1</td><td>作業一 10%</td></tr><tr><td>2</td><td>作業二 15%</td></tr>
+      <tr><td>3</td><td>期中報告 30%</td></tr><tr><td>4</td><td>期末報告 45%</td></tr></table>`;
+    const fields = parsed({ weekly: '<p>9/8 第一章 導論<br>9/15 第二章 方法<br>9/22 第三章 實作</p>', grading });
+    expect(fields.weekly).toEqual([]);
+    expect(fields.weeklyText).toBe('9/8 第一章 導論\n9/15 第二章 方法\n9/22 第三章 實作');
+    const objectivesSchedule = parsed({ weekly: '<p>第8週為期中考。</p>', objectives: `<p>以下為進度：</p>${weekTable(sixteenWeeks)}` });
+    expect(objectivesSchedule.weekly).toHaveLength(16);
+    expect(objectivesSchedule.weeklyText).toBe('第8週為期中考。');
+  });
+
+  test('keeps the weekly prose next to the week table', () => {
+    const fields = parsed({ weekly: `<p>進度依實際情況調整。</p>${weekTable(sixteenWeeks)}` });
+    expect(fields.weekly).toHaveLength(16);
+    expect(fields.weeklyText).toBe('進度依實際情況調整。');
+  });
+
   test('normalises full-width characters and whitespace', () => {
     const fields = parsed({ description: '<p>ＡＢＣ　１２３&nbsp;&nbsp;課程</p>\n\n\n<p>  下一段 </p>' });
     expect(fields.description).toBe('ABC 123 課程\n下一段');
   });
 
-  test('Big5 pages (not uploaded yet) and pages without the template are not uploaded', () => {
+  test('only the official notice counts as not uploaded', () => {
     expect(parseSyllabus(big5NotUploadedPage())).toEqual({ status: 'notUploaded' });
-    expect(parseSyllabus(encode('<html><body><p>系統維護中</p></body></html>'))).toEqual({ status: 'notUploaded' });
+    expect(parseSyllabus(encode('<html><body><p>目前本系統沒有說明文件 ‧本科目尚無教學大綱上傳</p></body></html>'))).toEqual({ status: 'notUploaded' });
+  });
+
+  test('a maintenance or error page is unrecognized, not "not uploaded"', () => {
+    expect(parseSyllabus(encode('<html><body><p>系統維護中</p></body></html>'))).toEqual({ status: 'unrecognized' });
+    expect(parseSyllabus(big5MaintenancePage())).toEqual({ status: 'unrecognized' });
+    expect(parseSyllabus(encode(''))).toEqual({ status: 'unrecognized' });
   });
 });

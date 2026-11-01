@@ -161,6 +161,32 @@ describe('fetchSyllabusPages', () => {
     expect(result).toMatchObject({ status: 'ok', changed: true });
   });
 
+  test('a page that turns 404 or changes keeps the previous copy next to it', async () => {
+    let served: Served = { body: html('v1') };
+    const server = fakeServer(() => served);
+    const run = () => collect(fetchSyllabusPages({ targets: [{ code: 'a', url: url('a') }], cacheDir, ...server.options }));
+    await run();
+    expect(existsSync(join(cacheDir, 'a.prev.html'))).toBe(false);
+
+    served = { status: 404 };
+    expect((await run())[0]).toEqual({ code: 'a', status: 'missing' });
+    expect(readFileSync(join(cacheDir, 'a.prev.html'), 'utf8')).toBe(html('v1'));
+    expect(JSON.parse(readFileSync(join(cacheDir, 'a.prev.json'), 'utf8'))).toMatchObject({ url: url('a'), sha256: expect.any(String) });
+
+    served = { body: html('v2') };
+    await run();
+    expect(readFileSync(join(cacheDir, 'a.prev.html'), 'utf8')).toBe(html('v1')); // 404 那次沒有頁面可備份
+
+    served = { body: html('v2') };
+    await run();
+    expect(readFileSync(join(cacheDir, 'a.prev.html'), 'utf8')).toBe(html('v1')); // 內容沒變不換備份
+
+    served = { body: html('maintenance') };
+    await run();
+    expect(readFileSync(join(cacheDir, 'a.prev.html'), 'utf8')).toBe(html('v2'));
+    expect(readFileSync(join(cacheDir, 'a.html'), 'utf8')).toBe(html('maintenance'));
+  });
+
   test('a cached page for a different address is not reused', async () => {
     const server = fakeServer(() => ({ body: html('page'), headers: { etag: '"same"' } }));
     await collect(fetchSyllabusPages({ targets: [{ code: 'a', url: url('a') }], cacheDir, ...server.options }));
