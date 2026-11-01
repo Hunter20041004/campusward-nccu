@@ -6,6 +6,7 @@ import { MobileNav, type MobileView } from './components/MobileNav.tsx';
 import { ConditionsPanel } from './components/ConditionsPanel.tsx';
 import { ConfirmDialog } from './components/ConfirmDialog.tsx';
 import { DataPanel } from './components/DataPanel.tsx';
+import { GraduationPanel } from './components/GraduationPanel.tsx';
 import { PlanBar } from './components/PlanBar.tsx';
 import { RulesPanel } from './components/RulesPanel.tsx';
 import { SearchPanel } from './components/SearchPanel.tsx';
@@ -136,6 +137,18 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
                       URL.revokeObjectURL(url);
                     });
                   }}
+                />
+              )}
+              {ready && (
+                <GraduationPanel
+                  courses={courses}
+                  entries={planner.entries}
+                  candidateKeys={candidateKeys}
+                  scheduledKeys={scheduledKeys}
+                  profile={planner.profile}
+                  credits={planner.credits}
+                  onCandidate={(course) => applyChange([{ type: 'addCandidate', key: keyOf(course) }], `已放進候選「${course.title}」`)}
+                  onProfile={planner.setProfile}
                 />
               )}
             </div>

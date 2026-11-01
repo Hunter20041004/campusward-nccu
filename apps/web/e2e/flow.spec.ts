@@ -112,3 +112,21 @@ test.describe('mobile', () => {
     await page.screenshot({ path: '.impeccable/review/mobile.png', fullPage: true });
   });
 });
+
+test.describe('graduation gaps', () => {
+  test.skip(({ isMobile }) => isMobile, 'desktop only');
+
+  test('reads the school audit from a synthetic export without sending anything', async ({ page }) => {
+    const requests: string[] = [];
+    page.on('request', (request) => requests.push(request.url()));
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    await page.getByLabel('上傳全人系統匯出檔').setInputFiles('packages/engine/test/fixtures/synthetic/student-export.json');
+    await expect(page.getByText(/學校審查資料日期 2026-10-26/)).toBeVisible();
+    await expect(page.getByText(/體育欠 1 門/)).toBeVisible();
+    await expectNoAxeViolations(page);
+    expect(requests.filter((url) => !url.startsWith('http://localhost:5174/'))).toEqual([]);
+    await page.reload();
+    await expect(page.getByText(/學校審查資料日期/)).toHaveCount(0);
+  });
+});
