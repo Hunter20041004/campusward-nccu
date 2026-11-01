@@ -116,7 +116,7 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
 
       {confirmClear && (
         <div role="group" aria-label="確認清除" className="mt-3 rounded-field border border-coral-ink/50 bg-error/10 p-3 text-sm">
-          <p>會刪除這台裝置上的所有課表、備案、設定與保留的備份，無法復原。建議先匯出資料。</p>
+          <p>會刪除這台裝置上的所有課表、備案、設定、保留的備份與 Gemini 金鑰，無法復原。建議先匯出資料。</p>
           <div className="mt-2 flex gap-2">
             <button type="button" className="btn btn-sm min-h-11 border-coral-ink bg-error text-error-content" onClick={() => { onClear(); setConfirmClear(false); setMessage('已清除本機資料。'); }}>確認清除</button>
             <button type="button" className="btn btn-ghost btn-sm min-h-11 border border-base-300" onClick={() => setConfirmClear(false)}>取消</button>

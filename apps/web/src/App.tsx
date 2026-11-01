@@ -16,7 +16,7 @@ import { Timetable } from './components/Timetable.tsx';
 import { UndoToast } from './components/UndoToast.tsx';
 import { gemini } from './ai/session.ts';
 import type { GeminiClient } from './ai/gemini.ts';
-import { browserStorage } from './data/browserStorage.ts';
+import { browserStorage, clearBrowserCaches } from './data/browserStorage.ts';
 import { httpCatalogSource, type CatalogSource } from './data/catalog.ts';
 import { useCatalog } from './data/useCatalog.ts';
 import { usePlanner } from './data/usePlanner.ts';
@@ -132,7 +132,11 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini }: { cat
                   data={planner.data}
                   term={data.term}
                   onReplace={planner.replaceData}
-                  onClear={planner.clearAll}
+                  onClear={() => {
+                    planner.clearAll();
+                    ai.removeKey();
+                    void clearBrowserCaches();
+                  }}
                   canRestoreImport={planner.canRestoreImport}
                   onRestoreImport={planner.restoreBeforeImport}
                   onWallpaper={() => {

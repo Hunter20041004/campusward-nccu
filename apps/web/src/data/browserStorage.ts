@@ -16,3 +16,25 @@ export function browserStorage(): StorageLike & { persistent: boolean } {
     return { persistent: false, getItem: (key) => memory.get(key) ?? null, setItem: (key, value) => { memory.set(key, value); } };
   }
 }
+
+/** 清除本機資料時一併清掉 Campusward 自己的快取（Cache API）與資料庫（IndexedDB），以及這個分頁記住的資料。 */
+export async function clearBrowserCaches(scope: Pick<Window, 'caches' | 'indexedDB' | 'sessionStorage'> | undefined = typeof window !== 'undefined' ? window : undefined) {
+  if (!scope) return;
+  try {
+    scope.sessionStorage.clear();
+  } catch {
+    // 讀不到就沒有東西要清。
+  }
+  try {
+    const names = scope.caches ? await scope.caches.keys() : [];
+    await Promise.all(names.filter((name) => name.startsWith('campusward')).map((name) => scope.caches.delete(name)));
+  } catch {
+    // 不支援 Cache API 的瀏覽器沒有快取。
+  }
+  try {
+    const databases = typeof scope.indexedDB?.databases === 'function' ? await scope.indexedDB.databases() : [];
+    databases.filter(({ name }) => name?.startsWith('campusward')).forEach(({ name }) => scope.indexedDB.deleteDatabase(name!));
+  } catch {
+    // 同上。
+  }
+}

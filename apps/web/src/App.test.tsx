@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { App } from './App.tsx';
 import { fakeCatalog } from './test/fakeCatalog.ts';
 import { memoryStorage } from './test/memoryStorage.ts';
@@ -83,4 +83,13 @@ describe('searching and adding', () => {
     await screen.findByText('115-1');
     expect(screen.getByText(/共/)).toHaveTextContent('共 3 學分');
   });
+});
+
+test('clearing local data also removes the Gemini key', async () => {
+  const user = userEvent.setup();
+  const ai = { hasKey: () => true, setKey: vi.fn(), removeKey: vi.fn(), generate: vi.fn() };
+  render(<App catalog={fakeCatalog()} storage={memoryStorage()} ai={ai} />);
+  await user.click(await screen.findByRole('button', { name: '清除本機資料' }));
+  await user.click(screen.getByRole('button', { name: '確認清除' }));
+  expect(ai.removeKey).toHaveBeenCalled();
 });
