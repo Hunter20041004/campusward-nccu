@@ -127,7 +127,7 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
 
       {accepted && !hasKey && (
         // 不用 <form> 與密碼欄位：瀏覽器會把「送出後消失的密碼表單」當成登入、提議儲存，金鑰就會被長期存下來。
-        <div role="group" aria-label="設定 Gemini 金鑰" className="space-y-2 rounded-field border border-base-300 px-3 py-2">
+        <div role="group" aria-label="金鑰設定" className="space-y-2 rounded-field border border-base-300 px-3 py-2">
           <p>
             用你自己的 Gemini 金鑰（免費申請：<a className="link" href={KEY_HELP_URL} target="_blank" rel="noopener noreferrer">Google AI Studio</a>
             ，說明見<a className="link" href="/privacy#gemini">隱私說明</a>）。金鑰只放在這個分頁的記憶體，重新整理就要重貼。
