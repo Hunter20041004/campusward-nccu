@@ -45,7 +45,26 @@ function courseData(): Plugin {
   };
 }
 
+/** public/_headers 裡「/*」那一段（Cloudflare Pages 格式），給 vite preview 用，讓端到端測試與正式站同一套標頭。 */
+function siteHeaders(): Record<string, string> {
+  const lines = readFileSync(resolve(import.meta.dirname, 'public/_headers'), 'utf8').split('\n');
+  const headers: Record<string, string> = {};
+  let inAll = false;
+  for (const line of lines) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue;
+    if (!/^\s/.test(line)) {
+      inAll = line.trim() === '/*';
+      continue;
+    }
+    const match = /^\s+([^:]+):\s*(.+)$/.exec(line);
+    if (inAll && match) headers[match[1]!.trim()] = match[2]!.trim();
+  }
+  return headers;
+}
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), courseData()],
-  build: { sourcemap: false },
+  // 不把小檔案內嵌成 data: 網址（CSP 的 font-src 只允許本站）。
+  build: { sourcemap: false, assetsInlineLimit: 0 },
+  preview: { headers: siteHeaders() },
 });

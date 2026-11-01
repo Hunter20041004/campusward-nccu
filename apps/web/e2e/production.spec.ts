@@ -1,0 +1,66 @@
+import { expect, test, type Page } from '@playwright/test';
+
+// 正式建置＋public/_headers：CSP 沒有被違反、連線只到本站與 Gemini、桌布在 CSP 下可下載（計畫 3b、5.3）。
+const ALLOWED_ORIGINS = ['http://localhost:5175', 'https://generativelanguage.googleapis.com'];
+const FAKE_KEY = 'AIzaSyE2E-fake-key-0000000000000000000';
+
+async function watch(page: Page) {
+  const requests: string[] = [];
+  page.on('request', (request) => requests.push(request.url()));
+  await page.addInitScript(() => {
+    (window as unknown as { cspViolations: string[] }).cspViolations = [];
+    document.addEventListener('securitypolicyviolation', (event) => {
+      (window as unknown as { cspViolations: string[] }).cspViolations.push(`${event.violatedDirective} ${event.blockedURI}`);
+    });
+  });
+  return {
+    requests,
+    violations: () => page.evaluate(() => (window as unknown as { cspViolations: string[] }).cspViolations),
+  };
+}
+
+test('serves the security headers', async ({ page }) => {
+  const response = await page.goto('/');
+  const headers = response!.headers();
+  expect(headers['content-security-policy']).toContain("script-src 'self'");
+  expect(headers['content-security-policy']).toContain('connect-src \'self\' https://generativelanguage.googleapis.com');
+  expect(headers['x-content-type-options']).toBe('nosniff');
+  expect(headers['referrer-policy']).toBe('no-referrer');
+  expect(headers['x-frame-options']).toBe('DENY');
+});
+
+test('runs the main flows without CSP violations or unexpected connections', async ({ page }) => {
+  const { requests, violations } = await watch(page);
+  await page.route('https://generativelanguage.googleapis.com/**', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ actions: [{ type: 'addToSchedule', course: '900003001' }] }) }] }, finishReason: 'STOP' }] }),
+  }));
+  await page.goto('/');
+  await expect(page.getByRole('banner')).toContainText('115-1');
+
+  await page.getByRole('searchbox', { name: '搜課' }).fill('統計學');
+  await page.getByRole('button', { name: '加入課表：統計學' }).click();
+  await expect(page.getByText('共 3 學分')).toBeVisible();
+
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: '手機桌布' }).click();
+  expect((await download).suggestedFilename()).toMatch(/課表\.png$/);
+
+  await page.getByLabel('上傳全人系統匯出檔').setInputFiles('packages/engine/test/fixtures/synthetic/student-export.json');
+  await expect(page.getByText(/學校審查資料日期/)).toBeVisible();
+
+  await page.getByRole('tab', { name: 'AI' }).click();
+  await page.getByRole('checkbox', { name: /我已年滿 18 歲/ }).click();
+  await page.getByLabel('Gemini 金鑰').fill(FAKE_KEY);
+  await page.getByRole('button', { name: '使用這把金鑰' }).click();
+  await page.getByLabel('想怎麼排').fill('加英文');
+  await page.getByRole('button', { name: '送出' }).click();
+  await expect(page.getByText(/已幫你加入 1 門課/)).toBeVisible();
+
+  await page.goto('/privacy');
+  await expect(page.getByRole('heading', { level: 1, name: '隱私說明' })).toBeVisible();
+
+  expect(await violations()).toEqual([]);
+  const outside = requests.filter((url) => !url.startsWith('data:') && !url.startsWith('blob:') && !ALLOWED_ORIGINS.some((origin) => url.startsWith(`${origin}/`)));
+  expect(outside).toEqual([]);
+});

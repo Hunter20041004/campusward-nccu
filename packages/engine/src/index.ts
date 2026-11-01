@@ -1,3 +1,4 @@
+import './zodConfig.ts';
 // Campusward 引擎公開介面：純邏輯，畫面與資料管線都從這裡引用。
 export const ENGINE_NAME = 'campusward-engine';
 
