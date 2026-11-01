@@ -1,6 +1,6 @@
 import { safeExternalUrl, toScheduleCourse, type AiApplyResult, type Change, type Course, type CourseCorrection, type PlannerState, type ScheduleCourse } from '@campusward/engine';
 import { KeyRound, Send, Trash2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GeminiClient } from '../ai/gemini.ts';
 import { aiSearch, planWithAi } from '../ai/orb.ts';
 import { AnswerText } from './AnswerText.tsx';
@@ -8,7 +8,8 @@ import { httpSyllabusSource, type SyllabusSource } from '../qa/syllabusSource.ts
 import { FEATURES, type Features } from '../features.ts';
 import type { Briefing } from '../ai/briefing.ts';
 import { CareerSection } from './CareerSection.tsx';
-import { OrbBuddy, type BuddyMood } from './OrbBuddy.tsx';
+import { useBuddyHub } from '../buddy/BuddyContext.tsx';
+import { Xiaoshan } from '../buddy/Xiaoshan.tsx';
 import { QaSection } from './QaSection.tsx';
 import { ScreenshotImport } from './ScreenshotImport.tsx';
 
@@ -29,8 +30,6 @@ export interface AiPanelProps {
   onApply: (changes: Change[], label: string, replaceOldestAutoBackup?: boolean) => AiApplyResult;
   /** 打開時先給的今日重點（本機算出，不呼叫 AI）。 */
   briefing?: Briefing;
-  /** 讓光球表情跟著狀態變：處理中思考、成功開心、被擋下擔心。 */
-  onMood?: (mood: BuddyMood) => void;
 }
 
 type Outcome =
@@ -41,7 +40,7 @@ type Outcome =
   | { kind: 'failed'; message: string };
 
 const action = 'btn btn-sm min-h-11 gap-1.5';
-export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSource, features = FEATURES, planner, catalog, courses, ready, onApply, briefing, onMood }: AiPanelProps) {
+export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSource, features = FEATURES, planner, catalog, courses, ready, onApply, briefing }: AiPanelProps) {
   const [accepted, setAccepted] = useState(false);
   const [hasKey, setHasKey] = useState(() => client.hasKey());
   const [keyError, setKeyError] = useState('');
@@ -52,9 +51,20 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const titleOf = (key: string) => catalog.get(key)?.title ?? key;
   const knownCodes = new Set(courses.map(({ code }) => code));
+  // 小山跟著請求走：送出時思考、回覆到了講一下，再依結果開心、點頭、看著確認按鈕或擔心。
+  const buddy = useBuddyHub();
+  const confirmButton = useRef<HTMLButtonElement>(null);
+  const waiting = useRef(false);
+  waiting.current = busy;
+  // 清除本機資料會重建這個面板：還在等回覆就讓小山別一直想下去。
+  useEffect(() => () => { if (waiting.current) buddy?.aiCancel(); }, [buddy]);
 
   const finish = (result: AiApplyResult, answer: string, corrections: CourseCorrection[], changes: Change[], label: string, demo: boolean) => {
-    onMood?.(result.status === 'rejected' ? 'worried' : 'happy');
+    buddy?.aiResult(
+      result.status === 'applied' ? 'applied' : result.status === 'needsConfirmation' ? 'confirm' : 'rejected',
+      answer.length,
+      () => confirmButton.current?.getBoundingClientRect(),
+    );
     if (result.status === 'applied') {
       setOutcome({ kind: 'applied', demo, answer, added: result.diff.added, removed: result.diff.removed, corrections, backups: result.autoBackupPlanIds.length });
     } else if (result.status === 'needsConfirmation') {
@@ -82,11 +92,12 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
     const text = request.trim();
     if (!text || !accepted || !hasKey || busy) return;
     setBusy(true);
-    onMood?.('thinking');
+    buddy?.aiStart();
     setOutcome(null);
     const plan = await planWithAi({ client, request: text, termLabel, planner, catalog, courses });
     setBusy(false);
-    if (plan.status === 'failed' || !plan.changes.length) onMood?.(plan.status === 'failed' ? 'worried' : 'idle');
+    if (plan.status === 'failed') buddy?.aiResult('failed', 0);
+    else if (!plan.changes.length) buddy?.aiResult('answered', (plan.answer || 'AI 沒有修改課表。').length);
     if (plan.status === 'failed') {
       setHasKey(client.hasKey());
       setOutcome({ kind: 'failed', message: plan.message });
@@ -119,7 +130,7 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
         // 今日重點（參考 Claude Duet）：小助手先開口，附幾個一鍵帶入的問題。
         <div className="duet-rings relative overflow-hidden rounded-2xl p-3">
           <div className="flex items-start gap-2">
-            <OrbBuddy size={32} mood={briefing.mood} />
+            <Xiaoshan size={32} mood={briefing.mood} />
             <div className="raised rounded-2xl rounded-tl-sm px-3 py-2">
               <p className="font-bold">嗨！幫你看了一下課表：</p>
               <ul className="mt-1 space-y-0.5">{briefing.lines.map((line) => <li key={line}>{line}</li>)}</ul>
@@ -207,7 +218,7 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
         {outcome?.kind === 'failed' && <p role="alert" className="text-coral-ink">{outcome.message}</p>}
         {outcome && outcome.kind !== 'failed' && (
           <div className="flex items-start gap-2">
-          <OrbBuddy size={32} mood={outcome.kind === 'rejected' ? 'worried' : outcome.kind === 'applied' ? 'happy' : 'idle'} />
+          <Xiaoshan size={32} mood={outcome.kind === 'rejected' ? 'worried' : outcome.kind === 'applied' ? 'happy' : 'idle'} />
           <div className="raised min-w-0 flex-1 space-y-2 rounded-2xl rounded-tl-sm px-3 py-2">
             {outcome.kind === 'applied' && (
               <p className="font-medium">
@@ -234,9 +245,10 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
               <div className="space-y-2">
                 <p>改動前要另存自動備案，但自動備案已滿。要刪掉最舊的 {outcome.replace} 份再套用嗎？</p>
                 <button
+                  ref={confirmButton}
                   type="button"
                   className={action}
-                  onClick={() => finish(onApply(outcome.changes, outcome.label, true), outcome.answer, outcome.corrections, outcome.changes, outcome.label, outcome.demo)}
+                  onClick={() => { buddy?.aiConfirmDone(); finish(onApply(outcome.changes, outcome.label, true), outcome.answer, outcome.corrections, outcome.changes, outcome.label, outcome.demo); }}
                 >
                   刪掉最舊的 {outcome.replace} 份並套用
                 </button>

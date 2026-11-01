@@ -30,7 +30,8 @@ import { SearchPanel } from './components/SearchPanel.tsx';
 import { ToolRail, TOOLS, type Tool } from './components/ToolRail.tsx';
 import { Guide } from './components/Guide.tsx';
 import { FloatingOrb } from './components/FloatingOrb.tsx';
-import type { BuddyMood } from './components/OrbBuddy.tsx';
+import { BuddyProvider } from './buddy/BuddyContext.tsx';
+import { createBuddyHub, type BuddyHub, type CourseChange } from './buddy/hub.ts';
 import { buildBriefing } from './ai/briefing.ts';
 import { Timetable } from './components/Timetable.tsx';
 import { UndoToast } from './components/UndoToast.tsx';
@@ -51,7 +52,7 @@ const mobileOnly = (visible: boolean) => (visible ? 'flex' : 'hidden md:flex');
 const NO_COURSES: readonly Course[] = [];
 const RULES = parseEnrollmentRules(enrollmentRules);
 
-export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide = true }: { catalog?: CatalogSource; storage?: StorageLike; ai?: GeminiClient; guide?: boolean }) {
+export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide = true, buddyHub: givenHub }: { catalog?: CatalogSource; storage?: StorageLike; ai?: GeminiClient; guide?: boolean; buddyHub?: BuddyHub }) {
   const data = useCatalog(catalog);
   const storageRef = useRef<StorageLike | null>(storage ?? null);
   if (!storageRef.current) storageRef.current = browserStorage();
@@ -59,6 +60,16 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const courses = ready ? data.courses : NO_COURSES;
   // 載入前以空學期代碼呼叫：不讀寫任何學期，版面只有一份，載入前後不會重建。
   const planner = usePlanner({ term: ready ? data.term : '', courses, storage: storageRef.current });
+  // 小山（AI 光球）跟著常發生的事反應：加課、移出、候選、復原、打字、等 AI（docs/design 小助手一節）。
+  const [buddyHub] = useState(() => givenHub ?? createBuddyHub({ storage: storageRef.current! }));
+  useEffect(() => () => { if (!givenHub) buddyHub.destroy(); }, [buddyHub, givenHub]);
+  // 加課要等課表更新後才知道有沒有衝堂：記下加之前的衝堂數，課表變了再告訴小山。
+  const conflictsBeforeAdd = useRef<number | null>(null);
+  useEffect(() => {
+    if (conflictsBeforeAdd.current === null) return;
+    buddyHub.changed('add', { conflict: planner.conflicts.length > conflictsBeforeAdd.current });
+    conflictsBeforeAdd.current = null;
+  }, [buddyHub, planner.conflicts.length, planner.entries.length]);
   const [query, setQuery] = useState('');
   const [tool, setTool] = useState<Tool>('timetable');
   const [mobileView, setMobileView] = useState<MobileView>('timetable');
@@ -115,6 +126,12 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     if (result.status === 'needsConfirmation') setPendingBackup({ changes, label, replace: result.replace });
     return result;
   };
+  const courseChange = (kind: CourseChange, changes: Change[], label: string) => {
+    const before = planner.conflicts.length;
+    if (applyChange(changes, label).status !== 'applied') return;
+    if (kind === 'add') conflictsBeforeAdd.current = before;
+    else buddyHub.changed(kind);
+  };
   const conditionCourses = useMemo(() => {
     const keys = new Set([...planner.planner.candidates, ...planner.activePlan.items.map(({ key }) => key)]);
     return [...keys].flatMap((key) => {
@@ -131,20 +148,12 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const tools: Tool[] = ['timetable', 'conditions', 'data', ...(FEATURES.graduation ? ['graduation' as const] : [])];
   const aiEnabled = FEATURES.orb || FEATURES.qa || FEATURES.demo;
   const [aiOpen, setAiOpen] = useState(false);
-  // 小助手的表情：AI 處理中思考、套用成功開心（3 秒）、被擋下擔心；平常有衝堂時擔心。
-  const [aiMood, setAiMood] = useState<BuddyMood | null>(null);
-  useEffect(() => {
-    if (aiMood !== 'happy' && aiMood !== 'worried') return undefined;
-    const timer = setTimeout(() => setAiMood(null), 3000);
-    return () => clearTimeout(timer);
-  }, [aiMood]);
   const conflictPairs = planner.conflicts.map(({ courseKeys }) => [titleOf(courseKeys[0] ?? ''), titleOf(courseKeys[1] ?? '')] as const);
   const conflictSignature = planner.conflicts.map(({ courseKeys }) => courseKeys.join('+')).join('|');
   const [dismissedNudge, setDismissedNudge] = useState('');
   const nudge = conflictSignature && dismissedNudge !== conflictSignature
     ? `有 ${planner.conflicts.length} 個衝堂，要我幫忙看看嗎？`
     : null;
-  const mood: BuddyMood = aiMood ?? (planner.conflicts.length ? 'worried' : 'idle');
   const briefing = buildBriefing({
     courses: planner.entries.length,
     credits: planner.credits,
@@ -164,6 +173,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const current = TOOLS.find(({ id }) => id === tool)!;
 
   return (
+    <BuddyProvider hub={buddyHub}>
     <div className="min-h-dvh pb-28 md:pb-6">
       <Header termLabel={ready ? data.label : data.status === 'loading' ? '載入中' : '—'} onGuide={() => setGuideOpen(true)} />
       <main data-mobile-view={mobileView} className="mx-auto max-w-[1600px] px-4 pt-2 md:px-6">
@@ -192,9 +202,9 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                 searchRef={searchRef}
                 scheduledKeys={scheduledKeys}
                 candidateKeys={candidateKeys}
-                onAdd={(course) => applyChange([{ type: 'addToSchedule', key: keyOf(course) }], `已加入「${course.title}」`)}
-                onRemove={(course) => applyChange([{ type: 'removeFromSchedule', key: keyOf(course) }], `已移出「${course.title}」`)}
-                onCandidate={(course) => applyChange([{ type: 'addCandidate', key: keyOf(course) }], `已放進候選「${course.title}」`)}
+                onAdd={(course) => courseChange('add', [{ type: 'addToSchedule', key: keyOf(course) }], `已加入「${course.title}」`)}
+                onRemove={(course) => courseChange('remove', [{ type: 'removeFromSchedule', key: keyOf(course) }], `已移出「${course.title}」`)}
+                onCandidate={(course) => courseChange('candidate', [{ type: 'addCandidate', key: keyOf(course) }], `已放進候選「${course.title}」`)}
                 {...(passedAs ? { passedAs } : {})}
               />
             ) : (
@@ -235,7 +245,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   }}
                   onStatus={(key, status) => applyChange([{ type: 'setStatus', key, status }], `已將「${titleOf(key)}」標為${{ planned: '排入', registered: '已灌檔', enrolled: '已選上' }[status]}`)}
                   onAttendance={(key, attendance) => applyChange([{ type: 'setAttendance', key, attendance }], `「${titleOf(key)}」改為${attendance === 'async' ? '非同步' : '同步'}上課`)}
-                  onRemove={(key) => applyChange([{ type: 'removeFromSchedule', key }], `已移出「${titleOf(key)}」`)}
+                  onRemove={(key) => courseChange('remove', [{ type: 'removeFromSchedule', key }], `已移出「${titleOf(key)}」`)}
                 />
                 {planner.entries.length > 0 && <RulesPanel conflicts={planner.conflicts} reminders={reminders} retakes={retakes} />}
               </div>
@@ -263,6 +273,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                       planner.clearAll();
                       setRecord(null);
                       ai.removeKey();
+                      buddyHub.setQuiet(false);
                       void clearBrowserCaches();
                       setGeneration((value) => value + 1);
                     }}
@@ -293,7 +304,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                       scheduledKeys={scheduledKeys}
                       profile={planner.profile}
                       credits={planner.credits}
-                      onCandidate={(course) => applyChange([{ type: 'addCandidate', key: keyOf(course) }], `已放進候選「${course.title}」`)}
+                      onCandidate={(course) => courseChange('candidate', [{ type: 'addCandidate', key: keyOf(course) }], `已放進候選「${course.title}」`)}
                       onProfile={planner.setProfile}
                     />
                   )}
@@ -316,14 +327,13 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
         }}
         onCancel={() => setPendingBackup(null)}
       />
-      <UndoToast label={planner.undoLabel} onUndo={planner.undo} onExpire={planner.clearUndo} />
+      <UndoToast label={planner.undoLabel} onUndo={() => { planner.undo(); buddyHub.changed('undo'); }} onExpire={planner.clearUndo} />
       <MobileNav view={mobileView} tools={tools} onView={(next) => (next === 'search' ? setMobileView('search') : showTool(next))} />
       {aiEnabled && (
         <FloatingOrb
           open={aiOpen}
           onOpen={() => { setAiOpen(true); setDismissedNudge(conflictSignature); }}
           onClose={() => setAiOpen(false)}
-          mood={mood}
           nudge={nudge}
           onDismissNudge={() => setDismissedNudge(conflictSignature)}
         >
@@ -337,7 +347,6 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                     courses={courses}
                     ready={ready}
                     briefing={briefing}
-                    onMood={setAiMood}
                     onApply={(changes, label, replaceOldestAutoBackup) => planner.applyAi(changes, label, {
                       ...(ready ? { termLabel: data.label } : {}),
                       ...(maximumCredits !== undefined ? { maximumCredits } : {}),
@@ -348,5 +357,6 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
       )}
       <Guide open={guideOpen} onClose={closeGuide} />
     </div>
+    </BuddyProvider>
   );
 }

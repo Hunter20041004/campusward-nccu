@@ -1,5 +1,5 @@
 // 小助手打開時的「今日重點」（參考 Claude Duet 的主動摘要）：完全在本機由課表算出，不呼叫 AI。
-import type { BuddyMood } from '../components/OrbBuddy.tsx';
+import type { BuddyMood } from '../buddy/motion.ts';
 
 const DAYS = ['', '一', '二', '三', '四', '五', '六', '日'];
 

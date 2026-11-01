@@ -303,3 +303,38 @@ test('buttons respond to hover and the tool rail keeps its rounded squares', asy
   const railRadius = await page.getByRole('navigation', { name: '工具' }).getByRole('button', { name: '條件' }).evaluate((element) => getComputedStyle(element).borderTopLeftRadius);
   expect(railRadius).toBe('16px');
 });
+
+test.describe('the buddy (小山)', () => {
+  const orbEyes = (page: Page) => page.getByRole('button', { name: 'AI 光球' }).locator('.eyeR').getAttribute('d');
+  const orbBody = (page: Page) => page.getByRole('button', { name: 'AI 光球' }).locator('.body').getAttribute('transform');
+
+  test('moves on its own and holds still when asked (remembered after a reload)', async ({ page }) => {
+    await page.goto('/');
+    const first = await orbBody(page);
+    await page.waitForTimeout(400);
+    expect(await orbBody(page)).not.toBe(first);
+    await page.getByRole('button', { name: 'AI 光球' }).click();
+    await page.getByRole('button', { name: '讓小山安靜' }).click();
+    await page.getByRole('button', { name: '關閉 AI 光球' }).click();
+    const frozen = await orbBody(page);
+    await page.waitForTimeout(400);
+    expect(await orbBody(page)).toBe(frozen);
+    await page.reload();
+    await page.waitForTimeout(300);
+    const afterReload = await orbBody(page);
+    await page.waitForTimeout(400);
+    expect(await orbBody(page)).toBe(afterReload);
+  });
+
+  test('does not move at all with reduced motion', async ({ browser }) => {
+    const context = await browser.newContext({ reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    await page.addInitScript(() => localStorage.setItem('campusward:guide', 'seen'));
+    await page.goto('/');
+    const eyes = await orbEyes(page), body = await orbBody(page);
+    await page.waitForTimeout(600);
+    expect(await orbEyes(page)).toBe(eyes);
+    expect(await orbBody(page)).toBe(body);
+    await context.close();
+  });
+});

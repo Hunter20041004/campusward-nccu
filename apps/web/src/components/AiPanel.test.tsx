@@ -6,6 +6,8 @@ import { officialRow } from '../../../../packages/engine/test/fixtures/synthetic
 import { createGeminiClient } from '../ai/gemini.ts';
 import { memoryStorage } from '../test/memoryStorage.ts';
 import { AiPanel, type AiPanelProps } from './AiPanel.tsx';
+import { BuddyProvider } from '../buddy/BuddyContext.tsx';
+import { createBuddyHub } from '../buddy/hub.ts';
 
 const KEY = 'AIzaSyTEST-not-a-real-key-000000000000';
 const courseOf = (code: string, title: string, subTime: string, lmtKind = ''): Course => {
@@ -113,5 +115,42 @@ test('the key field is not a password field, so browsers do not offer to save th
     expect(field).not.toHaveAttribute('type', 'password');
     expect(field.closest('form')).toBeNull();
     expect(field).toHaveAttribute('data-1p-ignore');
+  });
+});
+
+describe('the buddy follows the AI request', () => {
+  const withHub = () => {
+    const hub = createBuddyHub({ storage: memoryStorage() });
+    return { hub, aiStart: vi.spyOn(hub, 'aiStart'), aiResult: vi.spyOn(hub, 'aiResult'), wrapper: ({ children }: { children: React.ReactNode }) => <BuddyProvider hub={hub}>{children}</BuddyProvider> };
+  };
+
+  test('thinks while waiting and hears that the change was applied', async () => {
+    const { hub, aiStart, aiResult, wrapper } = withHub();
+    const fetchImpl = vi.fn(async () => reply([{ type: 'addToSchedule', course: '900001001' }, { type: 'answer', text: '加了統計學。' }]));
+    const client = createGeminiClient({ fetchImpl, session: memoryStorage() });
+    const planner = createPlannerState();
+    render(<AiPanel client={client} termLabel="115-1" planner={planner} catalog={catalog} courses={courses} ready onApply={(changes) => applyAiChangeSet(planner, changes, catalog, { profile: {} })} />, { wrapper });
+    const user = userEvent.setup();
+    await unlock(user);
+    await user.type(screen.getByLabelText('想怎麼排'), '加統計學');
+    await user.click(screen.getByRole('button', { name: '送出' }));
+    expect(aiStart).toHaveBeenCalled();
+    await screen.findByText(/已幫你加入 1 門課/);
+    expect(aiResult).toHaveBeenCalledWith('applied', '加了統計學。'.length, expect.any(Function));
+    hub.destroy();
+  });
+
+  test('tells the buddy when the request failed', async () => {
+    const { hub, aiResult, wrapper } = withHub();
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 500 }));
+    const client = createGeminiClient({ fetchImpl, session: memoryStorage() });
+    render(<AiPanel client={client} termLabel="115-1" planner={createPlannerState()} catalog={catalog} courses={courses} ready onApply={vi.fn()} />, { wrapper });
+    const user = userEvent.setup();
+    await unlock(user);
+    await user.type(screen.getByLabelText('想怎麼排'), '加統計學');
+    await user.click(screen.getByRole('button', { name: '送出' }));
+    await screen.findByRole('alert');
+    expect(aiResult).toHaveBeenCalledWith('failed', 0);
+    hub.destroy();
   });
 });

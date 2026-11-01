@@ -2,11 +2,14 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { FloatingOrb } from './FloatingOrb.tsx';
+import { BuddyProvider } from '../buddy/BuddyContext.tsx';
+import { createBuddyHub } from '../buddy/hub.ts';
+import { memoryStorage } from '../test/memoryStorage.ts';
 
 test('shows a dismissible nudge next to the closed orb and opens the assistant from it', async () => {
   const onOpen = vi.fn();
   const onDismissNudge = vi.fn();
-  render(<FloatingOrb open={false} onOpen={onOpen} onClose={vi.fn()} mood="worried" nudge="有 1 個衝堂，要我幫忙看看嗎？" onDismissNudge={onDismissNudge}>內容</FloatingOrb>);
+  render(<FloatingOrb open={false} onOpen={onOpen} onClose={vi.fn()} nudge="有 1 個衝堂，要我幫忙看看嗎？" onDismissNudge={onDismissNudge}>內容</FloatingOrb>);
   const user = userEvent.setup();
   await user.click(screen.getByRole('button', { name: '有 1 個衝堂，要我幫忙看看嗎？' }));
   expect(onOpen).toHaveBeenCalled();
@@ -18,4 +21,16 @@ test('hides the nudge while the assistant is open', () => {
   render(<FloatingOrb open onOpen={vi.fn()} onClose={vi.fn()} nudge="提醒">內容</FloatingOrb>);
   expect(screen.queryByText('提醒')).not.toBeInTheDocument();
   expect(screen.getByRole('region', { name: 'AI 光球' })).toHaveTextContent('內容');
+});
+
+test('lets the student make the buddy hold still, and remembers it', async () => {
+  const hub = createBuddyHub({ storage: memoryStorage() });
+  render(<BuddyProvider hub={hub}><FloatingOrb open onOpen={vi.fn()} onClose={vi.fn()}>內容</FloatingOrb></BuddyProvider>);
+  const user = userEvent.setup();
+  const toggle = screen.getByRole('button', { name: '讓小山安靜' });
+  expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await user.click(toggle);
+  expect(hub.quiet).toBe(true);
+  expect(screen.getByRole('button', { name: '讓小山安靜' })).toHaveAttribute('aria-pressed', 'true');
+  hub.destroy();
 });

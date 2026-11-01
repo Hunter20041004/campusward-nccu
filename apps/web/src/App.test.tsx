@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
 import { App } from './App.tsx';
+import { createBuddyHub } from './buddy/hub.ts';
 
 /** 各工具都保持掛載、只隱藏沒選的；取目前看得到的那一個。 */
 const shown = <T extends HTMLElement>(elements: T[]) => elements.find((element) => !element.closest('[hidden]'))!;
@@ -99,6 +100,25 @@ describe('searching and adding', () => {
     expect(toast).toHaveTextContent('已加入「合成課程概論」');
     await user.click(within(toast).getByRole('button', { name: '復原' }));
     expect(screen.getByText(/共/)).toHaveTextContent('共 0 學分');
+  });
+
+  test('the buddy reacts to the common things: adding, undoing, opening and closing the orb', async () => {
+    const user = userEvent.setup();
+    const buddyHub = createBuddyHub({ storage: memoryStorage() });
+    const changed = vi.spyOn(buddyHub, 'changed');
+    const panel = vi.spyOn(buddyHub, 'setPanelOpen');
+    render(<App catalog={fakeCatalog()} storage={memoryStorage()} guide={false} buddyHub={buddyHub} />);
+    await screen.findByText('115-1');
+    await user.type(screen.getByRole('searchbox', { name: '搜課' }), '合成課程');
+    await user.click(await screen.findByRole('button', { name: '加入課表：合成課程概論' }));
+    await waitFor(() => expect(changed).toHaveBeenCalledWith('add', { conflict: false }));
+    await user.click(within(screen.getByRole('status', { name: '最近的修改' })).getByRole('button', { name: '復原' }));
+    expect(changed).toHaveBeenCalledWith('undo');
+    await user.click(screen.getByRole('button', { name: 'AI 光球' }));
+    expect(panel).toHaveBeenLastCalledWith(true);
+    await user.keyboard('{Escape}');
+    expect(panel).toHaveBeenLastCalledWith(false);
+    buddyHub.destroy();
   });
 
   test('keeps the timetable after a reload', async () => {
