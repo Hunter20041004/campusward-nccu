@@ -51,7 +51,7 @@ export function CareerSection({ client, termLabel, courses, candidateKeys, onAdd
                     const key = toScheduleCourse(course).key;
                     return (
                       <li key={key} className="flex flex-wrap items-center gap-2">
-                        <span className="min-w-0 flex-1">{course.title}<span className="text-base-content/75"> · {course.code} · {course.teacher || '教師未定'} · {course.scheduleText || '時間未定'}</span></span>
+                        <span className="min-w-0 flex-1">{course.title}<span className="text-base-content/75"> · {course.code} · {course.teacher || '教師未定'} · <span className="whitespace-nowrap">{course.scheduleText || '時間未定'}</span></span></span>
                         {candidateKeys.has(key) ? <span className="text-xs text-base-content/75">已在候選</span> : (
                           <button type="button" className={action} aria-label={`把 ${course.title}（${course.code}）放進候選`} onClick={() => onAddCandidates([{ type: 'addCandidate', key }], `已放進候選「${course.title}」`)}>
                             <Plus className="size-4" aria-hidden="true" />候選

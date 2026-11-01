@@ -185,19 +185,6 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
         </form>
       )}
 
-      {features.qa && ready && term && <QaSection source={syllabi} term={term} courses={courses} client={client} aiReady={accepted && hasKey} />}
-
-      {accepted && hasKey && ready && (
-        <>
-          {features.career && <CareerSection client={client} termLabel={termLabel} courses={courses} candidateKeys={new Set(planner.candidates)} onAddCandidates={(changes, label) => { onApply(changes, label); }} />}
-          {features.screenshot && <ScreenshotImport client={client} termLabel={termLabel} planner={planner} courses={courses} onAddCandidates={(changes, label) => { onApply(changes, label); }} />}
-        </>
-      )}
-
-      {features.demo && !hasKey && (
-        <button type="button" className={`${action} self-start`} onClick={demo} disabled={!ready}>看示範</button>
-      )}
-
       <div aria-live="polite" className="space-y-2">
         {outcome?.kind === 'failed' && <p role="alert" className="text-coral-ink">{outcome.message}</p>}
         {outcome && outcome.kind !== 'failed' && (
@@ -239,6 +226,20 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
           </div>
         )}
       </div>
+
+      {features.qa && ready && term && <QaSection source={syllabi} term={term} courses={courses} client={client} aiReady={accepted && hasKey} />}
+
+      {accepted && hasKey && ready && (
+        <>
+          {features.career && <CareerSection client={client} termLabel={termLabel} courses={courses} candidateKeys={new Set(planner.candidates)} onAddCandidates={(changes, label) => { onApply(changes, label); }} />}
+          {features.screenshot && <ScreenshotImport client={client} termLabel={termLabel} planner={planner} courses={courses} onAddCandidates={(changes, label) => { onApply(changes, label); }} />}
+        </>
+      )}
+
+      {features.demo && !hasKey && (
+        <button type="button" className={`${action} self-start`} onClick={demo} disabled={!ready}>看示範</button>
+      )}
+
     </div>
   );
 }

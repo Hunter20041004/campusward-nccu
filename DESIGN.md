@@ -1,0 +1,123 @@
+---
+name: Campusward
+description: 給政大學生的選課排課工具：課表是主角，其他東西都往課表送。
+colors:
+  base-100: "oklch(0.995 0.002 263)"
+  base-200: "oklch(0.955 0 0)"
+  base-300: "oklch(0.89 0.008 263)"
+  base-content: "oklch(0.27 0.035 263)"
+  mist-blue: "oklch(0.626 0.072 263)"
+  mist-ink: "oklch(0.45 0.08 263)"
+  apricot: "oklch(0.822 0.025 77)"
+  mint-wash: "rgb(90 191 184 / 0.25)"
+  coral: "oklch(0.62 0.143 22)"
+  coral-ink: "oklch(0.5 0.15 22)"
+typography:
+  title:
+    fontFamily: "Outfit, Noto Sans TC, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.875rem"
+    fontWeight: 600
+  body:
+    fontFamily: "Outfit, Noto Sans TC, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.875rem"
+    fontWeight: 400
+    lineHeight: 1.5
+  label:
+    fontFamily: "Outfit, Noto Sans TC, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.75rem"
+    fontWeight: 400
+rounded:
+  selector: "0.5rem"
+  field: "0.625rem"
+  box: "1rem"
+spacing:
+  gutter-mobile: "16px"
+  gutter-desktop: "24px"
+  touch-target: "44px"
+components:
+  button-default:
+    backgroundColor: "{colors.base-100}"
+    textColor: "{colors.base-content}"
+    rounded: "{rounded.field}"
+    height: "44px"
+  button-primary:
+    backgroundColor: "{colors.mist-blue}"
+    textColor: "oklch(0.18 0.035 263)"
+    rounded: "{rounded.field}"
+    height: "44px"
+  button-danger:
+    backgroundColor: "{colors.coral}"
+    textColor: "oklch(0.99 0.01 22)"
+    rounded: "{rounded.field}"
+    height: "44px"
+  card-relief:
+    backgroundColor: "{colors.base-100}"
+    rounded: "{rounded.box}"
+  section-card:
+    backgroundColor: "{colors.base-100}"
+    rounded: "{rounded.field}"
+    padding: "8px 12px"
+---
+
+# Campusward 設計系統
+
+## Overview
+
+**北極星：政大的排課筆記本。** 安靜、清楚、可信：學生在選課季反覆搜課、試排、比較，介面只負責讓「現在排了什麼、哪裡有問題、還能做什麼」一眼看懂。模式是 Operate（完成任務），品牌只活在細節：霧藍與薄荷的 AI 光球、政大節次方格、附出處的規則提醒。
+
+- 課表是主角：桌機左 3／右 2 兩欄（課表＋側欄），手機改成底部三分頁（課表、搜課、AI）。
+- 視覺方向 B（使用者核可）：與 Open NCCU 同家族的配色與字體，但不使用其名稱或標誌；畫面固定標示「非政大官方服務」。
+- 色票與元件定義的唯一來源是 `apps/web/src/styles.css`（daisyUI 主題 `campusward` 與 `@theme`）。
+
+## Colors
+
+- **霧藍 mist-blue**：主色，只用在主要動作（送出、加入課表）與選取狀態的底色；當文字時改用 **mist-ink**（對比 ≥4.5:1）。
+- **薄荷 mint-wash**：AI 光球外圈、選取反白；不當文字色。
+- **米杏 apricot**：修課限制等「要注意但不是錯」的底色。
+- **珊瑚 coral／coral-ink**：只用在衝堂、錯誤、危險操作（清除資料）。衝堂的兩格同時變珊瑚紅，提醒列寫出是哪兩門。
+- 底色三層：base-200（頁面）→ base-100（卡片）→ base-300（框線、分隔）。
+- 只有淺色主題；所有文字與背景組合以 WCAG 2.2 AA 驗過（端到端 axe 檢查）。
+
+## Typography
+
+- 字體隨站提供（@fontsource Outfit＋Noto Sans TC），不從外部載入（CSP `font-src 'self'`）。
+- 介面以 14px 為主（body／title），說明與次要資訊 12px（label，`text-base-content/75` 仍需 AA 對比）。數字（課號、學分、節次）用 `.tabular` 等寬數字。
+- 層級靠字重（600 標題、400 內文）與位置，不靠放大字級；全站沒有大標。
+
+## Layout
+
+- 容器最寬 1440px；側邊留白手機 16px、桌機 24px。
+- 斷點：<768px 手機（底部分頁、行程檢視可切方格）；≥768px 兩欄。
+- 側欄內容由上而下依「學生最可能下一步」排：AI 分頁是 光球說明 → 需求輸入 → **這次做了什麼（結果緊接在輸入框下）** → 問課綱 → 職涯方向找課 → 截圖匯入。
+- 課表下方依序：規則提醒（附選課須知出處）→ 匯出與資料 → 畢業缺口。
+
+## Elevation & Depth
+
+- 減輕軟浮雕：只有兩張大卡片（課表、側欄）用 `relief`（一層內白光＋兩層柔和陰影）。
+- 其他區塊（匯出、畢業缺口、AI 分頁裡的小區塊）一律平面：1px base-300 框線、無陰影。
+- 浮動層只有「復原」提示（深底淺字，15 秒）與確認對話框。
+
+## Shapes
+
+- 圓角三階：selector 0.5rem（勾選框、標籤）、field 0.625rem（按鈕、輸入框、小區塊）、box 1rem（大卡片）。
+- 所有可點的東西至少 44×44px（端到端在手機上量測）。
+
+## Components
+
+- **按鈕**：預設白底＋1px 框線＋圖示（lucide）＋文字；主要動作霧藍底；危險動作珊瑚。一個區塊最多一個主要按鈕。
+- **區塊卡（section-card）**：AI 分頁與畢業缺口裡的子功能，h3 標題前放 16px 圖示。
+- **課表方格**：政大節次（A/B/1–8/C/D/E–H），課程塊顯示課名＋節次；「新」以薄荷小標示；衝堂珊瑚；鎖定有鎖頭。
+- **提醒列**：警告在前、資訊在後；每則附「選課須知 114.07 版 x-x」出處。
+- **AI 回覆**：一律純文字（不渲染 HTML／Markdown／圖片）；文中課號比對快照，查無者標「快照查無此課號」；結果框先說做了什麼（加入／移出幾門），再列課名，最後才是 AI 的說明。
+- **外部連結**：只連政大官方網域（經 `safeExternalUrl`），帶外部連結圖示與「開新分頁，政大官方網站」的螢幕閱讀器說明。
+- **示範**：沒有金鑰時的「看示範」，結果加「示範」標籤，一樣可以復原。
+
+## Do's and Don'ts
+
+- Do：每個改課表的動作都要能在 15 秒內復原，並說清楚改了什麼。
+- Do：AI、課綱、職涯的結果都標明資料來源與限制（「未上網查證」「以官方課綱為準」）。
+- Do：新功能先放進功能開關（`apps/web/src/features.ts`）。
+- Don't：不要用彈窗當第一選擇；課程詳情在原地展開，只有清除資料、蓋掉自動備案才用確認。
+- Don't：不要加開場動畫或裝飾性動態；動態 150–250ms，只表達狀態。
+- Don't：不要出現 Open NCCU 名稱或任何暗示合作、官方的字樣。
+- Don't：不要 inline script、外部字型或 CDN（CSP `script-src 'self'`）。

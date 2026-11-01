@@ -13,7 +13,7 @@ const ENGINE_FORBIDDEN_GLOBALS = [
 
 export default tseslint.config(
   {
-    ignores: ['**/node_modules/**', '**/dist/**', 'scripts/checks/fixtures/**', 'coverage/**'],
+    ignores: ['**/node_modules/**', '**/dist/**', 'scripts/checks/fixtures/**', 'coverage/**', '.claude/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
