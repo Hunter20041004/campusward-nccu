@@ -1,7 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import { OrbMark } from './components/OrbMark.tsx';
 
-const SECTIONS: { title: string; items: string[] }[] = [
+const SECTIONS: { id?: string; title: string; items: string[] }[] = [
   {
     title: '留在你的瀏覽器',
     items: [
@@ -23,16 +23,26 @@ const SECTIONS: { title: string; items: string[] }[] = [
     items: [
       '只有在你使用 AI 功能時，才會把你輸入的需求與必要的課程資料，用你自己的 Gemini 金鑰送給 Google。',
       '截圖匯入會把你選的圖片送給 Google 辨識；送出前請先裁掉姓名、學號等個資。',
-      '修課紀錄與成績不會送給 AI。金鑰預設只存在記憶體，重新整理就會消失。',
+      '修課紀錄與成績不會送給 AI，身分與資格條件也不會。金鑰預設只存在記憶體，重新整理就會消失；勾選「這個分頁記住金鑰」才會存到這個分頁的 sessionStorage，關掉分頁就清除。',
       '第一次使用 AI 前，會請你確認已年滿 18 歲並讀過 Gemini API 條款；沒有確認就不會送出任何 AI 請求。',
       'Gemini API 條款要求使用者年滿 18 歲；免費額度的內容可能用於改進 Google 產品並可能由人工審閱，請不要送出敏感或個人資料。',
+    ],
+  },
+  {
+    id: 'gemini',
+    title: 'Gemini 金鑰怎麼申請',
+    items: [
+      '用 Google 帳號登入 Google AI Studio（aistudio.google.com），在「API keys」建立金鑰，複製後貼到 Campusward 的 AI 分頁。不需要付費也能用免費額度。',
+      '金鑰等同你的帳號額度，不要貼到別的網站或傳給別人；不用時可在 AI 分頁按「移除金鑰」，或到 AI Studio 刪除金鑰。',
+      'Gemini API 附加條款（2026-03-23 生效）要求使用者年滿 18 歲，不得用在主要給未滿 18 歲的人使用的服務，並把 API 定位為專業或商業用途、不是一般消費者使用（原文：「not for consumer use」）。Campusward 只能請你自行確認，無法替你符合這條；使用前請自己讀過條款。',
+      '免費額度送出的內容可能被 Google 用來改進產品，也可能由人工審閱；請不要在需求裡寫入姓名、學號、成績等個人資料。',
     ],
   },
   {
     title: '不做的事',
     items: [
       '不載入外部字型或流量分析，不使用追蹤 Cookie。',
-      '網站放在 Cloudflare 上；和任何網站一樣，託管業者看得到一般連線資訊（例如 IP 位址），本站不另外收集。',
+      '正式上線後網站會放在 Cloudflare 上；和任何網站一樣，託管業者看得到一般連線資訊（例如 IP 位址），本站不另外收集。',
       'Campusward 不是政大官方服務，選課結果以學校選課系統為準。',
     ],
   },
@@ -53,7 +63,7 @@ export function PrivacyPage() {
         <h1 className="text-2xl font-semibold">隱私說明</h1>
         <p className="mt-2 max-w-[65ch] text-base-content/85">哪些資料留在你的裝置、哪些會送出去，以及送到哪裡。</p>
         {SECTIONS.map((section) => (
-          <section key={section.title} className="mt-8">
+          <section key={section.title} id={section.id} className="mt-8 scroll-mt-4">
             <h2 className="text-lg font-semibold">{section.title}</h2>
             <ul className="mt-2 max-w-[65ch] list-disc space-y-1.5 pl-5 leading-relaxed">
               {section.items.map((item) => <li key={item}>{item}</li>)}

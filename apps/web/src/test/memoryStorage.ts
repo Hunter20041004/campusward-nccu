@@ -1,6 +1,6 @@
 import type { StorageLike } from '@campusward/engine';
 
-export function memoryStorage(initial: Record<string, string> = {}): StorageLike & { values: Record<string, string> } {
+export function memoryStorage(initial: Record<string, string> = {}): StorageLike & { values: Record<string, string>; removeItem: (key: string) => void } {
   const values = { ...initial };
-  return { values, getItem: (key) => values[key] ?? null, setItem: (key, value) => { values[key] = value; } };
+  return { values, getItem: (key) => values[key] ?? null, setItem: (key, value) => { values[key] = value; }, removeItem: (key) => { delete values[key]; } };
 }

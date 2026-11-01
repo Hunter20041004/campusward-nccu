@@ -25,3 +25,10 @@ test('mentions screenshots, the age confirmation, the host, and shared computers
   expect(screen.getByText(/Cloudflare/)).toBeInTheDocument();
   expect(screen.getByText(/共用電腦/)).toBeInTheDocument();
 });
+
+test('explains how to get a Gemini key and what the terms say', () => {
+  render(<PrivacyPage />);
+  expect(screen.getByRole('heading', { name: 'Gemini 金鑰怎麼申請' }).closest('section')).toHaveAttribute('id', 'gemini');
+  expect(screen.getByText(/not for consumer use/)).toBeInTheDocument();
+  expect(screen.getByText(/關掉分頁就清除/)).toBeInTheDocument();
+});

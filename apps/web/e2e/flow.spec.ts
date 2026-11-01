@@ -130,3 +130,52 @@ test.describe('graduation gaps', () => {
     await expect(page.getByText(/學校審查資料日期/)).toHaveCount(0);
   });
 });
+
+// AI 光球：Gemini 以固定回應取代（不連外）；檢查金鑰只出現在請求標頭。
+const FAKE_KEY = 'AIzaSyE2E-fake-key-0000000000000000000';
+async function fakeGemini(page: Page) {
+  const calls: { url: string; key: string | null; body: string }[] = [];
+  await page.route('https://generativelanguage.googleapis.com/**', async (route) => {
+    const request = route.request();
+    calls.push({ url: request.url(), key: request.headers()['x-goog-api-key'] ?? null, body: request.postData() ?? '' });
+    const actions = [{ type: 'addToSchedule', course: '900003001' }, { type: 'answer', text: '幫你加了英文（一）。' }];
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ actions }) }] }, finishReason: 'STOP' }] }) });
+  });
+  return calls;
+}
+
+for (const viewport of ['desktop', 'mobile'] as const) {
+  test.describe(`ai orb on ${viewport}`, () => {
+    test.skip(({ isMobile }) => isMobile !== (viewport === 'mobile'), `${viewport} only`);
+
+    test('lets AI add a course, then undo it, without leaking the key', async ({ page }) => {
+      const consoleText: string[] = [];
+      page.on('console', (message) => consoleText.push(message.text()));
+      const calls = await fakeGemini(page);
+      await page.goto('/');
+      await expect(page.getByRole('banner')).toContainText('115-1');
+      if (viewport === 'mobile') await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: 'AI' }).click();
+      else await page.getByRole('tab', { name: 'AI' }).click();
+
+      await page.getByRole('checkbox', { name: /我已年滿 18 歲/ }).click();
+      await page.getByLabel('Gemini 金鑰').fill(FAKE_KEY);
+      await page.getByRole('button', { name: '使用這把金鑰' }).click();
+      await page.getByLabel('想怎麼排').fill('幫我加英文');
+      await page.getByRole('button', { name: '送出' }).click();
+      await expect(page.getByText(/已幫你加入 1 門課/)).toBeVisible();
+      await expectNoAxeViolations(page);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.key).toBe(FAKE_KEY);
+      expect(calls[0]!.url).not.toContain('key=');
+      expect(calls[0]!.body).not.toContain(FAKE_KEY);
+      const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
+      expect(stored).not.toContain(FAKE_KEY);
+      expect(consoleText.join('\n')).not.toContain(FAKE_KEY);
+
+      await page.getByRole('status', { name: '最近的修改' }).getByRole('button', { name: '復原' }).click();
+      if (viewport === 'mobile') await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '課表' }).click();
+      await expect(page.getByText('從搜課開始')).toBeVisible();
+    });
+  });
+}

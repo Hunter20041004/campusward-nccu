@@ -3,6 +3,7 @@ import enrollmentRules from '../../../data/rules/enrollment-11407.json' with { t
 import { useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header.tsx';
 import { MobileNav, type MobileView } from './components/MobileNav.tsx';
+import { AiPanel } from './components/AiPanel.tsx';
 import { ConditionsPanel } from './components/ConditionsPanel.tsx';
 import { ConfirmDialog } from './components/ConfirmDialog.tsx';
 import { DataPanel } from './components/DataPanel.tsx';
@@ -13,6 +14,8 @@ import { SearchPanel } from './components/SearchPanel.tsx';
 import { SidePanel, type SideTab } from './components/SidePanel.tsx';
 import { Timetable } from './components/Timetable.tsx';
 import { UndoToast } from './components/UndoToast.tsx';
+import { gemini } from './ai/session.ts';
+import type { GeminiClient } from './ai/gemini.ts';
 import { browserStorage } from './data/browserStorage.ts';
 import { httpCatalogSource, type CatalogSource } from './data/catalog.ts';
 import { useCatalog } from './data/useCatalog.ts';
@@ -31,7 +34,7 @@ const mobileOnly = (visible: boolean) => (visible ? '' : 'hidden md:block');
 const NO_COURSES: readonly Course[] = [];
 const RULES = parseEnrollmentRules(enrollmentRules);
 
-export function App({ catalog = httpCatalogSource, storage }: { catalog?: CatalogSource; storage?: StorageLike }) {
+export function App({ catalog = httpCatalogSource, storage, ai = gemini }: { catalog?: CatalogSource; storage?: StorageLike; ai?: GeminiClient }) {
   const data = useCatalog(catalog);
   const storageRef = useRef<StorageLike | null>(storage ?? null);
   if (!storageRef.current) storageRef.current = browserStorage();
@@ -61,6 +64,11 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
       return course ? [course] : [];
     });
   }, [planner.activePlan.items, planner.catalog, planner.planner.candidates]);
+
+  // AI 變更也檢查學分上限（與規則提醒同一份選課須知）；身分條件只在本機使用。
+  const maximumCredits = planner.profile.level !== 'graduate' && planner.profile.year
+    ? RULES.credits.maximum[planner.profile.additionalMajor ?? 'none']
+    : undefined;
 
   const handleQuery = (query: string) => setView({ query, sideTab: 'search', ...(query ? { mobileView: 'search' as const } : {}) });
   const startSearch = () => {
@@ -157,6 +165,21 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
             <SidePanel
               tab={view.sideTab}
               onTab={(sideTab) => setView({ sideTab })}
+              ai={(
+                <AiPanel
+                  client={ai}
+                  termLabel={ready ? data.label : ''}
+                  planner={planner.planner}
+                  catalog={planner.catalog}
+                  courses={courses}
+                  ready={ready}
+                  onApply={(changes, label, replaceOldestAutoBackup) => planner.applyAi(changes, label, {
+                    ...(ready ? { termLabel: data.label } : {}),
+                    ...(maximumCredits !== undefined ? { maximumCredits } : {}),
+                    ...(replaceOldestAutoBackup ? { replaceOldestAutoBackup } : {}),
+                  })}
+                />
+              )}
               conditions={(
                 <ConditionsPanel
                   profile={planner.profile}

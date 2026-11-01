@@ -5,6 +5,7 @@ import {
   clearPreImportCopy,
   readPreImportCopy,
   savePreImportCopy,
+  applyAiChangeSet,
   applyChanges,
   createEmptyData,
   createPlannerState,
@@ -15,6 +16,8 @@ import {
   saveStoredData,
   toScheduleCourse,
   totalCredits,
+  type AiApplyContext,
+  type AiApplyResult,
   type ApplyOptions,
   type ApplyResult,
   type Change,
@@ -49,6 +52,8 @@ export interface PlannerApi {
   /** 最近一次修改加入的課（課表標示「新」）。 */
   newKeys: ReadonlySet<string>;
   apply: (changes: Change[], label: string, options?: ApplyOptions) => ApplyResult;
+  /** AI 變更方案：先過引擎的確定性檢查（衝堂、鎖定、學分、實習、空堂日），合格才存檔。身分條件用本機的設定，不送 AI。 */
+  applyAi: (changes: Change[], label: string, context?: Omit<AiApplyContext, 'profile'>) => AiApplyResult;
   undo: () => void;
   clearUndo: () => void;
   dismissNotice: () => void;
@@ -110,6 +115,16 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
     return result;
   }, [catalog, planner, savePlanner, term]);
 
+  const applyAi = useCallback((changes: Change[], label: string, context: Omit<AiApplyContext, 'profile'> = {}): AiApplyResult => {
+    if (!term) return { status: 'rejected', violations: [{ code: 'unknown-course', message: '課程資料還沒載入，沒有存檔。', courseKeys: [] }] };
+    const result = applyAiChangeSet(planner, changes, catalog, { ...context, profile: data.profile });
+    if (result.status !== 'applied') return result;
+    if (!savePlanner(result.state)) return { status: 'rejected', violations: [{ code: 'unknown-course', message: '沒有存檔。', courseKeys: [] }] };
+    setUndoEntry({ label, planner: result.undo });
+    setNewKeys(new Set(result.diff.added));
+    return result;
+  }, [catalog, data.profile, planner, savePlanner, term]);
+
   const clearUndo = useCallback(() => setUndoEntry(null), []);
   const dismissNotice = useCallback(() => setNotice(null), []);
 
@@ -152,6 +167,7 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
     undoLabel: undoEntry?.label ?? null,
     newKeys,
     apply,
+    applyAi,
     undo,
     clearUndo,
     dismissNotice,

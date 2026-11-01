@@ -9,7 +9,7 @@ const TABS: { id: SideTab; label: string }[] = [
   { id: 'ai', label: 'AI' },
 ];
 
-export function SidePanel({ tab, onTab, children, conditions }: { tab: SideTab; onTab: (tab: SideTab) => void; children: React.ReactNode; conditions?: React.ReactNode }) {
+export function SidePanel({ tab, onTab, children, conditions, ai }: { tab: SideTab; onTab: (tab: SideTab) => void; children: React.ReactNode; conditions?: React.ReactNode; ai?: React.ReactNode }) {
   return (
     <aside aria-label="側欄" className="relief flex flex-col rounded-box md:min-h-[28rem]">
       <div role="tablist" aria-label="側欄內容" className="flex gap-1 border-b border-base-300 p-2">
@@ -31,7 +31,7 @@ export function SidePanel({ tab, onTab, children, conditions }: { tab: SideTab; 
         ))}
       </div>
       <div role="tabpanel" id={`side-panel-${tab}`} aria-labelledby={`side-tab-${tab}`} className="flex min-h-0 flex-1 flex-col p-4">
-        {tab === 'search' ? children : tab === 'conditions' ? conditions : (
+        {tab === 'search' ? children : tab === 'conditions' ? conditions : ai ?? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <OrbMark size={56} />
             <p className="font-medium">AI 光球</p>
