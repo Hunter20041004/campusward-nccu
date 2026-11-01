@@ -269,3 +269,22 @@ describe('refreshItems', () => {
     expect(refreshItems([item('hci', 'async')], catalog)).toEqual([item('hci', 'sync')]);
   });
 });
+
+// 獨立審查修正（2026-11-01，E6）：一次性考試彼此撞時間也要提醒。
+describe('exam against exam', () => {
+  const exam = (label: string, date?: string): CourseEvent => ({ label, day: 3, start: 550, end: 720, ...(date ? { date } : {}) });
+  test('reports two exams at the same time on the same date', () => {
+    const conflicts = findConflicts([
+      { course: course('a', '甲課', [], { delivery: ASYNC_DEFAULT, events: [exam('期中考', '2026-11-04')] }), item: item('a', 'async') },
+      { course: course('b', '乙課', [], { delivery: ASYNC_DEFAULT, events: [exam('期中考', '2026-11-04')] }), item: item('b', 'async') },
+    ]);
+    expect(conflicts).toEqual([{ type: 'event', courseKeys: ['a', 'b'], message: '甲課的期中考與 乙課的期中考 時段重疊' }]);
+  });
+
+  test('does not report exams on different dates', () => {
+    expect(findConflicts([
+      { course: course('a', '甲課', [], { events: [exam('期中考', '2026-11-04')] }), item: item('a') },
+      { course: course('b', '乙課', [], { events: [exam('期中考', '2026-11-11')] }), item: item('b') },
+    ])).toEqual([]);
+  });
+});

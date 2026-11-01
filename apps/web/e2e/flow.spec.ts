@@ -44,10 +44,32 @@ test.describe('desktop', () => {
     await page.getByRole('button', { name: '匯出資料' }).click();
     expect((await download).suggestedFilename()).toMatch(/^campusward-\d{4}-\d{2}-\d{2}\.json$/);
 
+    await page.getByRole('button', { name: '另存為新備案' }).click();
+    await expect(page.getByRole('group', { name: '方案' }).getByRole('button', { name: '備案 1' })).toHaveAttribute('aria-pressed', 'true');
+
     await expectNoAxeViolations(page);
     await page.reload();
     await expect(page.getByText('共 6 學分')).toBeVisible();
+    await expect(page.getByRole('group', { name: '方案' }).getByRole('button', { name: '備案 1' })).toBeVisible();
     await page.screenshot({ path: '.impeccable/review/desktop.png', fullPage: true });
+  });
+});
+
+test.describe('keyboard', () => {
+  test.skip(({ isMobile }) => isMobile, 'desktop only');
+
+  test('searches and adds a course with the keyboard alone', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    await page.keyboard.press('Tab');
+    let guard = 0;
+    while (!(await page.evaluate(() => document.activeElement?.getAttribute('type') === 'search')) && guard++ < 10) await page.keyboard.press('Tab');
+    await page.keyboard.type('統計學');
+    guard = 0;
+    while (!(await page.evaluate(() => document.activeElement?.getAttribute('aria-label') === '加入課表：統計學')) && guard++ < 60) await page.keyboard.press('Tab');
+    expect(guard).toBeLessThan(60);
+    await page.keyboard.press('Enter');
+    await expect(page.getByText('共 3 學分')).toBeVisible();
   });
 });
 

@@ -104,6 +104,25 @@ export function findConflicts(entries: readonly ScheduleEntry[]): Conflict[] {
       });
     });
   });
+  // 兩門課的考試或活動彼此撞時間：日期或週次都有寫而且不同就不算衝突。
+  const timedEvents = entries.flatMap((entry) => entry.course.events
+    .filter((event) => event.day !== undefined && event.start !== undefined && event.end !== undefined)
+    .map((event) => ({ entry, event })));
+  timedEvents.forEach((first, index) => {
+    timedEvents.slice(index + 1).forEach((second) => {
+      if (first.entry.course.key === second.entry.course.key) return;
+      const a = first.event;
+      const b = second.event;
+      if (a.date && b.date && a.date !== b.date) return;
+      if (a.week !== undefined && b.week !== undefined && a.week !== b.week) return;
+      if (a.day !== b.day || !overlaps({ start: a.start!, end: a.end! }, { start: b.start!, end: b.end! })) return;
+      conflicts.push({
+        type: 'event',
+        courseKeys: [first.entry.course.key, second.entry.course.key],
+        message: `${first.entry.course.title}的${a.label}與 ${second.entry.course.title}的${b.label} 時段重疊`,
+      });
+    });
+  });
   return conflicts;
 }
 

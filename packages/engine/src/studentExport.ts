@@ -105,7 +105,7 @@ function readCourse(raw: unknown, level: 'undergrad' | 'graduate'): CompletedCou
     ? 'withdrawn'
     : numericScore !== null
       ? (numericScore >= PASSING_SCORE[level] ? 'passed' : 'failed')
-      : /不通過|不及格/.test(score) ? 'failed'
+      : /[不未](通過|及格)/.test(score) ? 'failed'
         : /通過|及格|抵免/.test(score) ? 'passed' : 'unknown';
   return {
     term,

@@ -60,6 +60,8 @@ export interface ApplyOptions {
 }
 
 export const DEFAULT_AUTO_BACKUP_LIMIT = 5;
+/** 與儲存格式（storage.ts）的上限一致：超過就拒絕，不讓存進去的資料讀不回來。自己另存的方案保留 5 個名額給自動備案。 */
+export const PLAN_LIMITS = Object.freeze({ plans: 30, manualPlans: 25, itemsPerPlan: 100, candidates: 600 });
 /** 一次變動達這個數量的課，視為大改動。 */
 const BIG_CHANGE_COURSES = 3;
 
@@ -155,6 +157,12 @@ export function applyChanges(
   if (errors.length) return { status: 'rejected', errors };
 
   const applied = changes.reduce((current, change) => applyOne(current, change, catalog), state);
+  const limitErrors = [
+    applied.plans.filter(({ auto }) => !auto).length > PLAN_LIMITS.manualPlans ? `自己另存的方案最多 ${PLAN_LIMITS.manualPlans} 個。` : '',
+    applied.plans.some(({ items }) => items.length > PLAN_LIMITS.itemsPerPlan) ? `一個方案最多 ${PLAN_LIMITS.itemsPerPlan} 門課。` : '',
+    applied.candidates.length > PLAN_LIMITS.candidates ? `候選清單最多 ${PLAN_LIMITS.candidates} 門課。` : '',
+  ].filter(Boolean);
+  if (limitErrors.length) return { status: 'rejected', errors: limitErrors };
   // 比較的是「最後所在方案」改動前後；新建的方案以複製來源（原本的方案）為基準。
   const existing = state.plans.find(({ id }) => id === applied.activePlanId);
   const before = existing?.items ?? activeItems(state);
@@ -172,6 +180,9 @@ export function applyChanges(
     if (!options.replaceOldestAutoBackup) return { status: 'needsConfirmation', reason: 'autoBackupFull', limit };
     // 最舊的一份若正是學生正在看的方案，就跳過它，改刪下一份。
     const oldest = autoPlans.find(({ id }) => id !== applied.activePlanId)?.id;
+    if (!oldest) {
+      return { status: 'rejected', errors: ['自動備案已滿，而且唯一能替換的就是目前所在的方案；請先切到其他方案再修改。'] };
+    }
     plans = plans.filter(({ id }) => id !== oldest);
   }
   const backupId = nextPlanId(applied.plans);

@@ -2,7 +2,13 @@ import { describe, expect, test } from 'vitest';
 import { createPlannerState } from '../src/plans.ts';
 import {
   BACKUP_KEY,
+  CORRUPT_KEY,
+  PRE_IMPORT_KEY,
+  clearPreImportCopy,
+  readPreImportCopy,
+  savePreImportCopy,
   STORAGE_KEY,
+  StorageWriteError,
   applyImport,
   createEmptyData,
   exportTransfer,
@@ -267,4 +273,57 @@ test('skips a malformed legacy manual course instead of failing the whole import
   if (!result.valid) throw new Error(result.error.code);
   expect(result.data.terms['1151']?.manualCourses.map(({ key }) => key)).toEqual(['manual-2']);
   expect(result.summary.skippedCourses).toBe(2);
+});
+
+// 獨立審查修正（2026-11-01，G1）：寫入前用讀取時同一套規則檢查；讀不了的主資料先另存，不被覆蓋。
+describe('write-time validation', () => {
+  test('refuses to write data that could not be read back and leaves storage untouched', () => {
+    const storage = memoryStorage();
+    saveStoredData(storage, sampleData());
+    const before = storage.values[STORAGE_KEY];
+    const tooMany = sampleData();
+    const planner = tooMany.terms['1151']!.planner;
+    planner.plans = Array.from({ length: 31 }, (_, index) => ({ id: `plan-${index + 1}`, name: `方案 ${index + 1}`, auto: false, items: [] }));
+    planner.activePlanId = 'plan-1';
+    expect(() => saveStoredData(storage, tooMany)).toThrow(StorageWriteError);
+    expect(storage.values[STORAGE_KEY]).toBe(before);
+  });
+
+  test('keeps an unreadable main copy aside before anything can overwrite it', () => {
+    const raw = JSON.stringify({ format: 'campusward', version: 1, data: { ...sampleData(), extra: true } });
+    const storage = memoryStorage({ [STORAGE_KEY]: raw });
+    loadStoredData(storage);
+    expect(storage.values[CORRUPT_KEY]).toBe(raw);
+  });
+
+  test('does not replace an earlier preserved copy', () => {
+    const storage = memoryStorage({ [STORAGE_KEY]: '{second', [CORRUPT_KEY]: '{first' });
+    loadStoredData(storage);
+    expect(storage.values[CORRUPT_KEY]).toBe('{first');
+  });
+});
+
+// 獨立審查修正（2026-11-01，G2）：匯入可以還原；連續匯入保留第一次匯入前的資料。
+describe('restoring data from before an import', () => {
+  test('keeps the data from before the first import across several imports', () => {
+    const storage = memoryStorage();
+    const original = sampleData();
+    savePreImportCopy(storage, original);
+    savePreImportCopy(storage, { ...createEmptyData(), profile: { year: 2 } });
+    expect(readPreImportCopy(storage)).toEqual(original);
+  });
+
+  test('forgets the copy once restored so the next import keeps a fresh one', () => {
+    const storage = memoryStorage();
+    savePreImportCopy(storage, sampleData());
+    clearPreImportCopy(storage);
+    expect(readPreImportCopy(storage)).toBeNull();
+    savePreImportCopy(storage, createEmptyData());
+    expect(readPreImportCopy(storage)).toEqual(createEmptyData());
+  });
+
+  test('returns nothing for a missing or unreadable copy', () => {
+    expect(readPreImportCopy(memoryStorage())).toBeNull();
+    expect(readPreImportCopy(memoryStorage({ [PRE_IMPORT_KEY]: '{bad' }))).toBeNull();
+  });
 });

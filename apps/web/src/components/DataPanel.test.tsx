@@ -21,6 +21,8 @@ function setup(overrides: Partial<DataPanelProps> = {}) {
     onReplace: vi.fn(),
     onClear: vi.fn(),
     onWallpaper: vi.fn(),
+    canRestoreImport: false,
+    onRestoreImport: vi.fn(),
     now: () => new Date('2026-10-28T08:00:00Z'),
     ...overrides,
   };
@@ -60,6 +62,7 @@ describe('DataPanel', () => {
     await user.upload(screen.getByLabelText('匯入資料'), file);
     const preview = await screen.findByRole('region', { name: '匯入預覽' });
     expect(preview).toHaveTextContent('會取代這台裝置上的課表與設定');
+    expect(preview).toHaveTextContent('還原匯入前的資料');
     await user.click(within(preview).getByRole('button', { name: '確認匯入' }));
     expect(props.onReplace).toHaveBeenCalledWith(expect.objectContaining({ profile: { year: 2 } }));
   });
@@ -84,4 +87,18 @@ describe('DataPanel', () => {
     setup();
     expect(screen.getByRole('link', { name: '隱私說明' })).toHaveAttribute('href', '/privacy');
   });
+});
+
+// 獨立審查修正（2026-11-01，G2）
+test('offers to restore the data from before an import', async () => {
+  const user = userEvent.setup();
+  const onRestoreImport = vi.fn();
+  setup({ canRestoreImport: true, onRestoreImport });
+  await user.click(screen.getByRole('button', { name: '還原匯入前的資料' }));
+  expect(onRestoreImport).toHaveBeenCalled();
+});
+
+test('hides the restore button when there is nothing to restore', () => {
+  setup();
+  expect(screen.queryByRole('button', { name: '還原匯入前的資料' })).toBeNull();
 });

@@ -1,5 +1,10 @@
 import {
   BACKUP_KEY,
+  CORRUPT_KEY,
+  PRE_IMPORT_KEY,
+  clearPreImportCopy,
+  readPreImportCopy,
+  savePreImportCopy,
   applyChanges,
   createEmptyData,
   createPlannerState,
@@ -50,8 +55,11 @@ export interface PlannerApi {
   setProfile: (profile: IdentityProfile) => void;
   /** 匯入：先把目前資料存成備份，再取代。 */
   replaceData: (next: StoredData) => void;
-  /** 清除本機資料（主資料與備份）。 */
+  /** 清除本機資料（主資料、備份、匯入前資料、讀不了時另存的資料）。 */
   clearAll: () => void;
+  /** 有第一次匯入前的資料可以還原。 */
+  canRestoreImport: boolean;
+  restoreBeforeImport: () => void;
 }
 
 /** 某學期的排課狀態：透過引擎套用變更、存到本機、提供復原。 */
@@ -64,6 +72,7 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
   );
   const [undoEntry, setUndoEntry] = useState<{ label: string; planner: PlannerState } | null>(null);
   const [newKeys, setNewKeys] = useState<ReadonlySet<string>>(new Set());
+  const [canRestoreImport, setCanRestoreImport] = useState(() => readPreImportCopy(storage) !== null);
 
   const workspace = data.terms[term] ?? emptyWorkspace();
   const catalog = useMemo(() => {
@@ -74,30 +83,35 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
   }, [courses, workspace.manualCourses]);
   const planner = useMemo(() => withRefreshedItems(workspace.planner, catalog), [workspace.planner, catalog]);
 
-  const save = useCallback((next: StoredData) => {
-    // 學期尚未載入時不寫入，避免以空學期覆蓋資料。
-    if (!term) return;
-    setData(next);
+  /** 先寫入、成功才更新畫面；失敗時畫面維持原樣並說明，不假裝已存。 */
+  const save = useCallback((next: StoredData): boolean => {
     try {
       saveStoredData(storage, next);
     } catch {
-      setNotice('課表無法存到這台裝置（可能是無痕模式或空間不足），重新整理後會遺失。');
+      setNotice('這次修改沒有存檔：資料可能超出可保存的範圍，或瀏覽器不允許存檔（無痕模式、空間不足）。');
+      return false;
     }
-  }, [storage, term]);
+    setData(next);
+    return true;
+  }, [storage]);
 
-  const savePlanner = useCallback((next: PlannerState) => {
-    save({ ...data, terms: { ...data.terms, [term]: { ...workspace, planner: next } } });
-  }, [data, save, term, workspace]);
+  const savePlanner = useCallback((next: PlannerState): boolean => (
+    save({ ...data, terms: { ...data.terms, [term]: { ...workspace, planner: next } } })
+  ), [data, save, term, workspace]);
 
   const apply = useCallback((changes: Change[], label: string, options?: ApplyOptions): ApplyResult => {
+    // 學期尚未載入時不寫入，避免以空學期覆蓋資料。
+    if (!term) return { status: 'rejected', errors: ['課程資料還沒載入，沒有存檔。'] };
     const result = applyChanges(planner, changes, catalog, options);
-    if (result.status === 'applied') {
-      savePlanner(result.state);
-      setUndoEntry({ label, planner: result.undo });
-      setNewKeys(new Set(result.diff.added));
-    }
+    if (result.status !== 'applied') return result;
+    if (!savePlanner(result.state)) return { status: 'rejected', errors: ['沒有存檔。'] };
+    setUndoEntry({ label, planner: result.undo });
+    setNewKeys(new Set(result.diff.added));
     return result;
-  }, [catalog, planner, savePlanner]);
+  }, [catalog, planner, savePlanner, term]);
+
+  const clearUndo = useCallback(() => setUndoEntry(null), []);
+  const dismissNotice = useCallback(() => setNotice(null), []);
 
   const undo = useCallback(() => {
     if (!undoEntry) return;
@@ -113,6 +127,7 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
       setData(change.data);
       setNotice(change.notice);
       setUndoEntry(null);
+      setNewKeys(new Set());
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -138,18 +153,45 @@ export function usePlanner({ term, courses, storage }: { term: string; courses: 
     newKeys,
     apply,
     undo,
-    clearUndo: () => setUndoEntry(null),
-    dismissNotice: () => setNotice(null),
-    setProfile: (profile) => save({ ...data, profile }),
+    clearUndo,
+    dismissNotice,
+    setProfile: (profile) => {
+      if (term) save({ ...data, profile });
+    },
     replaceData: (next) => {
-      saveStoredData(storage, data, BACKUP_KEY);
-      save(next);
+      try {
+        saveStoredData(storage, data, BACKUP_KEY);
+        savePreImportCopy(storage, data);
+      } catch {
+        setNotice('沒有匯入：無法先備份目前的資料（可能是瀏覽器空間不足），目前的資料保持不變。');
+        return;
+      }
+      if (!save(next)) return;
       setUndoEntry(null);
+      setNewKeys(new Set());
+      setCanRestoreImport(true);
+    },
+    canRestoreImport,
+    restoreBeforeImport: () => {
+      const previous = readPreImportCopy(storage);
+      if (!previous || !save(previous)) return;
+      clearPreImportCopy(storage);
+      setCanRestoreImport(false);
+      setUndoEntry(null);
+      setNewKeys(new Set());
+      setNotice('已還原到匯入前的資料。');
     },
     clearAll: () => {
       const empty = createEmptyData();
-      saveStoredData(storage, empty, BACKUP_KEY);
+      try {
+        saveStoredData(storage, empty, BACKUP_KEY);
+        storage.setItem(PRE_IMPORT_KEY, '');
+        storage.setItem(CORRUPT_KEY, '');
+      } catch {
+        // 備份位置寫不進去不影響清除主資料。
+      }
       save(empty);
+      setCanRestoreImport(false);
       setUndoEntry(null);
       setNewKeys(new Set());
     },

@@ -11,6 +11,10 @@ import type { PlanItem, ScheduleCourse } from './schedule/selection.ts';
 
 export const STORAGE_KEY = 'campusward:v1';
 export const BACKUP_KEY = 'campusward:v1:backup';
+/** 主資料讀不了時，原字串先存到這裡（只存第一次），之後的存檔不會蓋掉它。 */
+export const CORRUPT_KEY = 'campusward:v1:corrupt';
+/** 第一次匯入前的資料；連續匯入不覆蓋，還原後清空（以空字串表示沒有）。 */
+export const PRE_IMPORT_KEY = 'campusward:v1:before-import';
 const FORMAT = 'campusward';
 const EXPORT_FORMAT = 'campusward-export';
 const CURRENT_VERSION = 1;
@@ -249,8 +253,18 @@ export function serializeData(data: StoredData): string {
   return JSON.stringify({ format: FORMAT, version: CURRENT_VERSION, data: pickData(data) });
 }
 
+export class StorageWriteError extends Error {
+  constructor(message = '資料超出可保存的範圍，沒有存檔。') {
+    super(message);
+    this.name = 'StorageWriteError';
+  }
+}
+
+/** 寫入前用讀取時同一套規則檢查；不合格就丟出 StorageWriteError，原本的資料不動。 */
 export function saveStoredData(storage: StorageLike, data: StoredData, key = STORAGE_KEY): void {
-  storage.setItem(key, serializeData(data));
+  const picked = pickData(data);
+  if (!DataSchema.safeParse(picked).success) throw new StorageWriteError();
+  storage.setItem(key, JSON.stringify({ format: FORMAT, version: CURRENT_VERSION, data: picked }));
 }
 
 export interface LoadResult {
@@ -266,10 +280,34 @@ export function loadStoredData(storage: StorageLike): LoadResult {
   if (main === null && backup === null) return { data: createEmptyData(), source: 'empty' };
   const parsedMain = main === null ? null : parseEnvelope(main, FORMAT);
   if (parsedMain?.ok) return { data: parsedMain.value, source: 'main' };
+  if (main !== null) {
+    try {
+      if (!storage.getItem(CORRUPT_KEY)) storage.setItem(CORRUPT_KEY, main);
+    } catch {
+      // 空間不足時無法另存；主資料本身仍未被動到。
+    }
+  }
   const error = parsedMain && !parsedMain.ok ? parsedMain.code : undefined;
   const parsedBackup = backup === null ? null : parseEnvelope(backup, FORMAT);
   if (parsedBackup?.ok) return { data: parsedBackup.value, source: 'backup', ...(error ? { error } : {}) };
   return { data: createEmptyData(), source: 'empty', ...(error ? { error } : {}) };
+}
+
+export function readPreImportCopy(storage: StorageLike): StoredData | null {
+  const raw = storage.getItem(PRE_IMPORT_KEY);
+  if (!raw) return null;
+  const parsed = parseEnvelope(raw, FORMAT);
+  return parsed.ok ? parsed.value : null;
+}
+
+/** 已有一份匯入前資料時不覆蓋，確保連續匯入也能回到最初的狀態。 */
+export function savePreImportCopy(storage: StorageLike, data: StoredData): void {
+  if (readPreImportCopy(storage)) return;
+  saveStoredData(storage, data, PRE_IMPORT_KEY);
+}
+
+export function clearPreImportCopy(storage: StorageLike): void {
+  storage.setItem(PRE_IMPORT_KEY, '');
 }
 
 /** 另一個分頁寫入時（storage 事件）：以最後寫入為準並提示。 */

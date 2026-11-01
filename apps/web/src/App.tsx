@@ -124,6 +124,8 @@ export function App({ catalog = httpCatalogSource, storage }: { catalog?: Catalo
                   term={data.term}
                   onReplace={planner.replaceData}
                   onClear={planner.clearAll}
+                  canRestoreImport={planner.canRestoreImport}
+                  onRestoreImport={planner.restoreBeforeImport}
                   onWallpaper={() => {
                     void renderWallpaper(wallpaperLayout(planner.entries, data.label)).then((blob) => {
                       const url = URL.createObjectURL(blob);

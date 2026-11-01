@@ -256,3 +256,13 @@ describe('review fixes', () => {
     expect(satisfiedPrerequisiteIds(parsed())).toContain(fromNotes);
   });
 });
+
+// 獨立審查修正（2026-11-01，D5）
+test('treats 未通過 as failed whether it is in score or scoreIfPass', () => {
+  const record = parsed(withFields(
+    [['gradeRecordList', 0, 'GradeRecords', 1, 'score'], '未通過'],
+    [['gradeRecordList', 0, 'GradeRecords', 2, 'score'], ''],
+    [['gradeRecordList', 0, 'GradeRecords', 2, 'scoreIfPass'], '未通過'],
+  ));
+  expect(record.courses.map(({ result }) => result).slice(1, 3)).toEqual(['failed', 'failed']);
+});

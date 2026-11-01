@@ -18,3 +18,6 @@ playwright-report/
 !apps/web/public/**/*.webp
 
 .impeccable/review/
+
+# 全人系統匯出檔含大量個資，絕不進版控
+exportStudentData*.json

@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, test } from 'vitest';
-import { applyChanges, comparePlans, createPlannerState, type Change, type PlannerState } from '../src/plans.ts';
+import { DEFAULT_AUTO_BACKUP_LIMIT, PLAN_LIMITS, applyChanges, comparePlans, createPlannerState, type Change, type PlannerState } from '../src/plans.ts';
 import { createUndo } from '../src/history.ts';
 import type { ScheduleCourse } from '../src/schedule/selection.ts';
 
@@ -255,4 +255,44 @@ describe('lock and status changes', () => {
     const result = applyChanges(withSchedule('a'), [{ type: 'setStatus', key: 'a', status: 'registered' }], catalog, { autoBackup: false });
     expect(result.status === 'applied' && active(result.state).items[0]).toMatchObject({ status: 'registered', locked: true });
   });
+});
+
+// 獨立審查修正（2026-11-01，G1）：數量上限與儲存格式一致，超過就拒絕，不讓存進去的資料讀不回來。
+describe('limits', () => {
+  test('refuses a new backup once manual plans reach the limit, keeping room for automatic backups', () => {
+    let state = createPlannerState();
+    for (let index = 1; index < PLAN_LIMITS.manualPlans; index += 1) {
+      const result = applyChanges(state, [{ type: 'createPlan', name: `備案 ${index}` }], catalog);
+      if (result.status !== 'applied') throw new Error(`stopped at ${index}`);
+      state = result.state;
+    }
+    expect(state.plans).toHaveLength(PLAN_LIMITS.manualPlans);
+    expect(applyChanges(state, [{ type: 'createPlan', name: '再一個' }], catalog))
+      .toEqual({ status: 'rejected', errors: [`自己另存的方案最多 ${PLAN_LIMITS.manualPlans} 個。`] });
+    expect(PLAN_LIMITS.manualPlans + DEFAULT_AUTO_BACKUP_LIMIT).toBeLessThanOrEqual(PLAN_LIMITS.plans);
+  });
+
+  test('refuses adding beyond the per-plan course and candidate limits', () => {
+    const many = new Map(Array.from({ length: PLAN_LIMITS.candidates + 1 }, (_, index) => {
+      const key = `1151:9${String(index).padStart(5, '0')}001`;
+      return [key, { ...course('x'), key }] as const;
+    }));
+    const keys = [...many.keys()];
+    const full = applyChanges(createPlannerState(), keys.slice(0, PLAN_LIMITS.itemsPerPlan).map((key): Change => ({ type: 'addToSchedule', key })), many, { autoBackup: false });
+    if (full.status !== 'applied') throw new Error(full.status);
+    expect(applyChanges(full.state, [{ type: 'addToSchedule', key: keys.at(-1)! }], many))
+      .toEqual({ status: 'rejected', errors: [`一個方案最多 ${PLAN_LIMITS.itemsPerPlan} 門課。`] });
+    const candidates = { ...full.state, candidates: keys.slice(0, PLAN_LIMITS.candidates) };
+    expect(applyChanges(candidates, [{ type: 'addCandidate', key: keys.at(-1)! }], many))
+      .toEqual({ status: 'rejected', errors: [`候選清單最多 ${PLAN_LIMITS.candidates} 門課。`] });
+  });
+});
+
+// 獨立審查修正（2026-11-01，E9）：找不到可以替換的自動備案時拒絕，不超過上限。
+test('refuses instead of exceeding the automatic backup limit when the only backup is the active plan', () => {
+  const first = applyChanges(withSchedule('a', 'b'), [{ type: 'removeFromSchedule', key: 'a' }], catalog, { autoBackupLimit: 1 });
+  if (first.status !== 'applied') throw new Error(first.status);
+  const onBackup = { ...first.state, activePlanId: first.autoBackupPlanId! };
+  const result = applyChanges(onBackup, [{ type: 'removeFromSchedule', key: 'b' }], catalog, { autoBackupLimit: 1, replaceOldestAutoBackup: true });
+  expect(result).toEqual({ status: 'rejected', errors: ['自動備案已滿，而且唯一能替換的就是目前所在的方案；請先切到其他方案再修改。'] });
 });
