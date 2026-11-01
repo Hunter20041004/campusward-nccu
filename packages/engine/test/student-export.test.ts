@@ -39,7 +39,7 @@ describe('privacy', () => {
     ['chinese name', '王合成'],
     ['english name', 'SYNTHETIC, STUDENT'],
     ['student number', 'SYNTHETIC-0001'],
-    ['phone', '0900000000'],
+    ['phone', ['09', '00000000'].join('')],
     ['email', 'student@example.com'],
     ['address', '合成地址'],
     ['emergency contact', '合成聯絡人'],

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   findBrandViolations,
   findHardcodedTerms,
+  findPersonalContacts,
   findStudentIds,
   findUnpinnedWorkflows,
   type SourceFile,
@@ -29,6 +30,7 @@ const violations = [
   ...findStudentIds(files),
   ...findUnpinnedWorkflows(files),
   ...findBrandViolations(files),
+  ...findPersonalContacts(files),
 ];
 
 for (const v of violations) console.error(`${v.path}:${v.line} [${v.check}] ${v.detail}`);

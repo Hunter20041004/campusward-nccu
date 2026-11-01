@@ -78,3 +78,31 @@ export function findBrandViolations(files: SourceFile[]): Violation[] {
     .filter((file) => /^(apps|packages)\//.test(file.path))
     .flatMap((file) => scan(file, BRAND_PATTERN, 'brand', (name) => `產品程式出現 ${name}`));
 }
+
+// 手機號碼與電子信箱（計畫 Phase 5）：全人系統匯出檔含導師信箱與聯絡人電話，公開庫一律不出現。
+// 允許：保留給範例的網域、機器人與無回信地址；package-lock 內的套件作者資訊不檢查。
+const PHONE_PATTERN = /(?<![\d-])09\d{2}-?\d{3}-?\d{3}(?![\d-])/g;
+const EMAIL_PATTERN = /(?<![\w.%+-])[\w.%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+const EMAIL_ALLOWED = /@(?:[\w-]+\.)*example(?:\.(?:com|org|net|test))?$|@users\.noreply\.github\.com$|^noreply@/i;
+const CONTACT_SKIPPED = /(^|\/)package-lock\.json$|\/fixtures\/synthetic\//;
+
+export function findPersonalContacts(files: SourceFile[]): Violation[] {
+  return files
+    .filter((file) => !CONTACT_SKIPPED.test(file.path))
+    .flatMap((file) => {
+      const hits: Violation[] = [];
+      file.text.split('\n').forEach((lineText, index) => {
+        const found: { at: number; hit: Violation }[] = [];
+        for (const match of lineText.matchAll(PHONE_PATTERN)) {
+          found.push({ at: match.index, hit: { check: 'phone', path: file.path, line: index + 1, detail: '疑似手機號碼' } });
+        }
+        for (const match of lineText.matchAll(EMAIL_PATTERN)) {
+          // 網址裡的帳密（https://user:pass@host）不算信箱；mailto: 仍要檢查。
+          if (EMAIL_ALLOWED.test(match[0]) || /\/\/[^\s/]*$/.test(lineText.slice(0, match.index))) continue;
+          found.push({ at: match.index, hit: { check: 'email', path: file.path, line: index + 1, detail: `疑似電子信箱 ${match[0].replace(/^[^@]+/, '…')}` } });
+        }
+        hits.push(...found.sort((a, b) => a.at - b.at).map(({ hit }) => hit));
+      });
+      return hits;
+    });
+}

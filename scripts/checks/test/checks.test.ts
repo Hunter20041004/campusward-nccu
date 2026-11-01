@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   findBrandViolations,
   findHardcodedTerms,
+  findPersonalContacts,
   findStudentIds,
   findUnpinnedWorkflows,
   type SourceFile,
@@ -99,5 +100,40 @@ describe('findBrandViolations', () => {
 
   test('allows the required disclaimer', () => {
     expect(findBrandViolations([file('apps/web/src/Footer.tsx', '非政大官方服務')])).toEqual([]);
+  });
+});
+
+// Phase 5：公開庫不得出現手機號碼與電子信箱（全人系統匯出檔含導師信箱、緊急聯絡人電話）。
+// 範例以拼接產生，避免本測試檔本身被檢查擋下。
+const fakeMobile = ['09', '12-345', '-678'].join('');
+const fakeMobile2 = ['098', '765', '4321'].join('');
+const fakeEmail = ['teacher', 'nccu.edu.tw'].join('@');
+describe('findPersonalContacts', () => {
+  test('flags Taiwanese mobile numbers and email addresses', () => {
+    const hits = findPersonalContacts([file('docs/notes.md', `導師 ${fakeMobile}，信箱 ${fakeEmail}\n另一支 ${fakeMobile2}`)]);
+    expect(hits.map(({ check, line }) => `${check}:${line}`)).toEqual(['phone:1', 'email:1', 'phone:2']);
+  });
+
+  test('allows placeholder addresses, npm scopes and bot addresses', () => {
+    expect(findPersonalContacts([
+      file('apps/web/src/a.ts', "import x from '@campusward/engine'; // student@example.com"),
+      file('README.md', 'Co-Authored-By: Claude <noreply@anthropic.com> 與 1234+bot@users.noreply.github.com'),
+      file('package-lock.json', `"author": "${['someone', 'real.com'].join('@')}"`),
+    ])).toEqual([]);
+  });
+
+  test('still flags an address in a mailto link', () => {
+    expect(findPersonalContacts([file('README.md', `[寫信](mailto:${fakeEmail})`)]).map(({ check }) => check)).toEqual(['email']);
+  });
+
+  test('skips synthetic fixtures and credentials inside URLs', () => {
+    expect(findPersonalContacts([
+      file('packages/engine/test/fixtures/synthetic/x.json', fakeMobile),
+      file('a.ts', `'https://user:pass@${['newdoc', 'nccu.edu.tw'].join('.')}/a' 'https://a.tw@evil.example.com/'`),
+    ])).toEqual([]);
+  });
+
+  test('does not mistake long digit strings like course codes for phone numbers', () => {
+    expect(findPersonalContacts([file('data/x.json', '"900123001" 2026-10-28 09123456789')])).toEqual([]);
   });
 });
