@@ -1,6 +1,7 @@
 import { exportTransfer, previewImport, type ImportPreview, type ScheduleEntry, type StoredData } from '@campusward/engine';
 import { ClipboardCopy, Download, FileUp, History, Image, ShieldCheck, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { CopyListPreview } from './CopyListPreview.tsx';
 
 export interface DataPanelProps {
   entries: readonly ScheduleEntry[];
@@ -12,13 +13,16 @@ export interface DataPanelProps {
   onWallpaper: () => void;
   canRestoreImport: boolean;
   onRestoreImport: () => void;
+  /** 目前方案的名稱（複製預覽寫出是哪個方案）。 */
+  planName: string;
+  /** 依身分的學分上下限；沒設定年級時是 null。 */
+  limits: { minimum: number; maximum: number } | null;
+  /** 預覽裡按「回課表處理」。 */
+  onBackToTimetable: () => void;
   now?: () => Date;
 }
 
-/** 要到官方選課系統登記的課號：依課表順序，略過已灌檔／已選上與手動課程。 */
-export function registrationCodes(entries: readonly ScheduleEntry[]): string[] {
-  return entries.filter(({ course, item }) => course.code && item.status === 'planned').map(({ course }) => course.code!);
-}
+export { registrationCodes } from './CopyListPreview.tsx';
 
 function download(name: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
@@ -31,21 +35,34 @@ function download(name: string, text: string) {
 
 const action = 'btn btn-sm min-h-11 gap-1.5';
 
-export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper, canRestoreImport, onRestoreImport, now = () => new Date() }: DataPanelProps) {
+export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper, canRestoreImport, onRestoreImport, planName, limits, onBackToTimetable, now = () => new Date() }: DataPanelProps) {
   const [message, setMessage] = useState('');
   const [preview, setPreview] = useState<Extract<ImportPreview, { valid: true }> | null>(null);
   const [importError, setImportError] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
 
-  const copyCodes = async () => {
-    const codes = registrationCodes(entries);
-    if (!codes.length) {
+  const [copyOpen, setCopyOpen] = useState(false);
+  const copyButton = useRef<HTMLButtonElement>(null);
+  const closeCopy = () => {
+    setCopyOpen(false);
+    setTimeout(() => copyButton.current?.focus(), 0);
+  };
+  const openCopy = () => {
+    if (copyOpen) {
+      setCopyOpen(false);
+      return;
+    }
+    if (!entries.some(({ course }) => course.code)) {
       setMessage('課表上沒有要登記的課。');
       return;
     }
+    setCopyOpen(true);
+  };
+  const copyCodes = async (codes: string[]) => {
+    closeCopy();
     try {
       await navigator.clipboard.writeText(codes.join('\n'));
-      setMessage(`已複製 ${codes.length} 個課號，依課表順序排列，可到選課系統批量登記。`);
+      setMessage(`已複製 ${codes.length} 個課號（${planName}），依課表順序排列，可到選課系統批量登記。`);
     } catch {
       setMessage(`無法自動複製，請手動複製：${codes.join(' ')}`);
     }
@@ -70,7 +87,7 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
     <section aria-labelledby="data-heading">
       <h2 id="data-heading" className="sr-only">匯出與資料</h2>
       <div className="mt-2 flex flex-wrap gap-2">
-        <button type="button" className={action} onClick={copyCodes}>
+        <button ref={copyButton} type="button" className={action} aria-expanded={copyOpen} onClick={openCopy}>
           <ClipboardCopy className="size-4" aria-hidden="true" />複製課號清單
         </button>
         <button type="button" className={action} onClick={onWallpaper}>
@@ -96,6 +113,17 @@ export function DataPanel({ entries, data, term, onReplace, onClear, onWallpaper
           <ShieldCheck className="size-4" aria-hidden="true" />隱私說明
         </a>
       </div>
+
+      {copyOpen && (
+        <CopyListPreview
+        planName={planName}
+        entries={entries}
+        limits={limits}
+        onCopy={(codes) => { void copyCodes(codes); }}
+        onBack={() => { setCopyOpen(false); onBackToTimetable(); }}
+        onClose={closeCopy}
+        />
+      )}
 
       <p role="status" aria-label="資料操作結果" aria-live="polite" className="mt-2 text-sm empty:hidden">{message}</p>
       {importError && <p role="alert" className="mt-2 text-sm text-coral-ink">{importError}</p>}

@@ -77,6 +77,11 @@ export type ApplyResult =
 export interface ApplyOptions {
   /** 預設 true：大改動前自動另存備案。 */
   autoBackup?: boolean;
+  /**
+   * 這批變更從哪裡來（預設 student）。學生自己的操作只在一次改動三門以上時備份，單門移出靠 15 秒「復原」；
+   * AI 的變更方案只要拿掉課就先備份（設計 6.1：會替換主課表的改動）。
+   */
+  source?: 'student' | 'ai';
   autoBackupLimit?: number;
   /** 使用者已確認：自動備案滿了時移除最舊的一份。 */
   replaceOldestAutoBackup?: boolean;
@@ -209,7 +214,9 @@ const sameItems = (first: readonly PlanItem[], second: readonly PlanItem[]) => f
     return item === other || (Boolean(other) && JSON.stringify(item) === JSON.stringify(other));
   });
 
-const isBigChange = ({ added, removed }: ChangeDiff) => removed.length > 0 || added.length + removed.length >= BIG_CHANGE_COURSES;
+const isBigChange = ({ added, removed }: ChangeDiff, source: ApplyOptions['source']) => (
+  (source === 'ai' && removed.length > 0) || added.length + removed.length >= BIG_CHANGE_COURSES
+);
 
 export function applyChanges(
   state: PlannerState,
@@ -238,7 +245,7 @@ export function applyChanges(
   });
   const diff = changedPlans.find(({ planId }) => planId === applied.activePlanId)?.diff ?? { added: [], removed: [] };
   // 只有改到原本就存在的方案才需要備份；新建的方案本身就是備案。
-  const needBackup = (options.autoBackup ?? true) ? changedPlans.filter((change) => !change.created && isBigChange(change.diff)) : [];
+  const needBackup = (options.autoBackup ?? true) ? changedPlans.filter((change) => !change.created && isBigChange(change.diff, options.source)) : [];
   if (!needBackup.length) {
     return { status: 'applied', state: applied, undo: state, diff, autoBackupPlanIds: [], changedPlans };
   }

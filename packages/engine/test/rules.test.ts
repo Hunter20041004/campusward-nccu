@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import enrollment11407 from '../../../data/rules/enrollment-11407.json' with { type: 'json' };
 import type { OfficialFields } from '../src/official/course.ts';
-import { checkEnrollmentRules, parseEnrollmentRules, type RuleReminder } from '../src/rules.ts';
+import { checkEnrollmentRules, creditLimits, parseEnrollmentRules, type RuleReminder } from '../src/rules.ts';
 import type { PlanItem, ScheduleCourse, ScheduleEntry } from '../src/schedule/selection.ts';
 
 // 新增（計畫 1.9）：選課規則只提醒、不阻擋；每則附選課須知出處。
@@ -157,4 +157,19 @@ test('only reminds and never changes the selection', () => {
 
 test('rejects malformed rules data', () => {
   expect(() => parseEnrollmentRules({ ...enrollment11407, credits: { minimum: {} } })).toThrow();
+});
+
+// 稽核 #11（2026-11-01）：課表旁顯示學分上下限，沒設定年級時提示去設定。
+describe('creditLimits', () => {
+  test('gives the minimum and maximum for an undergraduate year and additional major', () => {
+    expect(creditLimits({ level: 'undergrad', year: 2 }, rules)).toEqual({ minimum: 12, maximum: 25 });
+    expect(creditLimits({ year: 4, additionalMajor: 'double' }, rules)).toEqual({ minimum: 10, maximum: 31 });
+    expect(creditLimits({ year: 1, additionalMajor: 'minor' }, rules)).toEqual({ minimum: 12, maximum: 28 });
+  });
+
+  test('has no limits without a year, and none for graduate students', () => {
+    expect(creditLimits({}, rules)).toBeNull();
+    expect(creditLimits({ level: 'undergrad' }, rules)).toBeNull();
+    expect(creditLimits({ level: 'graduate', year: 1 }, rules)).toBeNull();
+  });
 });

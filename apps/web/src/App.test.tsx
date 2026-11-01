@@ -290,3 +290,80 @@ test('clearing local data also clears course names typed into the graduation gap
   await user.click(screen.getByRole('button', { name: '確認清除' }));
   expect(screen.queryByText('秘密補修課')).not.toBeInTheDocument();
 });
+
+// 稽核第二批（2026-11-01）：候選清單、學分上下限提示、單門移出不自動備份。
+describe('planner fixes', () => {
+  const rows = [
+    officialRow({ subNum: '042112001', subNam: '臺灣政治', subTime: '三78E' }),
+    officialRow({ subNum: '000603001', subNam: '民法概要', subTime: '三78' }),
+    officialRow({ subNum: '900003001', subNam: '週五課', subTime: '五34' }),
+  ];
+  const search = async (user: ReturnType<typeof userEvent.setup>, text: string) => {
+    const box = screen.getByRole('searchbox', { name: '搜課' });
+    await user.clear(box);
+    await user.type(box, text);
+  };
+
+  test('the candidate list shows hearted courses, adds one to the timetable and removes another', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await search(user, '臺灣政治');
+    await user.click(await screen.findByRole('button', { name: '加入課表：臺灣政治' }));
+    await search(user, '民法概要');
+    await user.click(screen.getByRole('button', { name: '加入候選：民法概要' }));
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '候選' }));
+    const list = screen.getByRole('region', { name: '候選清單' });
+    const row = within(list).getAllByRole('article').find((article) => article.textContent?.includes('民法概要'))!;
+    expect(row).toHaveTextContent('與「臺灣政治」衝堂');
+    await user.click(within(row).getByRole('button', { name: '加入課表：民法概要' }));
+    expect(screen.getByRole('status', { name: '最近的修改' })).toHaveTextContent('已加入「民法概要」，與「臺灣政治」衝堂');
+    expect(row).toHaveTextContent('已在課表');
+    await user.click(within(list).getByRole('button', { name: '移除候選：臺灣政治' }));
+    expect(screen.getByRole('status', { name: '最近的修改' })).toHaveTextContent('已移出候選「臺灣政治」');
+    expect(within(list).getAllByRole('article')).toHaveLength(1);
+  });
+
+  test('the phone menu opens the candidate list', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    const nav = screen.getByRole('navigation', { name: '主要分頁' });
+    await user.click(within(nav).getByRole('button', { name: '更多' }));
+    await user.click(within(screen.getByRole('list', { name: '更多工具' })).getByRole('button', { name: '候選' }));
+    expect(document.querySelector('[data-mobile-view="candidates"]')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /候選/ })).toBeInTheDocument();
+  });
+
+  test('without a year the credits ask for one, and the button opens the identity settings; with a year they show the range', async () => {
+    const user = userEvent.setup();
+    render(<App catalog={fakeCatalog({}, rows)} storage={memoryStorage()} guide={false} />);
+    await screen.findByText('115-1');
+    await user.click(screen.getByRole('button', { name: '設定年級後可檢查學分上下限' }));
+    const year = screen.getByRole('combobox', { name: '年級' });
+    expect(year).toHaveFocus();
+    await user.selectOptions(year, '2');
+    await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '模擬課表' }));
+    expect(shown(screen.getAllByText(/共/))).toHaveTextContent('共 0 學分（12–25）');
+    expect(screen.queryByRole('button', { name: '設定年級後可檢查學分上下限' })).toBeNull();
+  });
+
+  test('removing courses one at a time never adds an automatic backup', async () => {
+    const user = userEvent.setup();
+    const storage = memoryStorage();
+    render(<App catalog={fakeCatalog({}, rows)} storage={storage} guide={false} />);
+    await screen.findByText('115-1');
+    for (const title of ['臺灣政治', '週五課']) {
+      await search(user, title);
+      await user.click(await screen.findByRole('button', { name: `加入課表：${title}` }));
+    }
+    for (let round = 0; round < 3; round += 1) {
+      for (const title of ['臺灣政治', '週五課']) {
+        await search(user, title);
+        await user.click(screen.getByRole('button', { name: `移出課表：${title}` }));
+        await user.click(screen.getByRole('button', { name: `加入課表：${title}` }));
+      }
+    }
+    expect(screen.queryByRole('dialog', { name: '自動備案已滿' })).toBeNull();
+    expect(within(screen.getByRole('group', { name: '方案' })).getAllByRole('button').map((button) => button.textContent)).toEqual(['主方案', '備案']);
+  });
+});

@@ -238,6 +238,7 @@ export function applyAiChangeSet(
   if (violations.length) return { status: 'rejected', violations };
 
   const applied = applyChanges(state, changes, catalog, {
+    source: 'ai',
     ...(context.autoBackupLimit !== undefined ? { autoBackupLimit: context.autoBackupLimit } : {}),
     ...(context.replaceOldestAutoBackup ? { replaceOldestAutoBackup: true } : {}),
   });

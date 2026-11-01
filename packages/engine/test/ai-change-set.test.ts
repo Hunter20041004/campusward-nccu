@@ -148,6 +148,11 @@ describe('applyAiChangeSet', () => {
     expect(result.status === 'rejected' && result.violations.map(({ code }) => code)).toEqual(['invalid-preference']);
   });
 
+  test('backs up before an AI change set removes a single course', () => {
+    const result = applyAiChangeSet(seeded([{ type: 'addToSchedule', key: '1151:900004001' }]), [{ type: 'removeFromSchedule', key: '1151:900004001' }], catalog, { profile });
+    expect(result.status === 'applied' && result.autoBackupPlanIds).toHaveLength(1);
+  });
+
   test('passes through the automatic backup confirmation', () => {
     const result = applyAiChangeSet(seeded([{ type: 'addToSchedule', key: '1151:900004001' }]), [{ type: 'removeFromSchedule', key: '1151:900004001' }], catalog, { profile, autoBackupLimit: 0 });
     expect(result).toEqual({ status: 'needsConfirmation', reason: 'autoBackupFull', limit: 0, replace: 1 });

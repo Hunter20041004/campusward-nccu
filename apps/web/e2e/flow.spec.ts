@@ -64,6 +64,8 @@ test.describe('desktop', () => {
 
     await openTool(page, '匯出與資料');
     await page.getByRole('button', { name: '複製課號清單' }).click();
+    // 稽核 #9：先預覽；統計學與會計學衝堂，要按「仍要複製」才複製。
+    await page.getByRole('region', { name: '複製課號清單：主方案' }).getByRole('button', { name: '仍要複製' }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('900001001\n900002001');
 
     const download = page.waitForEvent('download');
@@ -273,26 +275,123 @@ test.describe('soft relief on every page', () => {
   test('every select, input and button on every tool page uses the soft-relief style', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('banner')).toContainText('115-1');
+    // 候選清單與複製預覽要有內容，才檢查得到裡面的按鈕。
+    await addCourse(page, '統計學');
+    await page.getByRole('searchbox', { name: '搜課' }).fill('會計學');
+    await page.getByRole('button', { name: '加入候選：會計學' }).click();
     await page.getByRole('searchbox', { name: '搜課' }).fill('統計');
     await page.getByRole('button', { name: '多條件搜尋' }).click();
     await page.getByRole('button', { name: '小山', exact: true }).click();
-    for (const name of ['模擬課表', '條件', '匯出與資料', '畢業缺口']) {
+    const offenders = () => page.evaluate(() => [...document.querySelectorAll('select, input:not([type=file]):not([type=checkbox]):not([type=radio]), textarea, .btn')]
+      .filter((element) => !element.closest('[hidden]') && element.getBoundingClientRect().width > 0)
+      .flatMap((element) => {
+        const style = getComputedStyle(element);
+        const field = element.closest('.input') ?? element;
+        const fieldStyle = getComputedStyle(field);
+        const isButton = element.classList.contains('btn');
+        const rounded = parseFloat((isButton ? style : fieldStyle).borderTopLeftRadius) >= 16;
+        const shadowed = isButton
+          ? element.classList.contains('btn-ghost') || (element as HTMLButtonElement).disabled || style.boxShadow !== 'none'
+          : fieldStyle.boxShadow.includes('inset');
+        return rounded && shadowed ? [] : [`${element.tagName} ${element.getAttribute('aria-label') ?? element.textContent?.trim().slice(0, 16)} radius=${(isButton ? style : fieldStyle).borderTopLeftRadius}`];
+      }));
+    for (const name of ['模擬課表', '候選', '條件', '匯出與資料', '畢業缺口']) {
       await openTool(page, name);
-      const offenders = await page.evaluate(() => [...document.querySelectorAll('select, input:not([type=file]):not([type=checkbox]):not([type=radio]), textarea, .btn')]
-        .filter((element) => !element.closest('[hidden]') && element.getBoundingClientRect().width > 0)
-        .flatMap((element) => {
-          const style = getComputedStyle(element);
-          const field = element.closest('.input') ?? element;
-          const fieldStyle = getComputedStyle(field);
-          const isButton = element.classList.contains('btn');
-          const rounded = parseFloat((isButton ? style : fieldStyle).borderTopLeftRadius) >= 16;
-          const shadowed = isButton
-            ? element.classList.contains('btn-ghost') || (element as HTMLButtonElement).disabled || style.boxShadow !== 'none'
-            : fieldStyle.boxShadow.includes('inset');
-          return rounded && shadowed ? [] : [`${element.tagName} ${element.getAttribute('aria-label') ?? element.textContent?.trim().slice(0, 16)} radius=${(isButton ? style : fieldStyle).borderTopLeftRadius}`];
-        }));
-      expect(offenders, name).toEqual([]);
+      expect(await offenders(), name).toEqual([]);
     }
+    await openTool(page, '候選');
+    await expect(page.getByRole('region', { name: '候選清單' }).getByRole('article')).toHaveCount(2);
+    expect(await offenders(), '候選（有課）').toEqual([]);
+    // 小山面板的按鈕上面已檢查過；收起來才點得到複製按鈕。
+    await page.getByRole('button', { name: '小山', exact: true }).click();
+    await openTool(page, '匯出與資料');
+    await page.getByRole('button', { name: '複製課號清單' }).click();
+    await expect(page.getByRole('region', { name: /複製課號清單：/ })).toBeVisible();
+    expect(await offenders(), '複製預覽').toEqual([]);
+  });
+});
+
+// 稽核第二批（2026-11-01）：候選清單看得到、能加入課表與移除；複製課號前先預覽。
+test.describe('candidates and copy preview', () => {
+  const openView = async (page: Page, isMobile: boolean, name: string) => {
+    if (!isMobile) return openTool(page, name);
+    await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '更多' }).click();
+    await page.getByRole('list', { name: '更多工具' }).getByRole('button', { name }).click();
+  };
+  const showSearch = async (page: Page, isMobile: boolean) => {
+    if (isMobile) await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '搜課' }).click();
+  };
+
+  test('lists hearted courses with time, credits and clashes; adds one and removes another', async ({ page, isMobile }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    await openView(page, isMobile, '候選');
+    const list = page.getByRole('region', { name: '候選清單' });
+    await expect(list).toContainText('還沒有候選課');
+    await expect(list).toContainText('♡');
+    await expectNoAxeViolations(page);
+
+    await showSearch(page, isMobile);
+    await addCourse(page, '統計學');
+    await page.getByRole('searchbox', { name: '搜課' }).fill('會計學');
+    await page.getByRole('button', { name: '加入候選：會計學' }).click();
+    await openView(page, isMobile, '候選');
+    const row = list.getByRole('article').filter({ hasText: '會計學' });
+    await expect(row).toContainText('週一 34（10:10–12:00）');
+    await expect(row).toContainText('學分');
+    await expect(row).toContainText('與「統計學」衝堂');
+    await expect(list.getByRole('article').filter({ hasText: '統計學' }).first()).toContainText('已在課表');
+    await expectNoAxeViolations(page);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (isMobile) expect(await smallTargets(page)).toEqual([]);
+
+    await row.getByRole('button', { name: '加入課表：會計學' }).click();
+    await expect(page.getByRole('status', { name: '最近的修改' })).toContainText('已加入「會計學」，與「統計學」衝堂');
+    await expect(row).toContainText('已在課表');
+    await list.getByRole('button', { name: '移除候選：會計學' }).click();
+    await expect(page.getByRole('status', { name: '最近的修改' })).toContainText('已移出候選「會計學」');
+    await expect(list.getByRole('article')).toHaveCount(1);
+  });
+
+  test('previews the codes to copy, warns about clashes and copies only ticked rows', async ({ page, context, isMobile }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    await showSearch(page, isMobile);
+    await addCourse(page, '統計學');
+    await addCourse(page, '會計學');
+    await openView(page, isMobile, '匯出與資料');
+    await page.getByRole('button', { name: '複製課號清單' }).click();
+    const preview = page.getByRole('region', { name: '複製課號清單：主方案' });
+    await expect(preview.getByRole('alert')).toContainText('「統計學」與「會計學」衝堂');
+    await expect(preview.getByRole('checkbox')).toHaveCount(2);
+    await expect(preview.getByRole('checkbox', { name: /^900001001・統計學・週一 234（09:10–12:00）・/ })).toBeChecked();
+    await expectNoAxeViolations(page);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (isMobile) expect(await smallTargets(page)).toEqual([]);
+
+    await preview.getByRole('button', { name: '回課表處理' }).click();
+    await expect(page.getByRole('heading', { level: 2, name: /模擬課表/ })).toBeVisible();
+
+    await openView(page, isMobile, '匯出與資料');
+    await page.getByRole('button', { name: '複製課號清單' }).click();
+    await preview.getByRole('checkbox', { name: /^900002001/ }).uncheck();
+    await preview.getByRole('button', { name: '仍要複製' }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('900001001');
+    await expect(page.getByRole('status', { name: '資料操作結果' })).toContainText('已複製 1 個課號（主方案）');
+  });
+
+  test('asks for the year next to the credits and opens the identity settings', async ({ page, isMobile }) => {
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    if (isMobile) await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '課表' }).click();
+    await page.getByRole('button', { name: '設定年級後可檢查學分上下限' }).click();
+    const year = page.getByRole('combobox', { name: '年級' });
+    await expect(year).toBeFocused();
+    await year.selectOption('2');
+    if (isMobile) await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '課表' }).click();
+    else await openTool(page, '模擬課表');
+    await expect(page.getByText('共 0 學分（12–25）')).toBeVisible();
   });
 });
 

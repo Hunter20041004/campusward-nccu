@@ -1,6 +1,7 @@
 import {
   checkEnrollmentRules,
   clearStudentRecord,
+  creditLimits,
   findClashes,
   findRetakes,
   loadStudentRecord,
@@ -12,6 +13,7 @@ import {
   toScheduleCourse,
   type Change,
   type Course,
+  type ScheduleCourse,
   type StorageLike,
   type StudentRecord,
 } from '@campusward/engine';
@@ -21,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header.tsx';
 import { MobileNav, type MobileView } from './components/MobileNav.tsx';
 import { AiPanel } from './components/AiPanel.tsx';
+import { CandidatesPanel } from './components/CandidatesPanel.tsx';
 import { ConditionsPanel } from './components/ConditionsPanel.tsx';
 import { ConfirmDialog } from './components/ConfirmDialog.tsx';
 import { DataPanel } from './components/DataPanel.tsx';
@@ -117,39 +120,46 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   // 搜課結果標示「已修過」：和重修提醒同一套比對（全學年課的另一學期不算）。
   const passedAs = useMemo(() => (record ? (course: Course) => passedCourseTitle(record, toScheduleCourse(course)) : undefined), [record]);
   const titleOf = (key: string) => planner.catalog.get(key)?.title ?? '課程';
-  // 搜課結果標示「與某課衝堂」：用引擎同一套衝堂判斷，對目前方案算；同一份課表只算一次。
-  const clashesOf = useMemo(() => {
+  // 搜課結果與候選清單標示「與某課衝堂」：用引擎同一套衝堂判斷，對目前方案算；同一份課表只算一次。
+  const clashesOfCourse = useMemo(() => {
     const cache = new Map<string, string[]>();
-    return (course: Course) => {
-      const key = toScheduleCourse(course).key;
-      let titles = cache.get(key);
+    return (course: ScheduleCourse) => {
+      let titles = cache.get(course.key);
       if (!titles) {
-        titles = findClashes(planner.entries, planner.catalog.get(key) ?? toScheduleCourse(course))
-          .map((clash) => planner.catalog.get(clash)?.title ?? '課程');
-        cache.set(key, titles);
+        titles = findClashes(planner.entries, course).map((clash) => planner.catalog.get(clash)?.title ?? '課程');
+        cache.set(course.key, titles);
       }
       return titles;
     };
   }, [planner.catalog, planner.entries]);
+  const clashesOf = useMemo(() => (course: Course) => {
+    const key = toScheduleCourse(course).key;
+    return clashesOfCourse(planner.catalog.get(key) ?? toScheduleCourse(course));
+  }, [clashesOfCourse, planner.catalog]);
   const quoted = (titles: readonly string[]) => titles.map((title) => `「${title}」`).join('、');
-  const addLabel = (course: Course) => {
-    const clashes = clashesOf(course);
+  const addLabelFor = (course: ScheduleCourse) => {
+    const clashes = clashesOfCourse(course);
     return `已加入「${course.title}」${clashes.length ? `，與${quoted(clashes)}衝堂` : ''}`;
   };
-  // 愛心可以切換：已在候選就移出（也會從自己的其他方案移出，與引擎 removeCandidate 一致）。
+  const addLabel = (course: Course) => addLabelFor(planner.catalog.get(keyOf(course)) ?? toScheduleCourse(course));
+  // 移出候選也會從自己的其他方案移出（與引擎 removeCandidate 一致）；鎖定的課不移。
+  const removeCandidate = (key: string, title: string) => {
+    const ownPlans = planner.planner.plans.filter(({ auto }) => !auto);
+    const locked = ownPlans.find(({ items }) => items.some((item) => item.key === key && item.locked));
+    const elsewhere = ownPlans.filter(({ id, items }) => id !== planner.planner.activePlanId && items.some((item) => item.key === key));
+    const label = locked
+      ? `「${title}」在「${locked.name}」已鎖定，先解鎖才能移出候選`
+      : `已移出候選「${title}」${elsewhere.length ? `，也從${quoted(elsewhere.map(({ name }) => name))}移出` : ''}`;
+    courseChange('candidate', [{ type: 'removeCandidate', key }], label);
+  };
+  // 愛心可以切換：已在候選就移出。
   const toggleCandidate = (course: Course) => {
     const key = keyOf(course);
     if (!candidateKeys.has(key)) {
       courseChange('candidate', [{ type: 'addCandidate', key }], `已放進候選「${course.title}」`);
       return;
     }
-    const ownPlans = planner.planner.plans.filter(({ auto }) => !auto);
-    const locked = ownPlans.find(({ items }) => items.some((item) => item.key === key && item.locked));
-    const elsewhere = ownPlans.filter(({ id, items }) => id !== planner.planner.activePlanId && items.some((item) => item.key === key));
-    const label = locked
-      ? `「${course.title}」在「${locked.name}」已鎖定，先解鎖才能移出候選`
-      : `已移出候選「${course.title}」${elsewhere.length ? `，也從${quoted(elsewhere.map(({ name }) => name))}移出` : ''}`;
-    courseChange('candidate', [{ type: 'removeCandidate', key }], label);
+    removeCandidate(key, course.title);
   };
   const [slot, setSlot] = useState<SearchSlot | null>(null);
   const [pendingBackup, setPendingBackup] = useState<{ changes: Change[]; label: string; replace: number } | null>(null);
@@ -183,12 +193,11 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     });
   }, [planner.activePlan.items, planner.catalog, planner.planner.candidates]);
 
-  // AI 變更也檢查學分上限（與規則提醒同一份選課須知）；身分條件只在本機使用。
-  const maximumCredits = planner.profile.level !== 'graduate' && planner.profile.year
-    ? RULES.credits.maximum[planner.profile.additionalMajor ?? 'none']
-    : undefined;
+  // 依身分的學分上下限：課表旁顯示、複製課號前檢查；AI 變更也檢查上限（同一份選課須知）。身分條件只在本機使用。
+  const limits = creditLimits(planner.profile, RULES);
+  const maximumCredits = limits?.maximum;
 
-  const tools: Tool[] = ['timetable', 'conditions', 'data', ...(FEATURES.graduation ? ['graduation' as const] : [])];
+  const tools: Tool[] = ['timetable', 'candidates', 'conditions', 'data', ...(FEATURES.graduation ? ['graduation' as const] : [])];
   const aiEnabled = FEATURES.orb || FEATURES.qa || FEATURES.demo;
   const [aiOpen, setAiOpen] = useState(false);
   const conflictPairs = planner.conflicts.map(({ courseKeys }) => [titleOf(courseKeys[0] ?? ''), titleOf(courseKeys[1] ?? '')] as const);
@@ -212,6 +221,15 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const startSearch = () => {
     setMobileView('search');
     setTimeout(() => searchRef.current?.focus(), 0);
+  };
+  // 「設定年級後可檢查學分上下限」：打開條件並把焦點放到年級。
+  const openIdentity = () => {
+    showTool('conditions');
+    setTimeout(() => {
+      const year = document.getElementById('identity-year');
+      year?.scrollIntoView?.({ block: 'center' });
+      year?.focus();
+    }, 0);
   };
   const current = TOOLS.find(({ id }) => id === tool)!;
 
@@ -270,6 +288,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   activePlanId={planner.planner.activePlanId}
                   credits={planner.credits}
                   catalog={planner.catalog}
+                  limits={limits}
+                  {...(!limits && planner.profile.level !== 'graduate' ? { onSetIdentity: openIdentity } : {})}
                   onSwitch={(planId) => applyChange([{ type: 'switchPlan', planId }], `已切換到「${planner.planner.plans.find(({ id }) => id === planId)?.name ?? '方案'}」`)}
                   onCreate={() => {
                     const name = `備案 ${planner.planner.plans.filter(({ auto }) => !auto).length}`;
@@ -298,6 +318,20 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   onRemove={(key) => courseChange('remove', [{ type: 'removeFromSchedule', key }], `已移出「${titleOf(key)}」`)}
                 />
                 {planner.entries.length > 0 && <RulesPanel conflicts={planner.conflicts} reminders={reminders} retakes={retakes} />}
+              </div>
+              <div hidden={tool !== 'candidates'}>
+                <CandidatesPanel
+                  candidates={planner.planner.candidates}
+                  catalog={planner.catalog}
+                  scheduledKeys={scheduledKeys}
+                  clashesOf={clashesOfCourse}
+                  onAdd={(key) => {
+                    const course = planner.catalog.get(key);
+                    if (course) courseChange('add', [{ type: 'addToSchedule', key }], addLabelFor(course));
+                  }}
+                  onRemove={(key) => removeCandidate(key, titleOf(key))}
+                  onStartSearch={startSearch}
+                />
               </div>
               <div hidden={tool !== 'conditions'}>
                 <ConditionsPanel
@@ -329,6 +363,9 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                     }}
                     canRestoreImport={planner.canRestoreImport}
                     onRestoreImport={planner.restoreBeforeImport}
+                    planName={planner.activePlan.name}
+                    limits={limits}
+                    onBackToTimetable={() => showTool('timetable')}
                     onWallpaper={() => {
                       void renderWallpaper(wallpaperLayout(planner.entries, data.label)).then((blob) => {
                         const url = URL.createObjectURL(blob);

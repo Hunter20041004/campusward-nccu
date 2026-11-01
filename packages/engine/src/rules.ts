@@ -78,6 +78,15 @@ const CATEGORY_LABELS: Record<Exclude<Category, 'professional'>, string> = {
 
 const MAJOR_LABELS = { none: '無加修學系', minor: '輔系', double: '雙主修' } as const;
 
+/** 依身分的學分上下限；大學部且填了年級才有（研究所與未設定年級不檢查）。 */
+export function creditLimits(profile: IdentityProfile, rules: EnrollmentRules): { minimum: number; maximum: number } | null {
+  if (profile.level === 'graduate' || !profile.year) return null;
+  return {
+    minimum: profile.year >= 4 ? rules.credits.minimum.year4plus : rules.credits.minimum.year1to3,
+    maximum: rules.credits.maximum[profile.additionalMajor ?? 'none'],
+  };
+}
+
 export function checkEnrollmentRules(
   entries: readonly ScheduleEntry[],
   profile: IdentityProfile,
@@ -91,11 +100,11 @@ export function checkEnrollmentRules(
   };
   const courses = entries.filter(({ course }) => course.itemType === 'course');
 
-  if (profile.level !== 'graduate' && profile.year) {
+  const limits = creditLimits(profile, rules);
+  if (limits && profile.year) {
     const total = totalCredits(courses);
-    const minimum = profile.year >= 4 ? rules.credits.minimum.year4plus : rules.credits.minimum.year1to3;
+    const { minimum, maximum } = limits;
     const major = profile.additionalMajor ?? 'none';
-    const maximum = rules.credits.maximum[major];
     if (total < minimum) {
       remind('credit-minimum', 'warn', `目前 ${total} 學分，低於大${profile.year}學分下限 ${minimum} 學分；如確定要少修，請於規定期限上網申請「超減修習學分數」。`);
     }

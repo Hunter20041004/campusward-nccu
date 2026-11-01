@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createEmptyData, exportTransfer, type ScheduleEntry, type StoredData } from '@campusward/engine';
 import { describe, expect, test, vi } from 'vitest';
@@ -23,6 +23,9 @@ function setup(overrides: Partial<DataPanelProps> = {}) {
     onWallpaper: vi.fn(),
     canRestoreImport: false,
     onRestoreImport: vi.fn(),
+    planName: '主方案',
+    limits: null,
+    onBackToTimetable: vi.fn(),
     now: () => new Date('2026-10-28T08:00:00Z'),
     ...overrides,
   };
@@ -40,6 +43,8 @@ describe('DataPanel', () => {
     const writeText = vi.spyOn(navigator.clipboard, 'writeText');
     setup();
     await user.click(screen.getByRole('button', { name: '複製課號清單' }));
+    // 稽核 #9：先看預覽再複製（原本按下就直接複製）。
+    await user.click(within(screen.getByRole('region', { name: /複製課號清單/ })).getByRole('button', { name: '複製 2 個課號' }));
     expect(writeText).toHaveBeenCalledWith('900002001\n900003001');
     expect(await screen.findByRole('status', { name: '資料操作結果' })).toHaveTextContent('已複製 2 個課號');
   });
@@ -101,4 +106,96 @@ test('offers to restore the data from before an import', async () => {
 test('hides the restore button when there is nothing to restore', () => {
   setup();
   expect(screen.queryByRole('button', { name: '還原匯入前的資料' })).toBeNull();
+});
+
+// 稽核 #9（2026-11-01）：複製前先預覽方案、每門課與勾選；有衝堂或學分超出範圍先警告。
+describe('copy preview', () => {
+  const timed = (code: string, title: string, start: number, end: number): ScheduleEntry => {
+    const base = entry(code);
+    return { ...base, course: { ...base.course, title, meetings: [{ day: 1, start, end, label: '' }] } };
+  };
+
+  test('shows the plan name and each row with code, title, time and credits; registered rows start unticked', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: '複製課號清單' }));
+    const dialog = screen.getByRole('region', { name: '複製課號清單：主方案' });
+    const rows = within(dialog).getAllByRole('checkbox');
+    expect(rows.map((box) => box.closest('label')?.textContent)).toEqual([
+      '900002001・課900002001・時間未定・3 學分',
+      '900001001・課900001001・時間未定・3 學分已灌檔',
+      '900003001・課900003001・時間未定・3 學分',
+    ]);
+    expect(rows.map((box) => (box as HTMLInputElement).checked)).toEqual([true, false, true]);
+    expect(dialog).toHaveTextContent('1 門手動加入的課沒有課號，不會複製');
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+  });
+
+  test('copies only the ticked rows', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText');
+    setup();
+    await user.click(screen.getByRole('button', { name: '複製課號清單' }));
+    const dialog = screen.getByRole('region', { name: /複製課號清單/ });
+    await user.click(within(dialog).getByRole('checkbox', { name: /^900002001/ }));
+    await user.click(within(dialog).getByRole('checkbox', { name: /^900001001/ }));
+    await user.click(within(dialog).getByRole('button', { name: '複製 2 個課號' }));
+    expect(writeText).toHaveBeenLastCalledWith('900001001\n900003001');
+    expect(screen.queryByRole('region', { name: /複製課號清單/ })).toBeNull();
+    expect(screen.getByRole('status', { name: '資料操作結果' })).toHaveTextContent('已複製 2 個課號（主方案）');
+  });
+
+  test('cannot copy when nothing is ticked', async () => {
+    const user = userEvent.setup();
+    setup({ entries: [entry('900002001')] });
+    await user.click(screen.getByRole('button', { name: '複製課號清單' }));
+    const dialog = screen.getByRole('region', { name: /複製課號清單/ });
+    await user.click(within(dialog).getByRole('checkbox'));
+    expect(within(dialog).getByRole('button', { name: '複製 0 個課號' })).toBeDisabled();
+  });
+
+  test('warns about clashes first, and can go back to the timetable without copying', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText');
+    writeText.mockClear();
+    const props = setup({ entries: [timed('042112001', '臺灣政治', 960, 1140), timed('000603001', '民法概要', 960, 1080)] });
+    await user.click(screen.getByRole('button', { name: '複製課號清單' }));
+    const dialog = screen.getByRole('region', { name: /複製課號清單/ });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('「臺灣政治」與「民法概要」衝堂');
+    await user.click(within(dialog).getByRole('button', { name: '回課表處理' }));
+    expect(props.onBackToTimetable).toHaveBeenCalled();
+    expect(writeText).not.toHaveBeenCalled();
+    expect(screen.queryByRole('region', { name: /複製課號清單/ })).toBeNull();
+  });
+
+  test('can still copy after a clash warning', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText');
+    setup({ entries: [timed('042112001', '臺灣政治', 960, 1140), timed('000603001', '民法概要', 960, 1080)] });
+    await user.click(screen.getByRole('button', { name: '複製課號清單' }));
+    await user.click(within(screen.getByRole('region', { name: /複製課號清單/ })).getByRole('button', { name: '仍要複製' }));
+    expect(writeText).toHaveBeenLastCalledWith('042112001\n000603001');
+  });
+
+  test('warns when the credits are outside the limits', async () => {
+    const user = userEvent.setup();
+    setup({ limits: { minimum: 15, maximum: 25 } });
+    await user.click(screen.getByRole('button', { name: '複製課號清單' }));
+    expect(within(screen.getByRole('region', { name: /複製課號清單/ })).getByRole('alert')).toHaveTextContent('共 12 學分，低於學分下限 15 學分');
+  });
+
+  test('moves focus to the preview, closes with 取消 or Escape, and returns focus to the copy button', async () => {
+    const user = userEvent.setup();
+    setup();
+    const trigger = screen.getByRole('button', { name: '複製課號清單' });
+    await user.click(trigger);
+    expect(screen.getByRole('region', { name: /複製課號清單/ })).toContainElement(document.activeElement as HTMLElement);
+    await user.click(within(screen.getByRole('region', { name: /複製課號清單/ })).getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('region', { name: /複製課號清單/ })).toBeNull();
+    await waitFor(() => expect(trigger).toHaveFocus());
+    await user.click(trigger);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('region', { name: /複製課號清單/ })).toBeNull();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
 });

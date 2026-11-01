@@ -9,9 +9,19 @@ export interface PlanBarProps {
   catalog: ReadonlyMap<string, ScheduleCourse>;
   onSwitch: (planId: string) => void;
   onCreate: () => void;
+  /** 依身分的學分上下限（選課須知）；有就顯示在學分數旁。 */
+  limits?: { minimum: number; maximum: number } | null;
+  /** 還沒設定年級時提供：按了去「條件 → 我的身分」。 */
+  onSetIdentity?: () => void;
 }
 
-export function PlanBar({ plans, activePlanId, credits, catalog, onSwitch, onCreate }: PlanBarProps) {
+function creditRangeNote(credits: number, { minimum, maximum }: { minimum: number; maximum: number }) {
+  if (credits < minimum) return `低於學分下限 ${minimum} 學分`;
+  if (credits > maximum) return `超過學分上限 ${maximum} 學分`;
+  return `學分下限 ${minimum}、上限 ${maximum}`;
+}
+
+export function PlanBar({ plans, activePlanId, credits, catalog, onSwitch, onCreate, limits, onSetIdentity }: PlanBarProps) {
   const [compareId, setCompareId] = useState('');
   const active = plans.find(({ id }) => id === activePlanId);
   const other = plans.find(({ id }) => id === compareId && id !== activePlanId);
@@ -44,8 +54,23 @@ export function PlanBar({ plans, activePlanId, credits, catalog, onSwitch, onCre
         </div>
         <span className="shrink-0 text-sm">
           共 <strong className="tabular font-semibold">{credits}</strong> 學分
+          {limits && (
+            <span
+              title={creditRangeNote(credits, limits)}
+              className={`tabular ${credits < limits.minimum || credits > limits.maximum ? 'font-bold text-coral-ink' : 'text-base-content/75'}`}
+            >
+              （{limits.minimum}–{limits.maximum}）
+            </span>
+          )}
         </span>
       </div>
+      {!limits && onSetIdentity && (
+        <div className="flex justify-end">
+          <button type="button" className="btn btn-ghost btn-sm min-h-11 text-xs font-medium text-mist-ink underline underline-offset-4" onClick={onSetIdentity}>
+            設定年級後可檢查學分上下限
+          </button>
+        </div>
+      )}
       {plans.length > 1 && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           <label className="flex items-center gap-2">

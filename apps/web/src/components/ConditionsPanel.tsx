@@ -82,7 +82,7 @@ export function ConditionsPanel({ profile, courses, entries, preferences, onProf
           </label>
           <label className="flex flex-col gap-1">
             <span>年級</span>
-            <select className="select select-sm min-h-11" value={profile.year ?? ''} onChange={(event) => onProfile({ ...profile, ...(event.target.value ? { year: Number(event.target.value) } : { year: undefined }) })}>
+            <select id="identity-year" className="select select-sm min-h-11" value={profile.year ?? ''} onChange={(event) => onProfile({ ...profile, ...(event.target.value ? { year: Number(event.target.value) } : { year: undefined }) })}>
               <option value="">未設定</option>
               {[1, 2, 3, 4, 5, 6, 7].map((year) => <option key={year} value={year}>{year} 年級</option>)}
             </select>

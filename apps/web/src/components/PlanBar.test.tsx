@@ -53,3 +53,23 @@ test('compares the active plan with another plan', async () => {
   expect(result).toHaveTextContent('只在備案 1：課c');
   expect(result).toHaveTextContent('學分 5 → 6（+1）');
 });
+
+// 稽核 #11（2026-11-01）：學分旁顯示上下限；沒設定年級時提示並可直接去設定。
+test('shows the credit range next to the total when the year is set', () => {
+  render(<PlanBar plans={plans} activePlanId="plan-1" credits={13} catalog={catalog} onSwitch={vi.fn()} onCreate={vi.fn()} limits={{ minimum: 12, maximum: 25 }} />);
+  expect(screen.getByText(/共/)).toHaveTextContent('共 13 學分（12–25）');
+  expect(screen.queryByRole('button', { name: /設定年級/ })).toBeNull();
+});
+
+test('marks a total outside the credit range', () => {
+  render(<PlanBar plans={plans} activePlanId="plan-1" credits={5} catalog={catalog} onSwitch={vi.fn()} onCreate={vi.fn()} limits={{ minimum: 12, maximum: 25 }} />);
+  expect(screen.getByTitle('低於學分下限 12 學分')).toHaveTextContent('（12–25）');
+});
+
+test('asks for the year to check the credit limits, with a button that opens the identity settings', async () => {
+  const onSetIdentity = vi.fn();
+  render(<PlanBar plans={plans} activePlanId="plan-1" credits={11} catalog={catalog} onSwitch={vi.fn()} onCreate={vi.fn()} onSetIdentity={onSetIdentity} />);
+  expect(screen.getByText(/共/)).toHaveTextContent('共 11 學分');
+  await userEvent.setup().click(screen.getByRole('button', { name: '設定年級後可檢查學分上下限' }));
+  expect(onSetIdentity).toHaveBeenCalled();
+});
