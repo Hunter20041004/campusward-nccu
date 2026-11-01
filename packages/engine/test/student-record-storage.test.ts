@@ -51,3 +51,17 @@ describe('student record storage', () => {
     expect(storage.values[RECORD_KEY]).toBe('');
   });
 });
+
+// 第五輪審查：解析器沒有的上限，存檔時一律截斷，不讓存檔失敗。
+test('clamps values the parser allows but storage would reject, instead of failing', () => {
+  const storage = memory();
+  const long = {
+    ...record,
+    enrollment: { ...record.enrollment, programs: Array.from({ length: 25 }, (_, index) => `學程${index}`) },
+    courses: record.courses.map((course, index) => (index === 0 ? { ...course, generalEducation: ['一個超過二十個字的通識領域備註寫得很長很長很長'] } : course)),
+  };
+  expect(() => saveStudentRecord(storage, long)).not.toThrow();
+  const loaded = loadStudentRecord(storage)!;
+  expect(loaded.enrollment.programs).toHaveLength(20);
+  expect(loaded.courses[0]!.generalEducation[0]!.length).toBeLessThanOrEqual(20);
+});

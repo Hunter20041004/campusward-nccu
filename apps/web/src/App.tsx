@@ -3,7 +3,9 @@ import {
   clearStudentRecord,
   findRetakes,
   loadStudentRecord,
-  normalizeSearchText,
+  passedAs as passedCourseTitle,
+  RECORD_KEY,
+  STORAGE_KEY,
   parseEnrollmentRules,
   saveStudentRecord,
   toScheduleCourse,
@@ -14,7 +16,7 @@ import {
 } from '@campusward/engine';
 import enrollmentRules from '../../../data/rules/enrollment-11407.json' with { type: 'json' };
 import { Search } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header.tsx';
 import { MobileNav, type MobileView } from './components/MobileNav.tsx';
 import { AiPanel } from './components/AiPanel.tsx';
@@ -28,6 +30,8 @@ import { SearchPanel } from './components/SearchPanel.tsx';
 import { ToolRail, TOOLS, type Tool } from './components/ToolRail.tsx';
 import { Guide } from './components/Guide.tsx';
 import { FloatingOrb } from './components/FloatingOrb.tsx';
+import type { BuddyMood } from './components/OrbBuddy.tsx';
+import { buildBriefing } from './ai/briefing.ts';
 import { Timetable } from './components/Timetable.tsx';
 import { UndoToast } from './components/UndoToast.tsx';
 import { gemini } from './ai/session.ts';
@@ -73,6 +77,15 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     }
     setRecordState(next);
   };
+  // 另一個分頁清除或重新匯入修課資料時跟著更新（共用電腦上清除後，其他分頁也不能還顯示）。
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== RECORD_KEY && event.key !== STORAGE_KEY) return;
+      setRecordState(storageRef.current ? loadStudentRecord(storageRef.current) : null);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
   const closeGuide = () => {
     setGuideOpen(false);
     try {
@@ -90,14 +103,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
     key: retake.key,
     message: `「${planner.catalog.get(retake.key)?.title ?? retake.key}」與你已通過的「${retake.passedTitle}」${retake.reason === 'code' ? '課號前六碼相同' : '同名'}，可能是重複修習，學分通常不計入畢業學分。`,
   })) : []), [planner.catalog, planner.entries, record]);
-  // 搜課結果標示「已修過」：已通過的課，課號前六碼或課名相同。
-  const passedAs = useMemo(() => {
-    if (!record) return undefined;
-    const passed = record.courses.filter(({ result }) => result === 'passed');
-    const byCode = new Map(passed.map(({ code, title }) => [code.slice(0, 6), title]));
-    const byTitle = new Map(passed.map(({ title }) => [normalizeSearchText(title), title]));
-    return (course: Course) => byCode.get(course.code.slice(0, 6)) ?? byTitle.get(normalizeSearchText(course.title)) ?? null;
-  }, [record]);
+  // 搜課結果標示「已修過」：和重修提醒同一套比對（全學年課的另一學期不算）。
+  const passedAs = useMemo(() => (record ? (course: Course) => passedCourseTitle(record, toScheduleCourse(course)) : undefined), [record]);
   const titleOf = (key: string) => planner.catalog.get(key)?.title ?? '課程';
   const [pendingBackup, setPendingBackup] = useState<{ changes: Change[]; label: string; replace: number } | null>(null);
   // 清除本機資料後換掉這個值，讓 AI 面板與畢業缺口重新掛載（金鑰、勾選、匯入的修課資料都歸零）。
@@ -124,6 +131,28 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   const tools: Tool[] = ['timetable', 'conditions', 'data', ...(FEATURES.graduation ? ['graduation' as const] : [])];
   const aiEnabled = FEATURES.orb || FEATURES.qa || FEATURES.demo;
   const [aiOpen, setAiOpen] = useState(false);
+  // 小助手的表情：AI 處理中思考、套用成功開心（3 秒）、被擋下擔心；平常有衝堂時擔心。
+  const [aiMood, setAiMood] = useState<BuddyMood | null>(null);
+  useEffect(() => {
+    if (aiMood !== 'happy' && aiMood !== 'worried') return undefined;
+    const timer = setTimeout(() => setAiMood(null), 3000);
+    return () => clearTimeout(timer);
+  }, [aiMood]);
+  const conflictPairs = planner.conflicts.map(({ courseKeys }) => [titleOf(courseKeys[0] ?? ''), titleOf(courseKeys[1] ?? '')] as const);
+  const conflictSignature = planner.conflicts.map(({ courseKeys }) => courseKeys.join('+')).join('|');
+  const [dismissedNudge, setDismissedNudge] = useState('');
+  const nudge = conflictSignature && dismissedNudge !== conflictSignature
+    ? `有 ${planner.conflicts.length} 個衝堂，要我幫忙看看嗎？`
+    : null;
+  const mood: BuddyMood = aiMood ?? (planner.conflicts.length ? 'worried' : 'idle');
+  const briefing = buildBriefing({
+    courses: planner.entries.length,
+    credits: planner.credits,
+    conflicts: conflictPairs,
+    warnings: reminders.filter(({ severity }) => severity === 'warn').length + retakes.length,
+    freeDays: planner.planner.preferences.freeDays,
+    unscheduledCandidates: planner.planner.candidates.filter((key) => !scheduledKeys.has(key)).length,
+  });
   const showTool = (next: Tool) => {
     setTool(next);
     setMobileView(next);
@@ -256,6 +285,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                 <div hidden={tool !== 'graduation'}>
                   {ready && (
                     <GraduationPanel
+                      key={`graduation-${generation}`}
                       courses={courses}
                       record={record}
                       onRecord={setRecord}
@@ -289,7 +319,14 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
       <UndoToast label={planner.undoLabel} onUndo={planner.undo} onExpire={planner.clearUndo} />
       <MobileNav view={mobileView} tools={tools} onView={(next) => (next === 'search' ? setMobileView('search') : showTool(next))} />
       {aiEnabled && (
-        <FloatingOrb open={aiOpen} onOpen={() => setAiOpen(true)} onClose={() => setAiOpen(false)}>
+        <FloatingOrb
+          open={aiOpen}
+          onOpen={() => { setAiOpen(true); setDismissedNudge(conflictSignature); }}
+          onClose={() => setAiOpen(false)}
+          mood={mood}
+          nudge={nudge}
+          onDismissNudge={() => setDismissedNudge(conflictSignature)}
+        >
           <AiPanel
                     key={`ai-${generation}`}
                     client={ai}
@@ -299,6 +336,8 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                     catalog={planner.catalog}
                     courses={courses}
                     ready={ready}
+                    briefing={briefing}
+                    onMood={setAiMood}
                     onApply={(changes, label, replaceOldestAutoBackup) => planner.applyAi(changes, label, {
                       ...(ready ? { termLabel: data.label } : {}),
                       ...(maximumCredits !== undefined ? { maximumCredits } : {}),

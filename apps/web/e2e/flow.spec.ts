@@ -255,3 +255,51 @@ test.describe('soft relief on every page', () => {
     }
   });
 });
+
+// 第五輪審查：光球、AI 面板不能蓋住「復原」與「更多」選單。用座標實際點點看。
+async function topElementIsUndo(page: Page) {
+  return page.evaluate(() => {
+    const undo = [...document.querySelectorAll('[aria-label="最近的修改"] button')].find((button) => button.textContent?.includes('復原'));
+    if (!undo) return 'no undo button';
+    const rect = undo.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    return hit && undo.contains(hit) ? 'ok' : `covered by ${hit?.getAttribute('aria-label') ?? hit?.tagName}`;
+  });
+}
+
+test.describe('nothing covers the undo button', () => {
+  test('on a phone, with a long course name, and the more menu stays clickable', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'mobile only');
+    await page.goto('/');
+    await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '搜課' }).click();
+    await page.getByRole('searchbox', { name: '搜課' }).fill('統計');
+    await page.getByRole('button', { name: '加入課表：統計學' }).click();
+    expect(await topElementIsUndo(page)).toBe('ok');
+    await page.getByRole('navigation', { name: '主要分頁' }).getByRole('button', { name: '更多' }).click();
+    const lastItem = page.getByRole('list', { name: '更多工具' }).getByRole('button').last();
+    const box = (await lastItem.boundingBox())!;
+    const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('button')?.textContent, { x: box.x + box.width - 8, y: box.y + box.height / 2 });
+    expect(hit).toContain('畢業缺口');
+  });
+
+  test('at a medium width while the AI orb panel is open', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'desktop project only');
+    await page.setViewportSize({ width: 900, height: 800 });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'AI 光球' }).click();
+    await page.getByRole('searchbox', { name: '搜課' }).fill('統計');
+    await page.getByRole('button', { name: '加入課表：統計學' }).click({ force: true });
+    expect(await topElementIsUndo(page)).toBe('ok');
+  });
+});
+
+test('buttons respond to hover and the tool rail keeps its rounded squares', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'desktop only');
+  await page.goto('/');
+  const button = page.getByRole('button', { name: '多條件搜尋' });
+  const before = await button.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await button.hover();
+  await expect.poll(() => button.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(before);
+  const railRadius = await page.getByRole('navigation', { name: '工具' }).getByRole('button', { name: '條件' }).evaluate((element) => getComputedStyle(element).borderTopLeftRadius);
+  expect(railRadius).toBe('16px');
+});

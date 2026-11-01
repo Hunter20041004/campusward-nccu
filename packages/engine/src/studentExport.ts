@@ -252,3 +252,9 @@ export function findRetakes(record: StudentRecord, entries: readonly ScheduleEnt
     return byTitle ? [{ key: course.key, passedTitle: byTitle.title, reason: 'title' }] : [];
   });
 }
+
+/** 搜課「已修過」：和重修提醒用同一套比對（同名或課號前六碼；全學年課只看同一學期）。回傳已通過的課名。 */
+export function passedAs(record: StudentRecord, course: ScheduleEntry['course']): string | null {
+  const item = { key: course.key, attendance: 'sync' as const, status: 'planned' as const, locked: false };
+  return findRetakes(record, [{ course, item }])[0]?.passedTitle ?? null;
+}

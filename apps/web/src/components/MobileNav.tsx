@@ -19,7 +19,7 @@ export function MobileNav({ view, tools, onView }: { view: MobileView; tools: re
   return (
     <nav aria-label="主要分頁" className="fixed inset-x-0 bottom-0 z-20 bg-base-100/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-6px_16px_-10px_rgb(0_0_0/0.25)] backdrop-blur-sm md:hidden">
       {more && (
-        <ul aria-label="更多工具" className="relief mx-3 mb-2 flex flex-col gap-1 p-2">
+        <ul aria-label="更多工具" className="relief mb-2 ml-3 mr-24 flex flex-col gap-1 p-2">
           {others.map(({ id, label, icon }) => (
             <li key={id}>
               <button type="button" className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-sm font-bold" onClick={() => choose(id)}>

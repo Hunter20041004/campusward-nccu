@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
 import { App } from './App.tsx';
@@ -182,4 +182,36 @@ test('one import of the student record is shared by conditions and graduation ga
   await user.click(within(screen.getByRole('navigation', { name: '工具' })).getByRole('button', { name: '畢業缺口' }));
   expect(shown(await screen.findAllByText(/學校審查資料日期 2026-10-26/))).toBeInTheDocument();
   expect(JSON.stringify(storage.values)).not.toMatch(/王合成|SYNTHETIC-0001/);
+});
+
+// 第五輪審查（2026-11-01）
+test('drops the student record when another tab clears it', async () => {
+  const { RECORD_KEY } = await import('@campusward/engine');
+  const user = userEvent.setup();
+  const storage = memoryStorage();
+  const exportJson = (await import('../../../packages/engine/test/fixtures/synthetic/student-export.json')).default;
+  render(<App catalog={fakeCatalog()} storage={storage} guide={false} />);
+  await screen.findByText('115-1');
+  const rail = screen.getByRole('navigation', { name: '工具' });
+  await user.click(within(rail).getByRole('button', { name: '畢業缺口' }));
+  await user.upload(shown(screen.getAllByLabelText('上傳全人系統匯出檔')), new File([JSON.stringify(exportJson)], 'e.json', { type: 'application/json' }));
+  expect(shown(await screen.findAllByText(/學校審查資料日期/))).toBeInTheDocument();
+  storage.values[RECORD_KEY] = '';
+  window.dispatchEvent(new StorageEvent('storage', { key: RECORD_KEY, newValue: '' }));
+  await waitFor(() => expect(screen.queryAllByText(/學校審查資料日期/).filter((element) => !element.closest('[hidden]'))).toEqual([]));
+});
+
+test('clearing local data also clears course names typed into the graduation gaps', async () => {
+  const user = userEvent.setup();
+  render(<App catalog={fakeCatalog()} storage={memoryStorage()} guide={false} />);
+  await screen.findByText('115-1');
+  const rail = screen.getByRole('navigation', { name: '工具' });
+  await user.click(within(rail).getByRole('button', { name: '畢業缺口' }));
+  await user.type(shown(screen.getAllByLabelText('要補的課名')), '秘密補修課');
+  await user.click(shown(screen.getAllByRole('button', { name: '找本學期開課' })));
+  expect(screen.getByText('秘密補修課')).toBeInTheDocument();
+  await user.click(within(rail).getByRole('button', { name: '匯出與資料' }));
+  await user.click(screen.getByRole('button', { name: '清除本機資料' }));
+  await user.click(screen.getByRole('button', { name: '確認清除' }));
+  expect(screen.queryByText('秘密補修課')).not.toBeInTheDocument();
 });

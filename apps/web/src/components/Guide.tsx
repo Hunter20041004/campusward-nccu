@@ -103,7 +103,14 @@ export function Guide({ open, onClose }: { open: boolean; onClose: () => void })
                 id={`guide-tab-${id}`}
                 aria-selected={tab === id}
                 aria-controls={`guide-panel-${id}`}
+                tabIndex={tab === id ? 0 : -1}
                 onClick={() => setTab(id)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+                  const next = id === 'steps' ? 'legend' : 'steps';
+                  setTab(next);
+                  document.getElementById(`guide-tab-${next}`)?.focus();
+                }}
                 className={`min-h-11 flex-1 rounded-full text-sm font-bold ${tab === id ? 'tab-selected text-mist-ink' : 'text-base-content/75'}`}
               >
                 {label}
@@ -142,7 +149,7 @@ export function Guide({ open, onClose }: { open: boolean; onClose: () => void })
           </div>
           <h2 id="guide-title" className="mt-5 text-xl font-bold">{slide.title}</h2>
           <p className="mt-2 leading-relaxed text-base-content/85">{slide.body}</p>
-          <div className="mt-4 flex justify-center gap-1" role="group" aria-label="導覽頁面">
+          <div className="mt-4 flex flex-wrap justify-center gap-1" role="group" aria-label="導覽頁面">
             {GUIDE_SLIDES.map((item, dot) => (
               <button
                 key={item.title}
@@ -150,7 +157,7 @@ export function Guide({ open, onClose }: { open: boolean; onClose: () => void })
                 aria-label={`第 ${dot + 1} 頁：${item.title}`}
                 aria-current={dot === index ? 'step' : undefined}
                 onClick={() => setIndex(dot)}
-                className="flex size-11 items-center justify-center rounded-full"
+                className="flex size-11 shrink-0 items-center justify-center rounded-full"
               >
                 <span className={`block h-2 rounded-full transition-all duration-200 ${dot === index ? 'w-5 bg-primary' : 'w-2 bg-base-300'}`} />
               </button>

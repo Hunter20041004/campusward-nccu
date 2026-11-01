@@ -11,7 +11,7 @@ export function UndoToast({ label, onUndo, onExpire }: { label: string | null; o
     return () => window.clearTimeout(timer);
   }, [label, onExpire]);
   return (
-    <div role="status" aria-label="最近的修改" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-20 z-30 flex justify-center px-4 md:bottom-6">
+    <div role="status" aria-label="最近的修改" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-20 z-40 flex justify-center pr-24 pl-4 md:bottom-6 md:px-4">
       {label && (
         <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-neutral py-2 pl-5 pr-2 text-sm text-neutral-content shadow-lg">
           <span>{label}</span>

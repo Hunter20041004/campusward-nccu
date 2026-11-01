@@ -151,8 +151,18 @@
 .btn {
   background: var(--color-base-100);
   border-color: transparent;
-  border-radius: 9999px;
   font-weight: 700;
+}
+/* 圓角：預設膠囊；元件自己指定 rounded-* 時（例如圖示列的圓角方塊）不蓋掉。 */
+.btn:not([class*="rounded-"]) {
+  border-radius: 9999px;
+}
+/* 滑過：凸起按鈕稍微變亮、主色變深；幽靈按鈕淡淡一層底。元件自己寫 hover: 的不蓋掉。 */
+.btn:not(.btn-ghost):not(.btn-primary):not(:disabled):hover {
+  background: oklch(0.975 0 0);
+}
+.btn-primary:not(:disabled):hover {
+  background: oklch(0.67 0.075 263);
 }
 .btn:not(.tab-selected):not(.btn-ghost):not(:disabled) {
   box-shadow: -5px -5px 15px rgb(252 252 252), 6px 6px 18px -14px rgb(135 135 135 / 0.3), 7px 6px 7px -6px rgb(0 0 0 / 0.08);
@@ -167,6 +177,9 @@
 .btn-ghost {
   background: transparent;
   box-shadow: none;
+}
+.btn-ghost:not([class*="hover:"]):not(:disabled):hover {
+  background: oklch(0 0 0 / 0.05);
 }
 .btn-danger {
   color: var(--color-coral-ink);
@@ -214,4 +227,46 @@
 .modal-box {
   background: var(--color-base-100);
   border-radius: 1.5rem;
+}
+
+/* 小助手光球的動畫：只表達狀態（眨眼、思考、開心、擔心），減少動態時全部關掉。 */
+@media (prefers-reduced-motion: no-preference) {
+  .buddy {
+    animation: buddy-float 4s ease-in-out infinite;
+  }
+  .buddy-blink {
+    transform-origin: 32px 28px;
+    animation: buddy-blink 5s infinite;
+  }
+  .buddy-stream {
+    transform-origin: 32px 32px;
+    animation: buddy-stream 18s linear infinite;
+  }
+  .buddy-thinking .buddy-stream {
+    animation-duration: 4s;
+  }
+  .buddy-dots {
+    animation: buddy-dots 1.2s ease-in-out infinite;
+  }
+  .buddy-happy {
+    animation: buddy-hop 0.6s ease-out 2;
+  }
+  .buddy-worried {
+    animation: buddy-sway 1.6s ease-in-out infinite;
+  }
+}
+@keyframes buddy-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes buddy-blink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
+@keyframes buddy-stream { to { transform: rotate(360deg); } }
+@keyframes buddy-dots { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@keyframes buddy-hop { 0% { transform: translateY(0) scale(1); } 40% { transform: translateY(-5px) scale(1.04); } 100% { transform: translateY(0) scale(1); } }
+@keyframes buddy-sway { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+
+/* 兩圈交纏的細線（參考 Claude Duet 的「兩人合作」）：霧藍與薄荷，純裝飾。 */
+@utility duet-rings {
+  background:
+    radial-gradient(circle at 18% 30%, transparent 46px, rgb(110 135 190 / 0.22) 47px, transparent 48.5px),
+    radial-gradient(circle at 30% 45%, transparent 46px, rgb(90 191 184 / 0.28) 47px, transparent 48.5px),
+    var(--color-base-100);
+  box-shadow: inset 0 3px 6px rgb(0 0 0 / 0.12), inset 0 -1px 0 rgb(255 255 255 / 0.8);
 }

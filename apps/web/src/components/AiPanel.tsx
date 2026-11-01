@@ -6,7 +6,9 @@ import { aiSearch, planWithAi } from '../ai/orb.ts';
 import { AnswerText } from './AnswerText.tsx';
 import { httpSyllabusSource, type SyllabusSource } from '../qa/syllabusSource.ts';
 import { FEATURES, type Features } from '../features.ts';
+import type { Briefing } from '../ai/briefing.ts';
 import { CareerSection } from './CareerSection.tsx';
+import { OrbBuddy, type BuddyMood } from './OrbBuddy.tsx';
 import { QaSection } from './QaSection.tsx';
 import { ScreenshotImport } from './ScreenshotImport.tsx';
 
@@ -25,6 +27,10 @@ export interface AiPanelProps {
   courses: readonly Course[];
   ready: boolean;
   onApply: (changes: Change[], label: string, replaceOldestAutoBackup?: boolean) => AiApplyResult;
+  /** 打開時先給的今日重點（本機算出，不呼叫 AI）。 */
+  briefing?: Briefing;
+  /** 讓光球表情跟著狀態變：處理中思考、成功開心、被擋下擔心。 */
+  onMood?: (mood: BuddyMood) => void;
 }
 
 type Outcome =
@@ -35,7 +41,7 @@ type Outcome =
   | { kind: 'failed'; message: string };
 
 const action = 'btn btn-sm min-h-11 gap-1.5';
-export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSource, features = FEATURES, planner, catalog, courses, ready, onApply }: AiPanelProps) {
+export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSource, features = FEATURES, planner, catalog, courses, ready, onApply, briefing, onMood }: AiPanelProps) {
   const [accepted, setAccepted] = useState(false);
   const [hasKey, setHasKey] = useState(() => client.hasKey());
   const [keyError, setKeyError] = useState('');
@@ -48,6 +54,7 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
   const knownCodes = new Set(courses.map(({ code }) => code));
 
   const finish = (result: AiApplyResult, answer: string, corrections: CourseCorrection[], changes: Change[], label: string, demo: boolean) => {
+    onMood?.(result.status === 'rejected' ? 'worried' : 'happy');
     if (result.status === 'applied') {
       setOutcome({ kind: 'applied', demo, answer, added: result.diff.added, removed: result.diff.removed, corrections, backups: result.autoBackupPlanIds.length });
     } else if (result.status === 'needsConfirmation') {
@@ -75,9 +82,11 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
     const text = request.trim();
     if (!text || !accepted || !hasKey || busy) return;
     setBusy(true);
+    onMood?.('thinking');
     setOutcome(null);
     const plan = await planWithAi({ client, request: text, termLabel, planner, catalog, courses });
     setBusy(false);
+    if (plan.status === 'failed' || !plan.changes.length) onMood?.(plan.status === 'failed' ? 'worried' : 'idle');
     if (plan.status === 'failed') {
       setHasKey(client.hasKey());
       setOutcome({ kind: 'failed', message: plan.message });
@@ -106,6 +115,25 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
 
   return (
     <div className="flex h-full flex-col gap-3 text-sm">
+      {briefing && (
+        // 今日重點（參考 Claude Duet）：小助手先開口，附幾個一鍵帶入的問題。
+        <div className="duet-rings relative overflow-hidden rounded-2xl p-3">
+          <div className="flex items-start gap-2">
+            <OrbBuddy size={32} mood={briefing.mood} />
+            <div className="raised rounded-2xl rounded-tl-sm px-3 py-2">
+              <p className="font-bold">嗨！幫你看了一下課表：</p>
+              <ul className="mt-1 space-y-0.5">{briefing.lines.map((line) => <li key={line}>{line}</li>)}</ul>
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5 pl-10" role="group" aria-label="可以這樣問">
+            {briefing.suggestions.map((suggestion) => (
+              <button key={suggestion} type="button" className="btn btn-sm min-h-11 text-xs" onClick={() => setRequest(suggestion)}>
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <p className="text-xs text-base-content/75">說出需求，AI 直接幫你搜課排課；衝堂、鎖定課與學分會先檢查，做錯可以復原。</p>
 
       {!accepted && (
@@ -178,7 +206,9 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
       <div aria-live="polite" className="space-y-2">
         {outcome?.kind === 'failed' && <p role="alert" className="text-coral-ink">{outcome.message}</p>}
         {outcome && outcome.kind !== 'failed' && (
-          <div className="space-y-2 well px-3 py-2">
+          <div className="flex items-start gap-2">
+          <OrbBuddy size={32} mood={outcome.kind === 'rejected' ? 'worried' : outcome.kind === 'applied' ? 'happy' : 'idle'} />
+          <div className="raised min-w-0 flex-1 space-y-2 rounded-2xl rounded-tl-sm px-3 py-2">
             {outcome.kind === 'applied' && (
               <p className="font-medium">
                 {outcome.demo && <span className="chip mr-1">示範</span>}
@@ -213,6 +243,7 @@ export function AiPanel({ client, term = '', termLabel, syllabi = httpSyllabusSo
               </div>
             )}
             {outcome.answer && <AnswerText text={outcome.answer} knownCodes={knownCodes} />}
+          </div>
           </div>
         )}
       </div>

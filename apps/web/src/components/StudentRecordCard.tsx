@@ -47,8 +47,11 @@ export function StudentRecordCard({ record, onRecord, courses, profile, onProfil
   }, [courses, profile.conditionIds, record]);
 
   const suggested = record?.suggestedProfile;
+  // 只比對匯出檔看得出來的欄位；看不出年級時，不因學生自己填的年級而一直提示。
   const suggestionDiffers = suggested && (
-    suggested.level !== profile.level || suggested.year !== profile.year || suggested.additionalMajor !== profile.additionalMajor
+    (suggested.level !== undefined && suggested.level !== profile.level)
+    || (suggested.year !== undefined && suggested.year !== profile.year)
+    || (suggested.additionalMajor !== undefined && suggested.additionalMajor !== profile.additionalMajor)
   );
   const passed = record?.courses.filter(({ result }) => result === 'passed').length ?? 0;
 

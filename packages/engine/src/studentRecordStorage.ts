@@ -52,17 +52,27 @@ const RecordSchema = z.object({
 
 const StoredSchema = z.object({ version: z.literal(1), record: RecordSchema }).strict();
 
-/** 依白名單重建，呼叫端多傳的欄位（例如分數）不會被存進去。 */
+const cut = (text: string, max = 200) => text.slice(0, max);
+
+/** 依白名單重建，呼叫端多傳的欄位（例如分數）不會被存進去；解析器沒有的上限在這裡截斷，存檔不會因長度失敗。 */
 function whitelist(record: StudentRecord): StudentRecord {
   const { enrollment, suggestedProfile, audit } = record;
   return {
-    enrollment: { major: enrollment.major, doubleMajor: enrollment.doubleMajor, minors: [...enrollment.minors], programs: [...enrollment.programs], className: enrollment.className },
+    enrollment: {
+      major: cut(enrollment.major),
+      doubleMajor: cut(enrollment.doubleMajor),
+      minors: enrollment.minors.slice(0, 5).map((minor) => cut(minor)),
+      programs: enrollment.programs.slice(0, 20).map((program) => cut(program)),
+      className: cut(enrollment.className),
+    },
     suggestedProfile: {
       ...(suggestedProfile.level ? { level: suggestedProfile.level } : {}),
       ...(suggestedProfile.year ? { year: suggestedProfile.year } : {}),
       ...(suggestedProfile.additionalMajor ? { additionalMajor: suggestedProfile.additionalMajor } : {}),
     },
-    courses: record.courses.map(({ term, code, title, credits, kind, generalEducation, result }) => ({ term, code, title, credits, kind, generalEducation: [...generalEducation], result })),
+    courses: record.courses.slice(0, 400).map(({ term, code, title, credits, kind, generalEducation, result }) => ({
+      term, code, title: cut(title), credits, kind, generalEducation: generalEducation.slice(0, 10).map((area) => cut(area, 20)), result,
+    })),
     skippedCourseRows: record.skippedCourseRows,
     audit: {
       curriculumYear: audit.curriculumYear,
@@ -72,9 +82,11 @@ function whitelist(record: StudentRecord): StudentRecord {
       remainingCredits: audit.remainingCredits,
       requiredCredits: audit.requiredCredits,
       groupCredits: audit.groupCredits,
-      missingRequired: audit.missingRequired.map(({ label, count, unit }) => ({ label, count, ...(unit ? { unit } : {}) })),
-      gaps: audit.gaps.map(({ area, label, text, items }) => ({ area, label, text, items: items.map(({ label: itemLabel, count, unit }) => ({ label: itemLabel, count, ...(unit ? { unit } : {}) })) })),
-      unparsed: [...audit.unparsed],
+      missingRequired: audit.missingRequired.slice(0, 100).map(({ label, count, unit }) => ({ label: cut(label), count, ...(unit ? { unit } : {}) })),
+      gaps: audit.gaps.slice(0, 20).map(({ area, label, text, items }) => ({
+        area, label: cut(label), text: cut(text, 2000), items: items.slice(0, 100).map(({ label: itemLabel, count, unit }) => ({ label: cut(itemLabel), count, ...(unit ? { unit } : {}) })),
+      })),
+      unparsed: audit.unparsed.slice(0, 30).map((text) => cut(text, 2000)),
     },
   };
 }

@@ -46,3 +46,19 @@ describe('Guide', () => {
     }
   });
 });
+
+test('switches guide tabs with the arrow keys', async () => {
+  render(<Guide open onClose={vi.fn()} />);
+  const user = userEvent.setup();
+  screen.getByRole('tab', { name: '教學' }).focus();
+  await user.keyboard('{ArrowRight}');
+  expect(screen.getByRole('tab', { name: '圖例' })).toHaveFocus();
+  expect(screen.getByRole('tab', { name: '圖例' })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('keeps the page dots at a full touch size and lets them wrap', () => {
+  render(<Guide open onClose={vi.fn()} />);
+  const dot = screen.getByRole('button', { name: /^第 1 頁/ });
+  expect(dot).toHaveClass('shrink-0', 'size-11');
+  expect(dot.parentElement).toHaveClass('flex-wrap');
+});

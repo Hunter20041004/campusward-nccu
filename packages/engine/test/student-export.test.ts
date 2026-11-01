@@ -266,3 +266,15 @@ test('treats 未通過 as failed whether it is in score or scoreIfPass', () => {
   ));
   expect(record.courses.map(({ result }) => result).slice(1, 3)).toEqual(['failed', 'failed']);
 });
+
+// 第五輪審查：搜課「已修過」與重修提醒用同一套比對（全學年課的另一學期不算）。
+describe('passedAs', () => {
+  test('uses the same rules as retakes, including the full-year exception', async () => {
+    const { passedAs } = await import('../src/studentExport.ts');
+    const record = { courses: [{ term: '1141', code: '000211011', title: '政治學', credits: 3, kind: 'required', generalEducation: [], result: 'passed' }] } as unknown as import('../src/studentExport.ts').StudentRecord;
+    const course = (key: string, semesterSpan: string) => ({ key, code: key.slice(5), title: '政治學', credits: 3, itemType: 'course', meetings: [], events: [], eligibility: {}, delivery: { mode: 'in-person', asyncAllowed: false, defaultAttendance: 'sync' }, official: { semesterSpan } }) as never;
+    expect(passedAs(record, course('1151:000211011', '單學期科目'))).toBe('政治學');
+    expect(passedAs(record, course('1152:000211011', '全學年科目'))).toBeNull();
+    expect(passedAs(record, course('1151:000211011', '全學年科目'))).toBe('政治學');
+  });
+});
