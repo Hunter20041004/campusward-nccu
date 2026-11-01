@@ -46,8 +46,30 @@ export interface ChangeDiff {
   removed: string[];
 }
 
+/** 這批變更改到（或新建）的一個方案。 */
+export interface PlanChange {
+  planId: string;
+  /** 這批變更裡新建的方案；比較基準是它複製來源「這批變更前」的內容。 */
+  created: boolean;
+  /** 改動前的課（既有方案取原本內容，新建方案取複製來源原本的內容）。 */
+  baseline: PlanItem[];
+  diff: ChangeDiff;
+  /** 改動前自動另存的備案。 */
+  backupPlanId?: string;
+}
+
 export type ApplyResult =
-  | { status: 'applied'; state: PlannerState; undo: PlannerState; diff: ChangeDiff; autoBackupPlanId?: string }
+  | {
+    status: 'applied';
+    state: PlannerState;
+    undo: PlannerState;
+    /** 最後所在方案的改動。 */
+    diff: ChangeDiff;
+    /** 最後所在方案的自動備案；它沒有備份時是這批第一份備案。 */
+    autoBackupPlanId?: string;
+    autoBackupPlanIds: string[];
+    changedPlans: PlanChange[];
+  }
   | { status: 'needsConfirmation'; reason: 'autoBackupFull'; limit: number }
   | { status: 'rejected'; errors: string[] };
 
@@ -80,6 +102,7 @@ function nextPlanId(plans: readonly Plan[]): string {
 }
 
 const activeItems = (state: PlannerState) => state.plans.find(({ id }) => id === state.activePlanId)?.items ?? [];
+const lockedIn = (plans: readonly Plan[], key: string) => plans.some(({ items }) => items.some((item) => item.locked && item.key === key));
 
 function mutateActive(state: PlannerState, update: (items: PlanItem[]) => PlanItem[]): PlannerState {
   return { ...state, plans: state.plans.map((plan) => (plan.id === state.activePlanId ? { ...plan, items: update(plan.items) } : plan)) };
@@ -103,6 +126,8 @@ function applyOne(state: PlannerState, change: Change, catalog: ReadonlyMap<stri
     case 'addCandidate':
       return state.candidates.includes(change.key) ? state : { ...state, candidates: [...state.candidates, change.key] };
     case 'removeCandidate':
+      // 和移出課表一樣略過鎖定課：任一方案鎖定就不移出候選。
+      if (lockedIn(state.plans, change.key)) return state;
       return {
         ...state,
         candidates: state.candidates.filter((key) => key !== change.key),
@@ -147,6 +172,42 @@ function diffItems(before: readonly PlanItem[], after: readonly PlanItem[]): Cha
   };
 }
 
+/** 逐步套用；同時記下這批新建的方案各自複製自哪個方案。 */
+function replay(state: PlannerState, changes: readonly Change[], catalog: ReadonlyMap<string, ScheduleCourse>) {
+  const copiedFrom = new Map<string, string>();
+  const applied = changes.reduce((current, change) => {
+    if (change.type === 'createPlan') copiedFrom.set(nextPlanId(current.plans), current.activePlanId);
+    return applyOne(current, change, catalog);
+  }, state);
+  const baseline = (planId: string): PlanItem[] => {
+    const original = state.plans.find(({ id }) => id === planId);
+    if (original) return original.items;
+    const source = copiedFrom.get(planId);
+    return source ? baseline(source) : [];
+  };
+  return { applied, copiedFrom, baseline };
+}
+
+/** 每一步當下所在方案裡已鎖定、卻被這一步要求移除的課。AI 變更用來說明為什麼不套用；畫面上的移除本來就會略過鎖定課。 */
+export function lockedRemovals(state: PlannerState, changes: readonly Change[], catalog: ReadonlyMap<string, ScheduleCourse>): string[] {
+  if (validate(state, changes, catalog).length) return [];
+  const keys: string[] = [];
+  changes.reduce((current, change) => {
+    if (change.type === 'removeFromSchedule' && lockedIn(current.plans.filter(({ id }) => id === current.activePlanId), change.key)) keys.push(change.key);
+    if (change.type === 'removeCandidate' && lockedIn(current.plans, change.key)) keys.push(change.key);
+    return applyOne(current, change, catalog);
+  }, state);
+  return keys;
+}
+
+const sameItems = (first: readonly PlanItem[], second: readonly PlanItem[]) => first.length === second.length
+  && first.every((item, index) => {
+    const other = second[index];
+    return item === other || (Boolean(other) && JSON.stringify(item) === JSON.stringify(other));
+  });
+
+const isBigChange = ({ added, removed }: ChangeDiff) => removed.length > 0 || added.length + removed.length >= BIG_CHANGE_COURSES;
+
 export function applyChanges(
   state: PlannerState,
   changes: readonly Change[],
@@ -156,46 +217,67 @@ export function applyChanges(
   const errors = validate(state, changes, catalog);
   if (errors.length) return { status: 'rejected', errors };
 
-  const applied = changes.reduce((current, change) => applyOne(current, change, catalog), state);
+  const { applied, copiedFrom, baseline } = replay(state, changes, catalog);
   const limitErrors = [
     applied.plans.filter(({ auto }) => !auto).length > PLAN_LIMITS.manualPlans ? `自己另存的方案最多 ${PLAN_LIMITS.manualPlans} 個。` : '',
     applied.plans.some(({ items }) => items.length > PLAN_LIMITS.itemsPerPlan) ? `一個方案最多 ${PLAN_LIMITS.itemsPerPlan} 門課。` : '',
     applied.candidates.length > PLAN_LIMITS.candidates ? `候選清單最多 ${PLAN_LIMITS.candidates} 門課。` : '',
   ].filter(Boolean);
   if (limitErrors.length) return { status: 'rejected', errors: limitErrors };
-  // 比較的是「最後所在方案」改動前後；新建的方案以複製來源（原本的方案）為基準。
-  const existing = state.plans.find(({ id }) => id === applied.activePlanId);
-  const before = existing?.items ?? activeItems(state);
-  const diff = diffItems(before, activeItems(applied));
+
+  // 每個方案各自和改動前比較；新建的方案以複製來源原本的內容為基準。
+  const changedPlans: PlanChange[] = applied.plans.flatMap((plan) => {
+    const created = copiedFrom.has(plan.id);
+    const before = baseline(plan.id);
+    const diff = diffItems(before, plan.items);
+    // 只改出席方式或鎖定也算改到（會影響衝堂與空檔），但不算大改動。
+    return created || !sameItems(before, plan.items) ? [{ planId: plan.id, created, baseline: before, diff }] : [];
+  });
+  const diff = changedPlans.find(({ planId }) => planId === applied.activePlanId)?.diff ?? { added: [], removed: [] };
   // 只有改到原本就存在的方案才需要備份；新建的方案本身就是備案。
-  const isBig = Boolean(existing) && (diff.removed.length > 0 || diff.added.length + diff.removed.length >= BIG_CHANGE_COURSES);
-  if (!(options.autoBackup ?? true) || !isBig) {
-    return { status: 'applied', state: applied, undo: state, diff };
+  const needBackup = (options.autoBackup ?? true) ? changedPlans.filter((change) => !change.created && isBigChange(change.diff)) : [];
+  if (!needBackup.length) {
+    return { status: 'applied', state: applied, undo: state, diff, autoBackupPlanIds: [], changedPlans };
   }
 
   const limit = options.autoBackupLimit ?? DEFAULT_AUTO_BACKUP_LIMIT;
   const autoPlans = applied.plans.filter(({ auto }) => auto);
+  const excess = autoPlans.length + needBackup.length - limit;
   let plans = applied.plans;
-  if (autoPlans.length >= limit) {
+  if (excess > 0) {
     if (!options.replaceOldestAutoBackup) return { status: 'needsConfirmation', reason: 'autoBackupFull', limit };
-    // 最舊的一份若正是學生正在看的方案，就跳過它，改刪下一份。
-    const oldest = autoPlans.find(({ id }) => id !== applied.activePlanId)?.id;
-    if (!oldest) {
-      return { status: 'rejected', errors: ['自動備案已滿，而且唯一能替換的就是目前所在的方案；請先切到其他方案再修改。'] };
+    // 從最舊的開始替換，但跳過學生正在看的方案和這批正在修改的方案。
+    const keep = new Set([applied.activePlanId, ...changedPlans.map(({ planId }) => planId)]);
+    const replaceable = autoPlans.filter(({ id }) => !keep.has(id)).slice(0, excess).map(({ id }) => id);
+    if (replaceable.length < excess) {
+      return { status: 'rejected', errors: ['自動備案已滿，而且能替換的只剩目前所在或這次正在修改的方案；請先切到其他方案再修改。'] };
     }
-    plans = plans.filter(({ id }) => id !== oldest);
+    plans = plans.filter(({ id }) => !replaceable.includes(id));
   }
-  const backupId = nextPlanId(applied.plans);
+  const firstId = Number(nextPlanId(applied.plans).replace('plan-', ''));
   const lastNumber = applied.plans.reduce((highest, { auto, name }) => (
     auto ? Math.max(highest, Number(/^自動備案 (\d+)/.exec(name)?.[1] ?? 0)) : highest
   ), 0);
-  const backup: Plan = {
-    id: backupId,
-    name: `自動備案 ${lastNumber + 1}（改動前）`,
-    auto: true,
-    items: before.map((item) => ({ ...item })),
+  const backups: Plan[] = needBackup.map((change, index) => {
+    change.backupPlanId = `plan-${firstId + index}`;
+    return {
+      id: change.backupPlanId,
+      name: `自動備案 ${lastNumber + index + 1}（改動前）`,
+      auto: true,
+      items: change.baseline.map((item) => ({ ...item })),
+    };
+  });
+  const autoBackupPlanIds = backups.map(({ id }) => id);
+  const autoBackupPlanId = needBackup.find(({ planId }) => planId === applied.activePlanId)?.backupPlanId ?? autoBackupPlanIds[0];
+  return {
+    status: 'applied',
+    state: { ...applied, plans: [...plans, ...backups] },
+    undo: state,
+    diff,
+    ...(autoBackupPlanId ? { autoBackupPlanId } : {}),
+    autoBackupPlanIds,
+    changedPlans,
   };
-  return { status: 'applied', state: { ...applied, plans: [...plans, backup] }, undo: state, diff, autoBackupPlanId: backupId };
 }
 
 export function comparePlans(first: Plan, second: Plan, catalog: ReadonlyMap<string, ScheduleCourse>) {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { AiContractError, applyAiChangeSet, MAX_CHANGE_ACTIONS, parseAiActions, type AiAction } from '../src/ai/changeSet.ts';
+import { AiContractError, applyAiChangeSet, MAX_CHANGE_ACTIONS, parseAiActions, type AiAction, type AiApplyResult } from '../src/ai/changeSet.ts';
 import { applyChanges, createPlannerState, type Change, type PlannerState } from '../src/plans.ts';
-import type { ScheduleCourse } from '../src/schedule/selection.ts';
+import type { PlanItem, ScheduleCourse } from '../src/schedule/selection.ts';
 
 // 新增（計畫 1.11）＋移植自舊 ai-contracts（未知課號、課號錯字修正、逐課非同步）與 ai-planner（保留鎖定課）。
 function course(code: string, title: string, meeting?: { day: number; start: number; end: number }, asyncAllowed = false): ScheduleCourse {
@@ -162,9 +162,10 @@ describe('review fixes', () => {
     return result.state;
   };
 
-  test('does not blame a change set for a schedule-wide problem that already existed', () => {
+  // 4.0b 起「學分變多」就算新問題（見下方）；這裡保留原意：學分問題原本就在、這次沒有變差，就不怪這次變更。
+  test('does not blame a change set for a schedule-wide problem that already existed and did not get worse', () => {
     const state = seededWith(['1151:900001001']);
-    const result = applyAiChangeSet(state, [{ type: 'addToSchedule', key: '1151:900004001' }], catalog, { profile, maximumCredits: 2 });
+    const result = applyAiChangeSet(state, [{ type: 'removeFromSchedule', key: '1151:900001001' }, { type: 'addToSchedule', key: '1151:900004001' }], catalog, { profile, maximumCredits: 2 });
     expect(result.status).toBe('applied');
   });
 
@@ -177,4 +178,128 @@ describe('review fixes', () => {
     const result = applyAiChangeSet(created.state, [{ type: 'removeCandidate', key: '1151:900004001' }], catalog, { profile });
     expect(result.status === 'rejected' && result.violations.map(({ code }) => code)).toEqual(['locked-course-removed']);
   });
+});
+
+// 獨立審查修正（2026-11-01，Phase 4 前置 4.0a–c）
+const item = (code: string, locked = false): PlanItem => ({ key: `1151:${code}`, attendance: 'sync', status: 'planned', locked });
+const withPlans = (...plans: PlanItem[][]): PlannerState => ({
+  ...createPlannerState(),
+  candidates: [...new Set(plans.flat().map(({ key }) => key))],
+  plans: plans.map((items, index) => ({ id: `plan-${index + 1}`, name: index ? `備案 ${index}` : '主方案', auto: false, items })),
+});
+const codesOf = (result: AiApplyResult) => (result.status === 'rejected' ? result.violations.map(({ code }) => code) : result.status);
+const keysIn = (state: PlannerState, id: string) => state.plans.find((plan) => plan.id === id)?.items.map(({ key }) => key);
+
+describe('checks every plan the change set touches (4.0a)', () => {
+  test('rejects a conflict created in a plan the change set then switches away from', () => {
+    const result = applyAiChangeSet(withPlans([], []), [
+      { type: 'addToSchedule', key: '1151:900001001' },
+      { type: 'addToSchedule', key: '1151:900002001' },
+      { type: 'switchPlan', planId: 'plan-2' },
+    ], catalog, { profile });
+    expect(codesOf(result)).toEqual(['weekly-conflict']);
+  });
+
+  test('does not blame switching to a plan that already had a conflict', () => {
+    const result = applyAiChangeSet(withPlans([], [item('900001001'), item('900002001')]), [{ type: 'switchPlan', planId: 'plan-2' }], catalog, { profile });
+    expect(result.status).toBe('applied');
+  });
+
+  test('checks a plan created in the change set against the plan it was copied from', () => {
+    const state = withPlans([], [item('900001001'), item('900002001')]);
+    const result = applyAiChangeSet(state, [
+      { type: 'switchPlan', planId: 'plan-2' },
+      { type: 'createPlan', name: '新方案' },
+      { type: 'addToSchedule', key: '1151:900004001' },
+    ], catalog, { profile });
+    expect(result.status).toBe('applied');
+  });
+
+  test('rejects a conflict added to a plan created in the change set', () => {
+    const result = applyAiChangeSet(withPlans([item('900001001')]), [
+      { type: 'createPlan', name: '新方案' },
+      { type: 'addToSchedule', key: '1151:900002001' },
+    ], catalog, { profile });
+    expect(codesOf(result)).toEqual(['weekly-conflict']);
+  });
+
+  test('allows removing a course that is locked only in another plan', () => {
+    const state = withPlans([item('900001001', true)], [item('900001001')]);
+    const result = applyAiChangeSet(state, [{ type: 'switchPlan', planId: 'plan-2' }, { type: 'removeFromSchedule', key: '1151:900001001' }], catalog, { profile });
+    if (result.status !== 'applied') throw new Error(JSON.stringify(result));
+    expect(keysIn(result.state, 'plan-1')).toEqual(['1151:900001001']);
+    expect(keysIn(result.state, 'plan-2')).toEqual([]);
+  });
+
+  test('refuses to remove a course locked in the plan the change set switched to', () => {
+    const state = withPlans([item('900001001')], [item('900001001', true)]);
+    const result = applyAiChangeSet(state, [{ type: 'switchPlan', planId: 'plan-2' }, { type: 'removeFromSchedule', key: '1151:900001001' }], catalog, { profile });
+    expect(codesOf(result)).toEqual(['locked-course-removed']);
+  });
+
+  test('names the plan when the problem is not in the plan the student ends up on', () => {
+    const result = applyAiChangeSet(withPlans([], []), [
+      { type: 'addToSchedule', key: '1151:900001001' },
+      { type: 'addToSchedule', key: '1151:900002001' },
+      { type: 'switchPlan', planId: 'plan-2' },
+    ], catalog, { profile });
+    expect(result.status === 'rejected' && result.violations[0]?.message).toMatch(/^「主方案」：/);
+  });
+});
+
+describe('only blocks problems the change set makes worse (4.0b)', () => {
+  test('rejects adding credits to a plan already over the maximum', () => {
+    const result = applyAiChangeSet(withPlans([item('900001001'), item('900003001')]), [{ type: 'addToSchedule', key: '1151:900004001' }], catalog, { profile, maximumCredits: 5 });
+    expect(codesOf(result)).toEqual(['maximum-credits']);
+  });
+
+  test('allows lowering credits that are still over the maximum', () => {
+    const result = applyAiChangeSet(withPlans([item('900001001'), item('900003001'), item('900004001')]), [{ type: 'removeFromSchedule', key: '1151:900004001' }], catalog, { profile, maximumCredits: 5 });
+    expect(result.status).toBe('applied');
+  });
+
+  test('rejects fewer internship days when the minimum was already missed', () => {
+    const result = applyAiChangeSet(withPlans([item('900001001'), item('900004001')]), [{ type: 'addToSchedule', key: '1151:900005001' }], catalog, { profile, minimumInternshipDays: 5 });
+    expect(codesOf(result)).toEqual(['minimum-internship-days']);
+  });
+
+  test('allows more internship days even if the minimum is still missed', () => {
+    const result = applyAiChangeSet(withPlans([item('900001001'), item('900004001')]), [{ type: 'removeFromSchedule', key: '1151:900004001' }], catalog, { profile, minimumInternshipDays: 5 });
+    expect(result.status).toBe('applied');
+  });
+
+  test('allows clearing part of a day the student wants free', () => {
+    const state = withPlans([item('900001001'), item('900002001')]);
+    state.preferences.freeDays = [1];
+    const result = applyAiChangeSet(state, [{ type: 'removeFromSchedule', key: '1151:900001001' }], catalog, { profile });
+    expect(result.status).toBe('applied');
+  });
+
+  test('reports only the course newly placed on a free day', () => {
+    const state = withPlans([item('900001001')]);
+    state.preferences.freeDays = [1, 5];
+    const result = applyAiChangeSet(state, [{ type: 'addToSchedule', key: '1151:900005001' }], catalog, { profile });
+    expect(result.status === 'rejected' && result.violations).toEqual([expect.objectContaining({ code: 'free-day-occupied', courseKeys: ['1151:900005001'] })]);
+  });
+});
+
+describe('course code corrections (4.0c)', () => {
+  test.each(['removeFromSchedule', 'removeCandidate'])('does not guess which course %s means', (type) => {
+    expect(() => parseAiActions(json([{ type, course: '900004011' }]), catalog)).toThrow(/未知課程/);
+  });
+
+  test('reports the course codes it corrected', () => {
+    const parsed = parseAiActions(json([{ type: 'addToSchedule', course: '900004011' }, { type: 'addToSchedule', course: '900001001' }]), catalog);
+    expect(parsed.corrections).toEqual([{ from: '900004011', key: '1151:900004001' }]);
+  });
+});
+
+test('checks a plan whose attendance changed before the change set switched away from it', () => {
+  const state = withPlans([{ ...item('900003001'), attendance: 'async' }], []);
+  state.preferences.freeDays = [3];
+  const result = applyAiChangeSet(state, [
+    { type: 'setAttendance', key: '1151:900003001', attendance: 'sync' },
+    { type: 'switchPlan', planId: 'plan-2' },
+  ], catalog, { profile });
+  expect(codesOf(result)).toEqual(['free-day-occupied']);
 });

@@ -4,9 +4,9 @@
 import { z } from 'zod';
 import type { IdentityProfile } from '../eligibility.ts';
 import { validateInternshipSettings } from '../internship.ts';
-import { applyChanges, type ApplyResult, type Change, type PlannerState } from '../plans.ts';
-import type { ScheduleCourse } from '../schedule/selection.ts';
-import { validateSchedule, type Violation } from './validate.ts';
+import { applyChanges, lockedRemovals, type ApplyResult, type Change, type PlannerState, type Preferences } from '../plans.ts';
+import type { PlanItem, ScheduleCourse } from '../schedule/selection.ts';
+import { validateSchedule, type ScheduleValidation, type Violation } from './validate.ts';
 
 export const MAX_CHANGE_ACTIONS = 20;
 
@@ -77,11 +77,15 @@ function editDistance(first: string, second: string): number {
   return previous[second.length]!;
 }
 
-/** 課程參照：完整 key、官方課號，或差 1–2 字且「最接近者唯一」的課號（AI 打錯字）。其餘一律視為未知課程。 */
-function resolveCourse(reference: string, catalog: ReadonlyMap<string, ScheduleCourse>, byCode: ReadonlyMap<string, string>): string {
+/**
+ * 課程參照：完整 key、官方課號，或差 1–2 字且「最接近者唯一」的課號（AI 打錯字）。其餘一律視為未知課程。
+ * 移除類動作不猜（fuzzy 為 false）：猜錯會拿掉學生沒要拿掉的課。
+ */
+function resolveCourse(reference: string, catalog: ReadonlyMap<string, ScheduleCourse>, byCode: ReadonlyMap<string, string>, fuzzy: boolean): string {
   if (catalog.has(reference)) return reference;
   const exact = byCode.get(reference);
   if (exact) return exact;
+  if (!fuzzy) throw new AiContractError(`AI 回覆包含未知課程：${reference}`);
   let best = 3;
   let matches: string[] = [];
   byCode.forEach((key, code) => {
@@ -97,9 +101,16 @@ function resolveCourse(reference: string, catalog: ReadonlyMap<string, ScheduleC
   throw new AiContractError(`AI 回覆包含未知課程：${reference}`);
 }
 
+/** AI 寫錯、由引擎修正的課號；畫面要標示「已修正課號」。 */
+export interface CourseCorrection {
+  from: string;
+  key: string;
+}
+
 export interface ParsedAiActions {
   changes: Change[];
   requests: AiRequest[];
+  corrections: CourseCorrection[];
 }
 
 export function parseAiActions(content: string, catalog: ReadonlyMap<string, ScheduleCourse>): ParsedAiActions {
@@ -110,15 +121,23 @@ export function parseAiActions(content: string, catalog: ReadonlyMap<string, Sch
   if (changeCount > MAX_CHANGE_ACTIONS) throw new AiContractError(`一次最多 ${MAX_CHANGE_ACTIONS} 個變更。`);
   const changes: Change[] = [];
   const requests: AiRequest[] = [];
+  const corrections: CourseCorrection[] = [];
   const byCode = new Map([...catalog.values()].filter((course) => course.code).map((course) => [course.code!, course.key]));
-  const resolve = (reference: string) => resolveCourse(reference, catalog, byCode);
+  const resolve = (reference: string, fuzzy = true) => {
+    const key = resolveCourse(reference, catalog, byCode, fuzzy);
+    const corrected = key !== reference && catalog.get(key)?.code !== reference;
+    if (corrected && !corrections.some((entry) => entry.from === reference && entry.key === key)) corrections.push({ from: reference, key });
+    return key;
+  };
   actions.forEach((action) => {
     switch (action.type) {
       case 'addCandidate':
-      case 'removeCandidate':
       case 'addToSchedule':
-      case 'removeFromSchedule':
         changes.push({ type: action.type, key: resolve(action.course) });
+        break;
+      case 'removeCandidate':
+      case 'removeFromSchedule':
+        changes.push({ type: action.type, key: resolve(action.course, false) });
         break;
       case 'setAttendance':
         changes.push({ type: 'setAttendance', key: resolve(action.course), attendance: action.attendance });
@@ -141,7 +160,7 @@ export function parseAiActions(content: string, catalog: ReadonlyMap<string, Sch
         requests.push(action);
     }
   });
-  return { changes, requests };
+  return { changes, requests, corrections };
 }
 
 export interface AiApplyContext {
@@ -158,23 +177,42 @@ export type AiApplyResult =
   | Extract<ApplyResult, { status: 'needsConfirmation' }>
   | { status: 'rejected'; violations: Violation[] };
 
-// 整份課表層級的問題（學分、實習天數）會列出所有課，只比對種類；其餘依涉及的課比對。
-const SCHEDULE_WIDE = new Set<Violation['code']>(['minimum-credits', 'maximum-credits', 'minimum-internship-days']);
-const violationSignature = (violation: Violation) => (
-  SCHEDULE_WIDE.has(violation.code) ? violation.code : `${violation.code}|${[...violation.courseKeys].sort().join(',')}`
-);
+const violationSignature = (violation: Violation) => `${violation.code}|${[...violation.courseKeys].sort().join(',')}`;
 
-function validateActive(state: PlannerState, catalog: ReadonlyMap<string, ScheduleCourse>, context: AiApplyContext) {
-  const plan = state.plans.find(({ id }) => id === state.activePlanId);
+function validatePlan(items: readonly PlanItem[], preferences: Preferences, catalog: ReadonlyMap<string, ScheduleCourse>, context: AiApplyContext) {
   return validateSchedule({
-    items: plan?.items ?? [],
+    items,
     catalog,
     profile: context.profile,
     ...(context.termLabel ? { termLabel: context.termLabel } : {}),
     ...(context.maximumCredits !== undefined ? { maximumCredits: context.maximumCredits } : {}),
-    internshipSettings: state.preferences.internship,
+    internshipSettings: preferences.internship,
     minimumInternshipDays: context.minimumInternshipDays ?? 0,
-    freeDays: state.preferences.freeDays,
+    freeDays: preferences.freeDays,
+  });
+}
+
+/** 這次變更新造成或變嚴重的問題：學分與實習天數看數值有沒有變差；空堂日只算新排進去的課；其餘依涉及的課比對。 */
+function newProblems(before: ScheduleValidation, after: ScheduleValidation, catalog: ReadonlyMap<string, ScheduleCourse>): Violation[] {
+  const earlier = (code: Violation['code']) => before.violations.find((violation) => violation.code === code);
+  const seen = new Set(before.violations.map(violationSignature));
+  return after.violations.flatMap((violation): Violation[] => {
+    switch (violation.code) {
+      case 'maximum-credits':
+        return !earlier(violation.code) || after.credits > before.credits ? [violation] : [];
+      case 'minimum-credits':
+        return !earlier(violation.code) || after.credits < before.credits ? [violation] : [];
+      case 'minimum-internship-days':
+        return !earlier(violation.code) || (after.internship?.confirmedDays ?? 0) < (before.internship?.confirmedDays ?? 0) ? [violation] : [];
+      case 'free-day-occupied': {
+        const occupied = new Set(earlier(violation.code)?.courseKeys ?? []);
+        const added = violation.courseKeys.filter((key) => !occupied.has(key));
+        const titles = added.map((key) => catalog.get(key)?.title ?? key).join('、');
+        return added.length ? [{ ...violation, message: `${titles} 排在你想空下來的日子。`, courseKeys: added }] : [];
+      }
+      default:
+        return seen.has(violationSignature(violation)) ? [] : [violation];
+    }
   });
 }
 
@@ -185,16 +223,13 @@ export function applyAiChangeSet(
   catalog: ReadonlyMap<string, ScheduleCourse>,
   context: AiApplyContext,
 ): AiApplyResult {
-  const violations: Violation[] = [];
-  const lockedIn = (plans: PlannerState['plans']) => new Set(plans.flatMap(({ items }) => items.filter(({ locked }) => locked).map(({ key }) => key)));
-  const lockedInActive = lockedIn(state.plans.filter(({ id }) => id === state.activePlanId));
-  // 移出候選清單會從所有方案移除，所以任一方案鎖定都不能移。
-  const lockedAnywhere = lockedIn(state.plans);
+  // 鎖定依每一步當下所在的方案判斷；移出候選清單會從所有方案移除，所以任一方案鎖定都不能移。
+  const violations: Violation[] = lockedRemovals(state, changes, catalog).map((key) => ({
+    code: 'locked-course-removed',
+    message: `${catalog.get(key)?.title ?? key} 已鎖定，不能移除。`,
+    courseKeys: [key],
+  }));
   changes.forEach((change) => {
-    const locked = change.type === 'removeFromSchedule' ? lockedInActive : change.type === 'removeCandidate' ? lockedAnywhere : null;
-    if (locked && 'key' in change && locked.has(change.key)) {
-      violations.push({ code: 'locked-course-removed', message: `${catalog.get(change.key)?.title ?? change.key} 已鎖定，不能移除。`, courseKeys: [change.key] });
-    }
     if (change.type === 'setPreference' && change.internship) {
       const problem = validateInternshipSettings(change.internship);
       if (problem) violations.push({ code: 'invalid-preference', message: problem.message, courseKeys: [] });
@@ -211,9 +246,26 @@ export function applyAiChangeSet(
   }
   if (applied.status === 'needsConfirmation') return applied;
 
-  const before = new Set(validateActive(state, catalog, context).violations.map(violationSignature));
-  const after = validateActive(applied.state, catalog, context);
-  const introduced = after.violations.filter((violation) => !before.has(violationSignature(violation)));
+  // 每個被改到的方案都和改動前比較；最後所在的方案即使沒改課也要比較，因為偏好（空堂日、實習）可能改了。
+  const finalPlanId = applied.state.activePlanId;
+  const checks = applied.changedPlans.some(({ planId }) => planId === finalPlanId)
+    ? applied.changedPlans
+    : [...applied.changedPlans, { planId: finalPlanId, baseline: state.plans.find(({ id }) => id === finalPlanId)?.items ?? [] }];
+  const seen = new Set<string>();
+  let warnings: Violation[] = [];
+  const introduced = checks.flatMap(({ planId, baseline }) => {
+    const plan = applied.state.plans.find(({ id }) => id === planId);
+    if (!plan) return [];
+    const before = validatePlan(baseline, state.preferences, catalog, context);
+    const after = validatePlan(plan.items, applied.state.preferences, catalog, context);
+    if (planId === finalPlanId) warnings = after.warnings;
+    return newProblems(before, after, catalog).flatMap((violation) => {
+      const signature = violationSignature(violation);
+      if (seen.has(signature)) return [];
+      seen.add(signature);
+      return [planId === finalPlanId ? violation : { ...violation, message: `「${plan.name}」：${violation.message}` }];
+    });
+  });
   if (introduced.length) return { status: 'rejected', violations: introduced };
-  return { ...applied, warnings: after.warnings };
+  return { ...applied, warnings };
 }

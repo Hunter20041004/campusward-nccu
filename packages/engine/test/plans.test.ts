@@ -294,5 +294,92 @@ test('refuses instead of exceeding the automatic backup limit when the only back
   if (first.status !== 'applied') throw new Error(first.status);
   const onBackup = { ...first.state, activePlanId: first.autoBackupPlanId! };
   const result = applyChanges(onBackup, [{ type: 'removeFromSchedule', key: 'b' }], catalog, { autoBackupLimit: 1, replaceOldestAutoBackup: true });
-  expect(result).toEqual({ status: 'rejected', errors: ['自動備案已滿，而且唯一能替換的就是目前所在的方案；請先切到其他方案再修改。'] });
+  expect(result).toEqual({ status: 'rejected', errors: ['自動備案已滿，而且能替換的只剩目前所在或這次正在修改的方案；請先切到其他方案再修改。'] });
+});
+
+// 獨立審查修正（2026-11-01，Phase 4 前置 4.0a）：一批變更可能改到好幾個方案（切換方案、另存備案、移出候選），每個被改到的既有方案各自比較、各自備份。
+describe('every changed plan is compared and backed up on its own', () => {
+  const withPlans = (...plans: string[][]): PlannerState => ({
+    ...createPlannerState(),
+    candidates: [...new Set(plans.flat())],
+    plans: plans.map((items, index) => ({
+      id: `plan-${index + 1}`,
+      name: index ? `備案 ${index}` : '主方案',
+      auto: false,
+      items: items.map((key) => ({ key, attendance: 'sync' as const, status: 'planned' as const, locked: false })),
+    })),
+  });
+  const itemsOf = (state: PlannerState, id: string) => state.plans.find((plan) => plan.id === id)?.items.map(({ key }) => key);
+  const autoItems = (state: PlannerState) => state.plans.filter(({ auto }) => auto).map(({ items }) => items.map(({ key }) => key));
+
+  test('backs up a plan that lost courses even when the batch then switches away from it', () => {
+    const result = applyChanges(withPlans(['a', 'b', 'c'], []), [
+      { type: 'removeFromSchedule', key: 'a' },
+      { type: 'removeFromSchedule', key: 'b' },
+      { type: 'removeFromSchedule', key: 'c' },
+      { type: 'switchPlan', planId: 'plan-2' },
+    ], catalog);
+    if (result.status !== 'applied') throw new Error(result.status);
+    expect(autoItems(result.state)).toEqual([['a', 'b', 'c']]);
+    expect(result.changedPlans).toEqual([
+      expect.objectContaining({ planId: 'plan-1', created: false, diff: { added: [], removed: ['a', 'b', 'c'] }, backupPlanId: result.autoBackupPlanIds[0] }),
+    ]);
+  });
+
+  test('backs up the original plan when the batch creates a new plan and removes candidates', () => {
+    const result = applyChanges(withPlans(['a', 'b', 'c']), [
+      { type: 'createPlan', name: '新方案' },
+      { type: 'removeCandidate', key: 'a' },
+      { type: 'removeCandidate', key: 'b' },
+    ], catalog);
+    if (result.status !== 'applied') throw new Error(result.status);
+    expect(itemsOf(result.state, 'plan-1')).toEqual(['c']);
+    expect(autoItems(result.state)).toEqual([['a', 'b', 'c']]);
+  });
+
+  test('backs up each plan that removing one candidate changes', () => {
+    const result = applyChanges(withPlans(['a', 'b'], ['a', 'c']), [{ type: 'removeCandidate', key: 'a' }], catalog);
+    if (result.status !== 'applied') throw new Error(result.status);
+    expect(autoItems(result.state)).toEqual([['a', 'b'], ['a', 'c']]);
+    expect(result.autoBackupPlanIds).toHaveLength(2);
+  });
+
+  test('does not back up plans that each only gained one course', () => {
+    const result = applyChanges(withPlans(['a'], ['b']), [
+      { type: 'addToSchedule', key: 'c' },
+      { type: 'switchPlan', planId: 'plan-2' },
+      { type: 'addToSchedule', key: 'd' },
+    ], catalog);
+    expect(result.status === 'applied' && result.autoBackupPlanIds).toEqual([]);
+  });
+
+  test('compares a plan created in the batch with the plan it was copied from', () => {
+    const result = applyChanges(withPlans(['a'], ['b', 'c']), [
+      { type: 'switchPlan', planId: 'plan-2' },
+      { type: 'createPlan', name: '新方案' },
+      { type: 'addToSchedule', key: 'd' },
+    ], catalog);
+    if (result.status !== 'applied') throw new Error(result.status);
+    expect(result.diff).toEqual({ added: ['d'], removed: [] });
+  });
+
+  test('asks first when one batch needs more automatic backups than there is room for', () => {
+    const state = withPlans(['a', 'b'], ['a', 'c']);
+    state.plans.push({ id: 'plan-3', name: '自動備案 1（改動前）', auto: true, items: [] });
+    expect(applyChanges(state, [{ type: 'removeCandidate', key: 'a' }], catalog, { autoBackupLimit: 2 }))
+      .toEqual({ status: 'needsConfirmation', reason: 'autoBackupFull', limit: 2 });
+    const confirmed = applyChanges(state, [{ type: 'removeCandidate', key: 'a' }], catalog, { autoBackupLimit: 2, replaceOldestAutoBackup: true });
+    if (confirmed.status !== 'applied') throw new Error(confirmed.status);
+    expect(confirmed.state.plans.map(({ id }) => id)).not.toContain('plan-3');
+    expect(autoItems(confirmed.state)).toEqual([['a', 'b'], ['a', 'c']]);
+  });
+
+  test('does not remove a candidate that is locked in some plan', () => {
+    const state = withPlans(['a'], ['a']);
+    state.plans[1]!.items[0]!.locked = true;
+    const result = applyChanges(state, [{ type: 'removeCandidate', key: 'a' }], catalog, { autoBackup: false });
+    if (result.status !== 'applied') throw new Error(result.status);
+    expect(result.state.candidates).toEqual(['a']);
+    expect(result.state.plans.map(({ items }) => items.map(({ key }) => key))).toEqual([['a'], ['a']]);
+  });
 });
