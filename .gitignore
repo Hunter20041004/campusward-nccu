@@ -26,3 +26,9 @@ exportStudentData*.json
 .claude/worktrees/
 # 課綱原始頁含教師聯絡方式，只放本機快取（計畫 4.5）
 .cache/
+
+# 給 AI 的內部交接與規則檔，只留本機、不公開
+AGENTS.md
+CLAUDE.md
+HANDOFF.md
+STATUS.md
