@@ -719,6 +719,37 @@ test.describe('phone week strip, folding filters, marking results, plan differen
     await expect(page.getByRole('heading', { name: '英文（一）' })).toBeVisible();
   });
 
+  // 2026-11-02 使用者決定：手機「課表」分頁先看到課表；系級、方案、幫我排滿、標記選課結果收進一列「排課工具」。
+  test('on a phone the timetable tab shows the timetable first, with the planning tools folded into one row', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'mobile only');
+    await page.goto('/');
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    // 第一次進站還沒設系級、課表是空的：系級列攤開，讓新同學看得到第一步。
+    await expect(page.getByRole('combobox', { name: '系級' })).toBeVisible();
+    await page.getByRole('radio', { name: '大二' }).click();
+    await nav(page).getByRole('button', { name: '搜課' }).click();
+    await addCourse(page, '統計學');
+    await nav(page).getByRole('button', { name: '課表' }).click();
+    // 排進第一門課不會在手上收起來；下次進站才收。
+    await expect(page.getByRole('combobox', { name: '系級' })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('banner')).toContainText('115-1');
+    const tools = page.getByRole('button', { name: /^排課工具/ });
+    await expect(tools).toHaveAttribute('aria-expanded', 'false');
+    await expect(tools).toContainText('大二');
+    await expect(tools).toContainText('學分');
+    await expect(page.getByRole('combobox', { name: '系級' })).toBeHidden();
+    const viewport = page.viewportSize()!;
+    const agenda = await page.getByRole('list', { name: '每日行程' }).boundingBox();
+    expect(agenda!.y).toBeLessThan(viewport.height / 2);
+    expect(await smallTargets(page)).toEqual([]);
+    await expectNoAxeViolations(page);
+    await tools.click();
+    await expect(tools).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByRole('combobox', { name: '系級' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '幫我排滿' })).toBeVisible();
+  });
+
   test('chosen filters fold into removable chips, and the undo toast does not cover the first result', async ({ page, isMobile }) => {
     await page.goto('/');
     await expect(page.getByRole('banner')).toContainText('115-1');

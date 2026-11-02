@@ -33,7 +33,7 @@ import {
   type StudentRecord,
 } from '@campusward/engine';
 import enrollmentRules from '../../../data/rules/enrollment-11407.json' with { type: 'json' };
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, ChevronDown } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header.tsx';
 import { MobileNav, type MobileView } from './components/MobileNav.tsx';
@@ -439,8 +439,19 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
   };
   // 「設定年級後可檢查學分上下限」：把焦點放到課表上方的系級。
   const classRef = useRef<HTMLInputElement>(null);
+  // 手機「課表」分頁先看到課表（2026-11-02 使用者決定）：系級、方案、幫我排滿、標記選課結果收成一列「排課工具」。
+  // 每次進站資料載好時決定一次：還沒設系級又沒排課（第一次來）才攤開，讓新同學看得到第一步；之後只照學生自己按的，
+  // 不會因為剛排進第一門課就在他手上收起來。桌機一律攤開。
+  const [phoneToolsOpen, setPhoneToolsOpen] = useState<boolean | null>(null);
+  const firstVisit = !(planner.profile.className || planner.entries.length > 0);
+  useEffect(() => {
+    if (ready && phoneToolsOpen === null) setPhoneToolsOpen(firstVisit);
+  }, [firstVisit, phoneToolsOpen, ready]);
+  const identityLabel = planner.profile.className
+    ?? (planner.profile.level === 'graduate' ? '研究所' : planner.profile.year ? `大${'一二三四'[planner.profile.year - 1] ?? '四'}` : '未設系級');
   const openIdentity = () => {
     showTimetable();
+    setPhoneToolsOpen(true);
     setTimeout(() => {
       classRef.current?.scrollIntoView?.({ block: 'center' });
       classRef.current?.focus();
@@ -488,6 +499,20 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
               <CalendarDays className="size-5" aria-hidden="true" />模擬課表<span aria-hidden="true" className="h-5 w-0.5 rounded bg-mist-ink/50" />
             </h2>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+              <button
+                type="button"
+                className="raised flex min-h-11 w-full items-center gap-2 rounded-2xl px-4 py-2 text-left text-sm md:hidden"
+                aria-expanded={phoneToolsOpen ?? firstVisit}
+                aria-controls="planning-tools"
+                onClick={() => setPhoneToolsOpen(!(phoneToolsOpen ?? firstVisit))}
+              >
+                <span className="font-bold text-mist-ink">排課工具</span>
+                <span className="min-w-0 flex-1 truncate text-base-content/70">
+                  {identityLabel}・{planner.activePlan.name}・<span className={limits && (planner.credits < limits.minimum || planner.credits > limits.maximum) ? 'font-bold text-coral-ink' : ''}>{planner.credits} 學分</span>{limits && planner.credits < limits.minimum ? <span className="sr-only">，低於下限 {limits.minimum}</span> : limits && planner.credits > limits.maximum ? <span className="sr-only">，超過上限 {limits.maximum}</span> : null}
+                </span>
+                <ChevronDown className={`size-4 shrink-0 transition-transform ${(phoneToolsOpen ?? firstVisit) ? 'rotate-180' : ''}`} aria-hidden="true" />
+              </button>
+              <div id="planning-tools" className={`space-y-3 ${(phoneToolsOpen ?? firstVisit) ? '' : 'max-md:hidden'}`}>
               {ready && (
                 <ClassBar
                   courses={courses}
@@ -559,6 +584,7 @@ export function App({ catalog = httpCatalogSource, storage, ai = gemini, guide =
                   onOpenChange={setResultsOpen}
                 />
               )}
+              </div>
               <Timetable
                 entries={planner.entries}
                 conflicts={planner.conflicts}
